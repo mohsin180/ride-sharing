@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:ride_sharing/view/forgotPassword.dart';
 import 'package:ride_sharing/view/registerScreen.dart';
 import 'package:ride_sharing/view/verificationScreen.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
@@ -43,11 +44,19 @@ class Loginscreen extends StatelessWidget {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        CustomWidgets.customText(
-                          'Forgot Password?',
-                          9.sp,
-                          Consonants.primaryColor,
-                          FontWeight.w700,
+                        GestureDetector(
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => Forgotpassword(),
+                            ),
+                          ),
+                          child: CustomWidgets.customText(
+                            'Forgot Password?',
+                            9.sp,
+                            Consonants.primaryColor,
+                            FontWeight.w700,
+                          ),
                         ),
                       ],
                     ),
