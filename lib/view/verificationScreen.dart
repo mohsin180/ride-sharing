@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:ride_sharing/view/roleSelection.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
 
@@ -51,7 +52,14 @@ class Verificationscreen extends StatelessWidget {
               ],
             ),
           ),
-          VerificationContainer(onPressed: () {}),
+          VerificationContainer(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => Roleselection()),
+              );
+            },
+          ),
         ],
       ),
     );
