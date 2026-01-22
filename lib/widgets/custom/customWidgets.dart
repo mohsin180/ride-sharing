@@ -72,6 +72,108 @@ class CustomWidgets {
       ),
     );
   }
+
+  // profile custom widgets can be added here
+  static Widget customProfileInfo(String text, IconData icon, String subtitle) {
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: 30.w, vertical: 1.5.h),
+      decoration: BoxDecoration(
+        color: Consonants.whiteColor,
+        borderRadius: BorderRadius.circular(10.r),
+      ),
+      child: ListTile(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(13.r),
+        ),
+        leading: Container(
+          height: 50.h,
+          width: 30.w,
+          decoration: BoxDecoration(
+            color: Consonants.lightGreyColor,
+            borderRadius: BorderRadius.circular(10.r),
+          ),
+          child: Icon(icon, color: Consonants.greyColor),
+        ),
+        title: CustomWidgets.customText(
+          text,
+          10.sp,
+          Consonants.greyColor,
+          FontWeight.w400,
+        ),
+        subtitle: CustomWidgets.customText(
+          subtitle,
+          12.sp,
+          Consonants.boldTextColor,
+          FontWeight.w600,
+        ),
+      ),
+    );
+  }
+
+  static Widget customProfileHeader(String role, String image) {
+    return Column(
+      children: [
+        CircleAvatar(
+          radius: 70.r,
+          backgroundColor: Colors.transparent,
+          backgroundImage: AssetImage(image),
+        ),
+        CustomWidgets.customText(
+          role,
+          12.sp,
+          Consonants.primaryColor,
+          FontWeight.w700,
+        ),
+      ],
+    );
+  }
+
+  static Widget customUpperText(String text) {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 30.w),
+      child: Row(
+        children: [
+          CustomWidgets.customText(
+            text,
+            10.sp,
+            Consonants.greyColor,
+            FontWeight.w700,
+          ),
+        ],
+      ),
+    );
+  }
+
+  static Widget customProfileActions(IconData icon, String text) {
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: 30.w, vertical: 1.5.h),
+      decoration: BoxDecoration(
+        color: Consonants.whiteColor,
+        borderRadius: BorderRadius.circular(10.r),
+      ),
+      child: ListTile(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(13.r),
+        ),
+        leading: Container(
+          height: 50.h,
+          width: 30.w,
+          decoration: BoxDecoration(
+            color: Consonants.lightGreyColor,
+            borderRadius: BorderRadius.circular(10.r),
+          ),
+          child: Icon(icon, color: Consonants.greyColor),
+        ),
+        title: CustomWidgets.customText(
+          text,
+          10.sp,
+          Consonants.greyColor,
+          FontWeight.w400,
+        ),
+        trailing: Icon(Icons.arrow_forward_ios, color: Consonants.greyColor),
+      ),
+    );
+  }
 }
 
 class AuthFields extends StatelessWidget {

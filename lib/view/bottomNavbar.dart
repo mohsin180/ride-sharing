@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ride_sharing/view/homepage.dart';
-import 'package:ride_sharing/view/profile.dart';
+import 'package:ride_sharing/view/passengerScreens/profile.dart';
 import 'package:ride_sharing/view/ride.dart';
 import 'package:ride_sharing/view/yourRide.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
@@ -18,6 +18,7 @@ class _BottomnavbarState extends State<Bottomnavbar> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Consonants.scaffoldBackgroundColor,
       body: IndexedStack(index: currentIndex, children: screens),
       bottomNavigationBar: NavigationBarTheme(
         data: NavigationBarThemeData(
