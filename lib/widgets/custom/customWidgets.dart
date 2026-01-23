@@ -144,7 +144,13 @@ class CustomWidgets {
     );
   }
 
-  static Widget customProfileActions(IconData icon, String text) {
+  static Widget customProfileActions(
+    IconData icon,
+    Color leadingColor,
+    String text,
+    Color iconColor,
+    Color textColor,
+  ) {
     return Container(
       margin: EdgeInsets.symmetric(horizontal: 30.w, vertical: 1.5.h),
       decoration: BoxDecoration(
@@ -162,15 +168,15 @@ class CustomWidgets {
             color: Consonants.lightGreyColor,
             borderRadius: BorderRadius.circular(10.r),
           ),
-          child: Icon(icon, color: Consonants.greyColor),
+          child: Icon(icon, color: leadingColor),
         ),
         title: CustomWidgets.customText(
           text,
-          10.sp,
-          Consonants.greyColor,
-          FontWeight.w400,
+          12.sp,
+          textColor,
+          FontWeight.w700,
         ),
-        trailing: Icon(Icons.arrow_forward_ios, color: Consonants.greyColor),
+        trailing: Icon(Icons.arrow_forward_ios, color: iconColor, size: 14.sp),
       ),
     );
   }
