@@ -32,6 +32,7 @@ class Passengerhistory extends StatelessWidget {
           "John Doe",
           "Toyota",
           "Red",
+          4.8,
         ),
       ],
     );
@@ -57,6 +58,7 @@ class HistoryCustomWidgets {
     String driverName,
     String carMake,
     String carColor,
+    double rating,
   ) {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 3.w, vertical: 3.w),
@@ -78,8 +80,10 @@ class HistoryCustomWidgets {
               ),
 
               Container(
+                padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(12.r),
+                  color: Consonants.primaryGreenColor,
                 ),
                 child: CustomWidgets.customText(
                   status,
@@ -95,81 +99,140 @@ class HistoryCustomWidgets {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(
-                Icons.location_city_rounded,
-                color: Consonants.primaryColor,
-                size: 16.sp,
+              /// LEFT: Timeline (icons + divider)
+              Column(
+                children: [
+                  SizedBox(
+                    height: 12.h, // aligns icon with "Pickup" text
+                  ),
+                  Icon(
+                    Icons.location_city_rounded,
+                    color: Consonants.primaryColor,
+                    size: 16.sp,
+                  ),
+                  SizedBox(
+                    height: 20.h,
+                    child: VerticalDivider(
+                      thickness: 2.w,
+                      color: Consonants.lightGreyColor,
+                    ),
+                  ),
+                  Icon(Icons.location_on, color: Colors.red, size: 16.sp),
+                ],
               ),
+
               SizedBox(width: 10.w),
+
+              /// RIGHT: Text content
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  CustomWidgets.customText(
-                    "Pickup",
-                    10.sp,
-                    Consonants.greyColor,
-                    FontWeight.w700,
+                  /// Pickup text
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      CustomWidgets.customText(
+                        "Pickup",
+                        10.sp,
+                        Consonants.greyColor,
+                        FontWeight.w700,
+                      ),
+                      CustomWidgets.customText(
+                        pickup,
+                        10.sp,
+                        Consonants.boldTextColor,
+                        FontWeight.w600,
+                      ),
+                    ],
                   ),
-                  CustomWidgets.customText(
-                    pickup,
-                    10.sp,
-                    Consonants.boldTextColor,
-                    FontWeight.w600,
-                  ),
-                ],
-              ),
-            ],
-          ),
-          SizedBox(height: 20.h),
 
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(Icons.location_on, color: Colors.red, size: 16.sp),
-              SizedBox(width: 10.w),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  CustomWidgets.customText(
-                    "Destination",
-                    10.sp,
-                    Consonants.greyColor,
-                    FontWeight.w700,
-                  ),
-                  CustomWidgets.customText(
-                    dropOff,
-                    10.sp,
-                    Consonants.boldTextColor,
-                    FontWeight.w600,
+                  SizedBox(height: 15.h),
+
+                  /// Destination text
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      CustomWidgets.customText(
+                        "Destination",
+                        10.sp,
+                        Consonants.greyColor,
+                        FontWeight.w700,
+                      ),
+                      CustomWidgets.customText(
+                        dropOff,
+                        10.sp,
+                        Consonants.boldTextColor,
+                        FontWeight.w600,
+                      ),
+                    ],
                   ),
                 ],
               ),
             ],
           ),
 
-          Row(
-            children: [
-              CircleAvatar(radius: 20.r, backgroundColor: Consonants.greyColor),
-              Column(
-                children: [
-                  CustomWidgets.customText(
-                    driverName,
-                    12.sp,
-                    Consonants.boldTextColor,
-                    FontWeight.w700,
-                  ),
-                  CustomWidgets.customText(
-                    "$carMake . $carColor",
-                    8.sp,
-                    Consonants.greyColor,
-                    FontWeight.w400,
-                  ),
-                ],
-              ),
-            ],
+          SizedBox(
+            height: 20.h,
+            child: Divider(color: Consonants.lightGreyColor),
           ),
+
+          customTravelledWithSection(driverName, carMake, carColor, rating),
+          SizedBox(height: 5.h),
+
+          CustomWidgets.customText(
+            "Travelled with",
+            10.sp,
+            Consonants.boldTextColor,
+            FontWeight.w700,
+          ),
+          SizedBox(height: 5.h),
+          customTravelledWithSection(driverName, carMake, carColor, rating),
         ],
       ),
     );
   }
+}
+
+Widget customTravelledWithSection(
+  String driverName,
+  String carMake,
+  String carColor,
+  double rating,
+) {
+  return Row(
+    children: [
+      CircleAvatar(radius: 20.r),
+      SizedBox(width: 10.w),
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          CustomWidgets.customText(
+            driverName,
+            10.sp,
+            Consonants.boldTextColor,
+            FontWeight.w600,
+          ),
+          CustomWidgets.customText(
+            "$carMake • $carColor",
+            8.sp,
+            Consonants.greyColor,
+            FontWeight.w400,
+          ),
+        ],
+      ),
+      Spacer(),
+      Row(
+        children: [
+          Icon(Icons.star, color: Colors.amber, size: 14.sp),
+          SizedBox(width: 4.w),
+          CustomWidgets.customText(
+            rating.toStringAsFixed(1),
+            10.sp,
+            Consonants.boldTextColor,
+            FontWeight.w600,
+          ),
+        ],
+      ),
+    ],
+  );
 }
