@@ -41,6 +41,21 @@ class Registerscreen extends StatelessWidget {
                     obscure: true,
                     suffixIcon: Icon(Icons.remove_red_eye_rounded, size: 10.sp),
                   ),
+                  SizedBox(height: 20.h),
+                  CustomWidgets.customText(
+                    "Gender",
+                    12.sp,
+                    Consonants.boldTextColor,
+                    FontWeight.w600,
+                  ),
+                  SizedBox(height: 10.h),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      genderSelection("Male", Icons.male),
+                      genderSelection("Female", Icons.female),
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -63,4 +78,26 @@ class Registerscreen extends StatelessWidget {
       ),
     );
   }
+}
+
+Widget genderSelection(String text, IconData icon) {
+  return Container(
+    padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+    decoration: BoxDecoration(
+      color: Consonants.whiteColor,
+      borderRadius: BorderRadius.circular(12.r),
+    ),
+    child: Row(
+      children: [
+        Icon(icon, size: 16.sp, color: Consonants.boldTextColor),
+        SizedBox(width: 8.w),
+        CustomWidgets.customText(
+          text,
+          12.sp,
+          Consonants.boldTextColor,
+          FontWeight.w600,
+        ),
+      ],
+    ),
+  );
 }
