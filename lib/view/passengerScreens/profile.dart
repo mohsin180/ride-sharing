@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:ride_sharing/view/editProfile.dart';
 import 'package:ride_sharing/view/passengerScreens/passengerHistory.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
@@ -75,7 +76,12 @@ class PassengerProfile extends StatelessWidget {
             "Edit Profile",
             Consonants.greyColor,
             Consonants.boldTextColor,
-            () {},
+            () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => Editprofile()),
+              );
+            },
           ),
           SizedBox(height: 30.h),
           ProfileCustomWidgets.customProfileActions(

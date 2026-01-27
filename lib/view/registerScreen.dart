@@ -50,10 +50,11 @@ class Registerscreen extends StatelessWidget {
                   ),
                   SizedBox(height: 10.h),
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       genderSelection("Male", Icons.male),
                       genderSelection("Female", Icons.female),
+
                     ],
                   ),
                 ],
