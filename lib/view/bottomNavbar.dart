@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:ride_sharing/view/homepage.dart';
 import 'package:ride_sharing/view/passengerScreens/profile.dart';
-import 'package:ride_sharing/view/ride.dart';
+import 'package:ride_sharing/view/rideScreen.dart';
 import 'package:ride_sharing/view/yourRide.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 
@@ -14,7 +14,12 @@ class Bottomnavbar extends StatefulWidget {
 
 class _BottomnavbarState extends State<Bottomnavbar> {
   int currentIndex = 0;
-  final List<Widget> screens = [Homepage(), Ride(), Yourride(), Profile()];
+  final List<Widget> screens = [
+    Homepage(),
+    Ridescreen(),
+    Yourride(),
+    Profile(),
+  ];
   @override
   Widget build(BuildContext context) {
     return Scaffold(

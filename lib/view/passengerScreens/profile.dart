@@ -252,6 +252,7 @@ class ProfileCustomWidgets {
     VoidCallback onpressed,
   ) {
     return Container(
+      padding: EdgeInsets.symmetric(vertical: 5.h),
       margin: EdgeInsets.symmetric(horizontal: 30.w, vertical: 1.5.h),
       decoration: BoxDecoration(
         color: Consonants.whiteColor,
