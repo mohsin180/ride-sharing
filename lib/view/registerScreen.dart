@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:go_router/go_router.dart';
+import 'package:ride_sharing/model/appRoutes.dart';
 import 'package:ride_sharing/view/verificationScreen.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
@@ -54,7 +56,6 @@ class Registerscreen extends StatelessWidget {
                     children: [
                       genderSelection("Male", Icons.male),
                       genderSelection("Female", Icons.female),
-
                     ],
                   ),
                 ],
@@ -72,7 +73,7 @@ class Registerscreen extends StatelessWidget {
                   MaterialPageRoute(builder: (context) => Verificationscreen()),
                 );
               },
-              onTap: () => Navigator.pop(context),
+              onTap: () => context.go(Approutes.login),
             ),
           ],
         ),

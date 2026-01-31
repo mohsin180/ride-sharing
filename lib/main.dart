@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:ride_sharing/view/loginScreen.dart';
+import 'package:ride_sharing/model/appRoutes.dart';
 
 void main() {
   runApp(const MyApp());
@@ -17,9 +17,9 @@ class MyApp extends StatelessWidget {
       minTextAdapt: true,
       splitScreenMode: true,
       builder: (context, child) {
-        return MaterialApp(
+        return MaterialApp.router(
           debugShowCheckedModeBanner: false,
-          home: Loginscreen(),
+          routerConfig: appRouter,
         );
       },
     );

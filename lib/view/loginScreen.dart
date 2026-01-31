@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:go_router/go_router.dart';
+import 'package:ride_sharing/model/appRoutes.dart';
 import 'package:ride_sharing/view/forgotPassword.dart';
-import 'package:ride_sharing/view/registerScreen.dart';
 import 'package:ride_sharing/view/verificationScreen.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
@@ -76,10 +77,7 @@ class Loginscreen extends StatelessWidget {
                   MaterialPageRoute(builder: (context) => Verificationscreen()),
                 );
               },
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => Registerscreen()),
-              ),
+              onTap: () => context.go(Approutes.register),
             ),
           ],
         ),
