@@ -1,17 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
 import 'package:ride_sharing/model/appRoutes.dart';
 import 'package:ride_sharing/view/forgotPassword.dart';
-import 'package:ride_sharing/view/verificationScreen.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
 
-class Loginscreen extends StatelessWidget {
+class Loginscreen extends ConsumerWidget {
   const Loginscreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
       backgroundColor: Consonants.scaffoldBackgroundColor,
       body: SafeArea(
@@ -71,12 +71,7 @@ class Loginscreen extends StatelessWidget {
               buttonText: "Login",
               accountText: 'Dont have an account?',
               actionText: 'Sign Up',
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => Verificationscreen()),
-                );
-              },
+              onPressed: () {},
               onTap: () => context.go(Approutes.register),
             ),
           ],

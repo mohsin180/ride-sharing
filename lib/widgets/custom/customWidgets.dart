@@ -72,8 +72,6 @@ class CustomWidgets {
       ),
     );
   }
-
-  // profile custom widgets can be added here
 }
 
 class AuthFields extends StatelessWidget {
