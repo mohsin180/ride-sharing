@@ -34,6 +34,8 @@ class Forgotpassword extends StatelessWidget {
                 AuthFields(
                   text: 'Email Address',
                   suffixIcon: Icon(Icons.email_rounded, size: 10.sp),
+                  validator: (value) {},
+                  controller: TextEditingController(),
                 ),
               ],
             ),

@@ -72,17 +72,34 @@ class CustomWidgets {
       ),
     );
   }
+
+  static Widget customSnackBar(String message) {
+    return SnackBar(
+      content: CustomWidgets.customText(
+        message,
+        12.sp,
+        Consonants.whiteColor,
+        FontWeight.w400,
+      ),
+      backgroundColor: Consonants.primaryColor,
+      behavior: SnackBarBehavior.floating,
+    );
+  }
 }
 
 class AuthFields extends StatelessWidget {
   final String text;
   final bool obscure;
   final Widget suffixIcon;
+  final String? Function(String?)? validator;
+  final TextEditingController controller;
   const AuthFields({
     super.key,
     required this.text,
     this.obscure = false,
     required this.suffixIcon,
+    this.validator,
+    required this.controller,
   });
 
   @override
@@ -100,7 +117,10 @@ class AuthFields extends StatelessWidget {
           ),
           SizedBox(height: 8.h),
           TextFormField(
+            controller: controller,
             obscureText: obscure,
+            validator: validator,
+            autovalidateMode: AutovalidateMode.onUserInteraction,
             decoration: InputDecoration(
               suffixIcon: suffixIcon,
               suffixIconColor: Consonants.primaryColor,
