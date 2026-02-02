@@ -37,6 +37,7 @@ class _RegisterscreenState extends ConsumerState<Registerscreen> {
       }
     });
     final authState = ref.watch(authControllerProvider);
+    final selectedGender = ref.watch(genderProvider);
     return Scaffold(
       backgroundColor: Consonants.scaffoldBackgroundColor,
       body: SafeArea(
@@ -105,19 +106,43 @@ class _RegisterscreenState extends ConsumerState<Registerscreen> {
                       controller: passwordController,
                     ),
                     SizedBox(height: 20.h),
-                    CustomWidgets.customText(
-                      "Gender",
-                      12.sp,
-                      Consonants.boldTextColor,
-                      FontWeight.w600,
-                    ),
-                    SizedBox(height: 10.h),
+
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: [
-                        genderSelection("Male", Icons.male),
-                        SizedBox(width: 20.w),
-                        genderSelection("Female", Icons.female),
+                        Row(
+                          children: [
+                            CustomWidgets.customText(
+                              "Gender",
+                              10.sp,
+                              Consonants.boldTextColor,
+                              FontWeight.w600,
+                            ),
+                          ],
+                        ),
+                        Row(
+                          children: [
+                            genderSelection(
+                              "Male  ",
+                              Icons.male,
+                              selectedGender == "MALE",
+                              () {
+                                ref.read(genderProvider.notifier).selectMale();
+                              },
+                            ),
+                            SizedBox(width: 20.w),
+                            genderSelection(
+                              "Female",
+                              Icons.female,
+                              selectedGender == "FEMALE",
+                              () {
+                                ref
+                                    .read(genderProvider.notifier)
+                                    .selectFemale();
+                              },
+                            ),
+                          ],
+                        ),
                       ],
                     ),
                   ],
@@ -133,11 +158,19 @@ class _RegisterscreenState extends ConsumerState<Registerscreen> {
                     ? CircularProgressIndicator.adaptive
                     : () async {
                         if (_formKey.currentState!.validate()) {
+                          final gender = ref.read(genderProvider);
+                          if (gender == null) {
+                            CustomWidgets.customSnackBar(
+                              "Please select gender",
+                            );
+                            return;
+                          }
+
                           final request = RegisterRequest(
                             email: emailController.text.trim(),
                             password: passwordController.text.trim(),
                             username: nameController.text.trim(),
-                            gender: "male",
+                            gender: gender,
                           );
                           await ref
                               .read(authControllerProvider.notifier)
@@ -154,24 +187,42 @@ class _RegisterscreenState extends ConsumerState<Registerscreen> {
   }
 }
 
-Widget genderSelection(String text, IconData icon) {
-  return Container(
-    padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
-    decoration: BoxDecoration(
-      color: Consonants.whiteColor,
-      borderRadius: BorderRadius.circular(12.r),
-    ),
-    child: Row(
-      children: [
-        Icon(icon, size: 16.sp, color: Consonants.boldTextColor),
-        SizedBox(width: 8.w),
-        CustomWidgets.customText(
-          text,
-          12.sp,
-          Consonants.boldTextColor,
-          FontWeight.w600,
+Widget genderSelection(
+  String text,
+  IconData icon,
+  bool isSelected,
+  VoidCallback onTap,
+) {
+  return GestureDetector(
+    onTap: onTap,
+    child: Container(
+      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+      decoration: BoxDecoration(
+        color: Consonants.whiteColor,
+        borderRadius: BorderRadius.circular(12.r),
+        border: Border.all(
+          color: isSelected ? Consonants.primaryColor : Colors.transparent,
+          width: 2.w,
         ),
-      ],
+      ),
+      child: Row(
+        children: [
+          Icon(
+            icon,
+            size: 16.sp,
+            color: isSelected
+                ? Consonants.primaryColor
+                : Consonants.boldTextColor,
+          ),
+          SizedBox(width: 8.w),
+          CustomWidgets.customText(
+            text,
+            12.sp,
+            isSelected ? Consonants.primaryColor : Consonants.boldTextColor,
+            FontWeight.w600,
+          ),
+        ],
+      ),
     ),
   );
 }

@@ -64,3 +64,27 @@ class AuthState {
     );
   }
 }
+
+final genderProvider = StateNotifierProvider<GenderNotifier, String?>((ref) {
+  return GenderNotifier();
+});
+
+class GenderNotifier extends StateNotifier<String?> {
+  GenderNotifier() : super(null);
+
+  void selectMale() {
+    if (state == "MALE") {
+      state = null;
+    } else {
+      state = "MALE";
+    }
+  }
+
+  void selectFemale() {
+    if (state == "FEMALE") {
+      state = null;
+    } else {
+      state = "FEMALE";
+    }
+  }
+}
