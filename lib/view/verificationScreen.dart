@@ -25,7 +25,7 @@ class Verificationscreen extends StatelessWidget {
                 ),
                 SizedBox(height: 5.h),
                 CustomWidgets.customText(
-                  'Please enter the 6-digit code sent to',
+                  'click to the link sent to',
                   10.sp,
                   Consonants.greyColor,
                   FontWeight.normal,
@@ -38,16 +38,18 @@ class Verificationscreen extends StatelessWidget {
                   FontWeight.bold,
                 ),
                 SizedBox(height: 30.h),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    VerificationField(),
-                    VerificationField(),
-                    VerificationField(),
-                    VerificationField(),
-                    VerificationField(),
-                    VerificationField(),
-                  ],
+                Card(
+                  color: Consonants.whiteColor,
+                  elevation: 10,
+                  shape: BeveledRectangleBorder(
+                    borderRadius: BorderRadius.circular(20.r),
+                  ),
+                  child: Image.asset(
+                    "assets/gmail.png",
+                    fit: BoxFit.contain,
+                    height: 200.h,
+                    width: 200.w,
+                  ),
                 ),
               ],
             ),
@@ -66,27 +68,27 @@ class Verificationscreen extends StatelessWidget {
   }
 }
 
-Widget VerificationField() {
-  return Container(
-    height: 50.h,
-    width: 30.w,
-    decoration: BoxDecoration(
-      color: Consonants.whiteColor,
-      borderRadius: BorderRadius.circular(12.r),
-    ),
-    child: TextField(
-      textAlign: TextAlign.center,
-      style: TextStyle(
-        fontSize: 15.sp,
-        fontWeight: FontWeight.bold,
-        color: Consonants.boldTextColor,
-      ),
-      keyboardType: TextInputType.number,
-      maxLength: 1,
-      decoration: InputDecoration(counterText: '', border: InputBorder.none),
-    ),
-  );
-}
+// Widget VerificationField() {
+//   return Container(
+//     height: 50.h,
+//     width: 30.w,
+//     decoration: BoxDecoration(
+//       color: Consonants.whiteColor,
+//       borderRadius: BorderRadius.circular(12.r),
+//     ),
+//     child: TextField(
+//       textAlign: TextAlign.center,
+//       style: TextStyle(
+//         fontSize: 15.sp,
+//         fontWeight: FontWeight.bold,
+//         color: Consonants.boldTextColor,
+//       ),
+//       keyboardType: TextInputType.number,
+//       maxLength: 1,
+//       decoration: InputDecoration(counterText: '', border: InputBorder.none),
+//     ),
+//   );
+// }
 
 class VerificationContainer extends StatelessWidget {
   final VoidCallback onPressed;
@@ -106,7 +108,7 @@ class VerificationContainer extends StatelessWidget {
       child: Column(
         children: [
           SizedBox(height: 20.h),
-          CustomWidgets.customButton("Verify", onPressed),
+          CustomWidgets.customButton("Open Email App", onPressed),
           SizedBox(height: 20.h),
           CustomWidgets.customText(
             'Resend Code',
