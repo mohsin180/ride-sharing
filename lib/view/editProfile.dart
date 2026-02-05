@@ -64,7 +64,7 @@ class PassengerEditProfile extends StatelessWidget {
           controller: TextEditingController(),
         ),
         SizedBox(height: 30.h),
-        CustomWidgets.customButton("Save Changes", () {}),
+        CustomWidgets.customButton("Save Changes", () async {}),
         SizedBox(height: 20.h),
       ],
     );
@@ -157,7 +157,7 @@ class DriverEditProfile extends StatelessWidget {
           controller: TextEditingController(),
         ),
         SizedBox(height: 30.h),
-        CustomWidgets.customButton("Save Changes", () {}),
+        CustomWidgets.customButton("Save Changes", () async {}),
         SizedBox(height: 20.h),
       ],
     );

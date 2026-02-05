@@ -40,7 +40,7 @@ class Homepage extends StatelessWidget {
                       SizedBox(height: 15.h),
                       homeCustomWidgets().seatsCustomContainer(),
                       SizedBox(height: 20.h),
-                      CustomWidgets.customButton("Publish", () {}),
+                      CustomWidgets.customButton("Publish", () async {}),
                     ],
                   ),
                 ),

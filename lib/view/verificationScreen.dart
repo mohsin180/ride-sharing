@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:ride_sharing/model/appRoutes.dart';
 import 'package:ride_sharing/view/roleSelection.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
@@ -55,7 +56,7 @@ class Verificationscreen extends StatelessWidget {
             ),
           ),
           VerificationContainer(
-            onPressed: () {
+            onPressed: () async {
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => Roleselection()),
@@ -91,7 +92,7 @@ class Verificationscreen extends StatelessWidget {
 // }
 
 class VerificationContainer extends StatelessWidget {
-  final VoidCallback onPressed;
+  final Future<void> Function()? onPressed;
   const VerificationContainer({super.key, required this.onPressed});
 
   @override
@@ -118,7 +119,7 @@ class VerificationContainer extends StatelessWidget {
           ),
           SizedBox(height: 20.h),
           GestureDetector(
-            onTap: () => Navigator.pop(context),
+            onTap: () => Approutes.register,
             child: CustomWidgets.customText(
               'Change Email Address',
               10.sp,

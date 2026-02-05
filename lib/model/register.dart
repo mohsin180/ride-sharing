@@ -2,11 +2,13 @@ class RegisterRequest {
   String username;
   String email;
   String password;
+  String phoneNo;
   String gender;
   RegisterRequest({
     required this.username,
     required this.email,
     required this.password,
+    required this.phoneNo,
     required this.gender,
   });
 
@@ -15,6 +17,7 @@ class RegisterRequest {
       "username": username,
       "email": email,
       "password": password,
+      "phoneNo": phoneNo,
       "gender": gender,
     };
   }

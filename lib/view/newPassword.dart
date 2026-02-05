@@ -67,7 +67,7 @@ class UpdatePassword extends StatelessWidget {
       child: Column(
         children: [
           SizedBox(height: 20.h),
-          CustomWidgets.customButton("Update Password", () {}),
+          CustomWidgets.customButton("Update Password", () async {}),
 
           SizedBox(height: 20.h),
           GestureDetector(

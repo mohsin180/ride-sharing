@@ -20,7 +20,7 @@ class CustomWidgets {
     );
   }
 
-  static Widget customButton(String text, VoidCallback onPressed) {
+  static Widget customButton(String text, Future<void> Function()? onPressed) {
     return ElevatedButton(
       onPressed: onPressed,
       style: ElevatedButton.styleFrom(
@@ -73,7 +73,7 @@ class CustomWidgets {
     );
   }
 
-  static Widget customSnackBar(String message) {
+  static SnackBar customSnackBar(String message) {
     return SnackBar(
       content: CustomWidgets.customText(
         message,
@@ -151,7 +151,7 @@ class AuthContainer extends StatelessWidget {
   final String buttonText;
   final String accountText;
   final String actionText;
-  final VoidCallback onPressed;
+  final Future<void> Function()? onPressed;
   final VoidCallback onTap;
   const AuthContainer({
     super.key,

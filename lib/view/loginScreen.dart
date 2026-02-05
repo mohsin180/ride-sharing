@@ -119,7 +119,7 @@ class _LoginscreenState extends ConsumerState<Loginscreen> {
                 buttonText: "Login",
                 accountText: 'Dont have an account?',
                 actionText: 'Sign Up',
-                onPressed: () {
+                onPressed: () async {
                   if (_formKey.currentState!.validate()) {
                     final request = LoginRequest(
                       email: emailController.text.trim(),

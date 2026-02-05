@@ -20,10 +20,12 @@ class _RegisterscreenState extends ConsumerState<Registerscreen> {
   final TextEditingController nameController = TextEditingController();
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
+  final TextEditingController phoneController = TextEditingController();
   @override
   void dispose() {
     emailController.dispose();
     passwordController.dispose();
+    phoneController.dispose();
     super.dispose();
   }
 
@@ -31,7 +33,9 @@ class _RegisterscreenState extends ConsumerState<Registerscreen> {
   Widget build(BuildContext context) {
     ref.listen<AuthState>(authControllerProvider, (previous, next) {
       if (next.error != null) {
-        CustomWidgets.customSnackBar(next.error!);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(CustomWidgets.customSnackBar(next.error!));
       } else if (next.isSuccess) {
         context.go(Approutes.verification);
       }
@@ -106,6 +110,21 @@ class _RegisterscreenState extends ConsumerState<Registerscreen> {
                       controller: passwordController,
                     ),
                     SizedBox(height: 20.h),
+                    AuthFields(
+                      text: 'PhoneNo',
+                      suffixIcon: Icon(Icons.phone, size: 10.sp),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Please enter your phoneNo';
+                        }
+                        if (value.length < 11) {
+                          return 'phone No must be at least 11 characters long';
+                        }
+                        return null;
+                      },
+                      controller: phoneController,
+                    ),
+                    SizedBox(height: 20.h),
 
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -155,13 +174,15 @@ class _RegisterscreenState extends ConsumerState<Registerscreen> {
                 accountText: 'Already have an account?',
                 actionText: 'Login',
                 onPressed: authState.isloading
-                    ? CircularProgressIndicator.adaptive
+                    ? null
                     : () async {
                         if (_formKey.currentState!.validate()) {
                           final gender = ref.read(genderProvider);
                           if (gender == null) {
-                            CustomWidgets.customSnackBar(
-                              "Please select gender",
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              CustomWidgets.customSnackBar(
+                                "Please select gender",
+                              ),
                             );
                             return;
                           }
@@ -170,6 +191,7 @@ class _RegisterscreenState extends ConsumerState<Registerscreen> {
                             email: emailController.text.trim(),
                             password: passwordController.text.trim(),
                             username: nameController.text.trim(),
+                            phoneNo: phoneController.text.trim(),
                             gender: gender,
                           );
                           await ref

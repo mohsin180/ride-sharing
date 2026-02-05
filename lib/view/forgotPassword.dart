@@ -65,7 +65,7 @@ class ResetPassword extends StatelessWidget {
       child: Column(
         children: [
           SizedBox(height: 20.h),
-          CustomWidgets.customButton("Send Reset Link", () {
+          CustomWidgets.customButton("Send Reset Link", () async {
             Navigator.push(
               context,
               MaterialPageRoute(builder: ((context) => Newpassword())),
