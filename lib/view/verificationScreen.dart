@@ -1,15 +1,31 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:ride_sharing/model/appRoutes.dart';
-import 'package:ride_sharing/view/roleSelection.dart';
+import 'package:ride_sharing/provider/authProvider.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
 
-class Verificationscreen extends StatelessWidget {
+class Verificationscreen extends ConsumerStatefulWidget {
   const Verificationscreen({super.key});
 
   @override
+  ConsumerState<Verificationscreen> createState() => _VerificationscreenState();
+}
+
+class _VerificationscreenState extends ConsumerState<Verificationscreen> {
+  @override
   Widget build(BuildContext context) {
+    final state = ref.watch(authControllerProvider);
+    ref.listen<AuthState>(authControllerProvider, (prev, next) {
+      if (next.emailVerified == true) {
+        Approutes.roleSection;
+      } else if (next.emailVerified == false) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          CustomWidgets.customErrorSnackBar("Email not verified yet"),
+        );
+      }
+    });
     return Scaffold(
       backgroundColor: Consonants.scaffoldBackgroundColor,
       body: Column(
@@ -57,10 +73,7 @@ class Verificationscreen extends StatelessWidget {
           ),
           VerificationContainer(
             onPressed: () async {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => Roleselection()),
-              );
+              await ref.read(authControllerProvider.notifier);
             },
           ),
         ],
@@ -109,7 +122,7 @@ class VerificationContainer extends StatelessWidget {
       child: Column(
         children: [
           SizedBox(height: 20.h),
-          CustomWidgets.customButton("Open Email App", onPressed),
+          CustomWidgets.customButton("Verify", onPressed),
           SizedBox(height: 20.h),
           CustomWidgets.customText(
             'Resend Code',

@@ -31,8 +31,8 @@ class _LoginscreenState extends ConsumerState<Loginscreen> {
   Widget build(BuildContext context) {
     ref.listen<AuthState>(authControllerProvider, (previous, next) {
       if (next.error != null) {
-        CustomWidgets.customSnackBar(next.error!);
-      } else if (next.isSuccess) {
+        CustomWidgets.customErrorSnackBar(next.error!);
+      } else if (next.isLoggedIn) {
         context.go(Approutes.home);
       }
     });

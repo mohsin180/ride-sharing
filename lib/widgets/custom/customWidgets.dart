@@ -73,15 +73,40 @@ class CustomWidgets {
     );
   }
 
-  static SnackBar customSnackBar(String message) {
+  static SnackBar customErrorSnackBar(String message) {
     return SnackBar(
-      content: CustomWidgets.customText(
-        message,
-        12.sp,
-        Consonants.whiteColor,
-        FontWeight.w400,
+      content: Center(
+        child: SizedBox(
+          height: 30.h,
+
+          child: CustomWidgets.customText(
+            message,
+            10.sp,
+            Consonants.whiteColor,
+            FontWeight.w400,
+          ),
+        ),
       ),
-      backgroundColor: Consonants.primaryColor,
+      backgroundColor: Colors.red,
+      behavior: SnackBarBehavior.floating,
+    );
+  }
+
+  static SnackBar customSuccessSnackBar(String message) {
+    return SnackBar(
+      content: Center(
+        child: SizedBox(
+          height: 30.h,
+
+          child: CustomWidgets.customText(
+            message,
+            10.sp,
+            Consonants.whiteColor,
+            FontWeight.w400,
+          ),
+        ),
+      ),
+      backgroundColor: Colors.red,
       behavior: SnackBarBehavior.floating,
     );
   }

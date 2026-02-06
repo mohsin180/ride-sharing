@@ -35,8 +35,13 @@ class _RegisterscreenState extends ConsumerState<Registerscreen> {
       if (next.error != null) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(CustomWidgets.customSnackBar(next.error!));
-      } else if (next.isSuccess) {
+        ).showSnackBar(CustomWidgets.customErrorSnackBar(next.error!));
+      } else if (next.isRegistered) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          CustomWidgets.customSuccessSnackBar(
+            "Account was created successfully",
+          ),
+        );
         context.go(Approutes.verification);
       }
     });
@@ -180,7 +185,7 @@ class _RegisterscreenState extends ConsumerState<Registerscreen> {
                           final gender = ref.read(genderProvider);
                           if (gender == null) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              CustomWidgets.customSnackBar(
+                              CustomWidgets.customErrorSnackBar(
                                 "Please select gender",
                               ),
                             );

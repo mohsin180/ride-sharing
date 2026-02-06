@@ -22,4 +22,11 @@ class Authservice {
     );
     return RegisterResponse.fromJson(json);
   }
+
+  Future<bool> isEmailVerified(String userId) async {
+    final isEmailVerifiedEndpoint =
+        "http://localhost:8080/api/v1/user/$userId/is-Email-Verified";
+    final result = await apiclient.get(isEmailVerifiedEndpoint);
+    return result;
+  }
 }

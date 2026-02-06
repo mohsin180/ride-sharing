@@ -20,4 +20,16 @@ class Apiclient {
       throw Exception(response.body);
     }
   }
+
+  Future<bool> get(String url) async {
+    final response = await _client.get(
+      Uri.parse(url),
+      headers: {'Content-Type': 'application/json'},
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as bool;
+    } else {
+      throw Exception(response.body);
+    }
+  }
 }

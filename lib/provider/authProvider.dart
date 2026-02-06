@@ -47,6 +47,16 @@ class Authprovider extends StateNotifier<AuthState> {
       rethrow;
     }
   }
+
+  Future<void> isEmailVerified(String userId) async {
+    state = state.copyWith(isloading: true, error: null, isSuccess: false);
+    try {
+      final verified = await authservice.isEmailVerified(userId);
+      state = state.copyWith(isloading: false, isSuccess: verified);
+    } catch (e) {
+      state = state.copyWith(isloading: false, error: e.toString());
+    }
+  }
 }
 
 class AuthState {
