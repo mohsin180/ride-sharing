@@ -27,11 +27,13 @@ class RegisterResponse {
   final String username;
   final String email;
   final String gender;
+  final String userId;
 
   RegisterResponse({
     required this.username,
     required this.email,
     required this.gender,
+    required this.userId,
   });
 
   factory RegisterResponse.fromJson(Map<String, dynamic> json) {
@@ -39,6 +41,7 @@ class RegisterResponse {
       username: json["username"],
       email: json["email"],
       gender: json["gender"],
+      userId: json["keycloakId"],
     );
   }
 }

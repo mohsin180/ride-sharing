@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:go_router/go_router.dart';
 import 'package:ride_sharing/model/appRoutes.dart';
 import 'package:ride_sharing/provider/authProvider.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
@@ -14,18 +17,50 @@ class Verificationscreen extends ConsumerStatefulWidget {
 }
 
 class _VerificationscreenState extends ConsumerState<Verificationscreen> {
-  @override
-  Widget build(BuildContext context) {
-    final state = ref.watch(authControllerProvider);
-    ref.listen<AuthState>(authControllerProvider, (prev, next) {
-      if (next.emailVerified == true) {
-        Approutes.roleSection;
-      } else if (next.emailVerified == false) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          CustomWidgets.customErrorSnackBar("Email not verified yet"),
-        );
+  Timer? _timer;
+  void initState() {
+    super.initState();
+    startPolling();
+  }
+
+  void startPolling() {
+    _timer = Timer.periodic(const Duration(seconds: 5), (timer) async {
+      final state = ref.read(authControllerProvider);
+      final userId = state.userId;
+
+      if (userId == null) {
+        // userId not ready yet, wait
+        return;
+      }
+
+      try {
+        final verified = await ref
+            .read(authControllerProvider.notifier)
+            .isEmailVerified(userId);
+        print("UserId in state: $userId");
+        print("Email verified result: $verified");
+
+        if (verified == true) {
+          timer.cancel();
+          if (mounted) {
+            context.go(Approutes.roleSection);
+          }
+        }
+      } catch (e) {
+        // optional: log error
+        print("Verification check failed: $e");
       }
     });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Consonants.scaffoldBackgroundColor,
       body: Column(
@@ -71,11 +106,7 @@ class _VerificationscreenState extends ConsumerState<Verificationscreen> {
               ],
             ),
           ),
-          VerificationContainer(
-            onPressed: () async {
-              await ref.read(authControllerProvider.notifier);
-            },
-          ),
+          VerificationContainer(onPressed: () async {}),
         ],
       ),
     );
@@ -122,7 +153,7 @@ class VerificationContainer extends StatelessWidget {
       child: Column(
         children: [
           SizedBox(height: 20.h),
-          CustomWidgets.customButton("Verify", onPressed),
+          CustomWidgets.customButton("Open Email App", onPressed),
           SizedBox(height: 20.h),
           CustomWidgets.customText(
             'Resend Code',

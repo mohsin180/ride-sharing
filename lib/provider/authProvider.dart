@@ -14,47 +14,63 @@ final authControllerProvider = StateNotifierProvider<Authprovider, AuthState>((
 class Authprovider extends StateNotifier<AuthState> {
   final Authservice authservice;
   Authprovider(this.authservice)
-    : super(AuthState(isloading: false, error: null, isSuccess: false));
+    : super(
+        AuthState(
+          isloading: false,
+          error: null,
+          isLoggedIn: false,
+          isRegistered: false,
+          emailVerified: null,
+          userId: null,
+        ),
+      );
 
   Future<LoginResponse> loginProvider(LoginRequest request) async {
-    state = state.copyWith(isloading: true, error: null, isSuccess: false);
+    state = state.copyWith(isloading: true, error: null, isLoggedIn: false);
     try {
       final response = await authservice.login(request);
-      state = state.copyWith(isloading: false, error: null, isSuccess: true);
+      state = state.copyWith(isloading: false, error: null, isLoggedIn: true);
       return response;
     } catch (e) {
       state = state.copyWith(
         isloading: false,
         error: e.toString(),
-        isSuccess: false,
+        isLoggedIn: false,
       );
       rethrow;
     }
   }
 
   Future<RegisterResponse> registerProvider(RegisterRequest request) async {
-    state = state.copyWith(isloading: true, error: null, isSuccess: false);
+    state = state.copyWith(isloading: true, error: null, isRegistered: false);
     try {
       final response = await authservice.register(request);
-      state = state.copyWith(isloading: false, error: null, isSuccess: true);
+      state = state.copyWith(
+        isloading: false,
+        error: null,
+        isRegistered: true,
+        userId: response.userId,
+      );
       return response;
     } catch (e) {
       state = state.copyWith(
         isloading: false,
         error: e.toString(),
-        isSuccess: false,
+        isRegistered: false,
       );
       rethrow;
     }
   }
 
-  Future<void> isEmailVerified(String userId) async {
-    state = state.copyWith(isloading: true, error: null, isSuccess: false);
+  Future<bool> isEmailVerified(String userId) async {
+    state = state.copyWith(isloading: true, error: null, emailVerified: false);
     try {
       final verified = await authservice.isEmailVerified(userId);
-      state = state.copyWith(isloading: false, isSuccess: verified);
+      state = state.copyWith(isloading: false, emailVerified: verified);
+      return verified;
     } catch (e) {
       state = state.copyWith(isloading: false, error: e.toString());
+      rethrow;
     }
   }
 }
@@ -62,15 +78,37 @@ class Authprovider extends StateNotifier<AuthState> {
 class AuthState {
   final bool isloading;
   final String? error;
-  final bool isSuccess;
 
-  AuthState({required this.isloading, this.error, required this.isSuccess});
+  final bool isLoggedIn;
+  final bool isRegistered;
+  final bool? emailVerified;
+  final String? userId; // null = not checked yet
 
-  AuthState copyWith({bool? isloading, String? error, bool? isSuccess}) {
+  AuthState({
+    required this.isloading,
+    this.error,
+    required this.isLoggedIn,
+    required this.isRegistered,
+    this.emailVerified,
+    this.userId,
+  });
+
+  AuthState copyWith({
+    bool? isloading,
+    String? error,
+    bool? isLoggedIn,
+    bool? isRegistered,
+    bool? emailVerified,
+    String? userId,
+  }) {
     return AuthState(
       isloading: isloading ?? this.isloading,
       error: error,
-      isSuccess: isSuccess ?? this.isSuccess,
+      isLoggedIn: isLoggedIn ?? this.isLoggedIn,
+      isRegistered: isRegistered ?? this.isRegistered,
+
+      emailVerified: emailVerified ?? this.emailVerified,
+      userId: userId ?? this.userId,
     );
   }
 }
