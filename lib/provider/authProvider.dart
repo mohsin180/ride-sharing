@@ -1,7 +1,6 @@
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:ride_sharing/controller/authService.dart';
-import 'package:ride_sharing/model/login.dart';
-import 'package:ride_sharing/model/register.dart';
+import 'package:ride_sharing/model/authModels.dart';
 import 'package:ride_sharing/provider/providers.dart';
 
 final authControllerProvider = StateNotifierProvider<Authprovider, AuthState>((
@@ -70,6 +69,28 @@ class Authprovider extends StateNotifier<AuthState> {
       return verified;
     } catch (e) {
       state = state.copyWith(isloading: false, error: e.toString());
+      rethrow;
+    }
+  }
+
+  Future<void> forgotpassword(String email) async {
+    state = state.copyWith(isloading: true, error: null);
+    try {
+      await authservice.forgotPassword(email);
+      state = state.copyWith(isloading: false);
+    } catch (e) {
+      state = state.copyWith(error: e.toString());
+      rethrow;
+    }
+  }
+
+  Future<void> resetPassword(ResetPasswordDto request) async {
+    state = state.copyWith(isloading: true, error: null);
+    try {
+      await authservice.resetPassword(request);
+      state = state.copyWith(isloading: false);
+    } catch (e) {
+      state = state.copyWith(error: e.toString());
       rethrow;
     }
   }
