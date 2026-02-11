@@ -80,13 +80,18 @@ class LoginResponse {
 
 // reset Password
 class ResetPasswordDto {
-  final String userId;
+  final String token;
   final String newPassword;
 
-  ResetPasswordDto({required this.userId, required this.newPassword});
+  ResetPasswordDto({required this.token, required this.newPassword});
 
-  Map<String, dynamic> toJson() => {
-    'userId': userId,
-    'newPassword': newPassword,
-  };
+  Map<String, dynamic> toJson() => {'token': token, 'newPassword': newPassword};
+}
+
+class ForgotPassword {
+  final String email;
+
+  ForgotPassword({required this.email});
+
+  Map<String, dynamic> toJson() => {"email": email};
 }

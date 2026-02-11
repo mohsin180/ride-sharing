@@ -1,10 +1,10 @@
-import 'dart:math';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:ride_sharing/model/authModels.dart';
 import 'package:ride_sharing/provider/authProvider.dart';
-import 'package:ride_sharing/view/newPassword.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
 
@@ -18,6 +18,21 @@ class Forgotpassword extends ConsumerStatefulWidget {
 class _ForgotpasswordState extends ConsumerState<Forgotpassword> {
   final emailController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
+  // Timer? timer;
+  // @override
+  // void initState(){
+  //  super.initState();
+  //  startPolling();
+  // }
+
+  // void startPolling(){
+  //   timer= Timer.periodic(Duration(seconds: 5), (timer) async{
+  //     final state= ref.read(authControllerProvider);
+  //     final verified= ref.read(authControllerProvider.notifier).checkResetStatus(token);
+
+  //   });
+  // }
+
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authControllerProvider);
@@ -60,7 +75,7 @@ class _ForgotpasswordState extends ConsumerState<Forgotpassword> {
                       }
                       return null;
                     },
-                    controller: TextEditingController(),
+                    controller: emailController,
                   ),
                 ],
               ),
@@ -69,10 +84,13 @@ class _ForgotpasswordState extends ConsumerState<Forgotpassword> {
               onPressed: authState.isloading
                   ? null
                   : () async {
+                      final request = ForgotPassword(
+                        email: emailController.text.trim(),
+                      );
                       if (_formKey.currentState!.validate()) {
                         await ref
                             .read(authControllerProvider.notifier)
-                            .forgotpassword(emailController.text.trim());
+                            .forgotpassword(request);
                       }
                     },
             ),

@@ -21,6 +21,7 @@ class Authprovider extends StateNotifier<AuthState> {
           isRegistered: false,
           emailVerified: null,
           userId: null,
+          isSuccess: null,
         ),
       );
 
@@ -73,11 +74,11 @@ class Authprovider extends StateNotifier<AuthState> {
     }
   }
 
-  Future<void> forgotpassword(String email) async {
-    state = state.copyWith(isloading: true, error: null);
+  Future<void> forgotpassword(ForgotPassword request) async {
+    state = state.copyWith(isloading: true, error: null, isSuccess: false);
     try {
-      await authservice.forgotPassword(email);
-      state = state.copyWith(isloading: false);
+      await authservice.forgotPassword(request);
+      state = state.copyWith(isloading: false, isSuccess: true);
     } catch (e) {
       state = state.copyWith(error: e.toString());
       rethrow;
@@ -85,12 +86,21 @@ class Authprovider extends StateNotifier<AuthState> {
   }
 
   Future<void> resetPassword(ResetPasswordDto request) async {
-    state = state.copyWith(isloading: true, error: null);
+    state = state.copyWith(isloading: true, error: null, isSuccess: false);
     try {
       await authservice.resetPassword(request);
-      state = state.copyWith(isloading: false);
+      state = state.copyWith(isloading: false, isSuccess: true);
     } catch (e) {
       state = state.copyWith(error: e.toString());
+      rethrow;
+    }
+  }
+
+  Future<bool> checkResetStatus(String token) async {
+    try {
+      final verified = await authservice.checkResetStatus(token);
+      return verified;
+    } catch (e) {
       rethrow;
     }
   }
@@ -104,6 +114,7 @@ class AuthState {
   final bool isRegistered;
   final bool? emailVerified;
   final String? userId; // null = not checked yet
+  final bool? isSuccess;
 
   AuthState({
     required this.isloading,
@@ -112,6 +123,7 @@ class AuthState {
     required this.isRegistered,
     this.emailVerified,
     this.userId,
+    this.isSuccess,
   });
 
   AuthState copyWith({
@@ -121,6 +133,7 @@ class AuthState {
     bool? isRegistered,
     bool? emailVerified,
     String? userId,
+    bool? isSuccess,
   }) {
     return AuthState(
       isloading: isloading ?? this.isloading,
@@ -130,6 +143,7 @@ class AuthState {
 
       emailVerified: emailVerified ?? this.emailVerified,
       userId: userId ?? this.userId,
+      isSuccess: isSuccess ?? this.isSuccess,
     );
   }
 }

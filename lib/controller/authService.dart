@@ -1,9 +1,6 @@
-import 'dart:convert';
-
 import 'package:ride_sharing/controller/apiClient.dart';
 import 'package:ride_sharing/model/authModels.dart';
 import 'package:ride_sharing/widgets/consonants/apiConsonants.dart';
-import 'package:http/http.dart' as http;
 
 class Authservice {
   final Apiclient apiclient;
@@ -32,18 +29,21 @@ class Authservice {
     return result;
   }
 
-  Future<void> forgotPassword(String email) async {
-    final response = await http.post(
-      Uri.parse(Apiconsonants.forgotPasswordEndpoint),
-      headers: {"Content-Type": "application/json"},
-      body: jsonEncode({"email": email}),
+  Future<void> forgotPassword(ForgotPassword request) async {
+    await apiclient.post(
+      Apiconsonants.forgotPasswordEndpoint,
+      request.toJson(),
     );
-    if (response.statusCode != 200) {
-      throw Exception(response.body);
-    }
   }
 
   Future<void> resetPassword(ResetPasswordDto request) async {
     await apiclient.post(Apiconsonants.resetPasswordEndpoint, request.toJson());
+  }
+
+  Future<bool> checkResetStatus(String token) async {
+    final respose = await apiclient.get(
+      "${Apiconsonants.resetStatusEndpoint}?token=$token",
+    );
+    return respose;
   }
 }
