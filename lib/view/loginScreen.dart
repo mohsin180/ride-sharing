@@ -119,17 +119,19 @@ class _LoginscreenState extends ConsumerState<Loginscreen> {
                 buttonText: "Login",
                 accountText: 'Dont have an account?',
                 actionText: 'Sign Up',
-                onPressed: () async {
-                  if (_formKey.currentState!.validate()) {
-                    final request = LoginRequest(
-                      email: emailController.text.trim(),
-                      password: passwordController.text.trim(),
-                    );
-                    ref
-                        .read(authControllerProvider.notifier)
-                        .loginProvider(request);
-                  }
-                },
+                onPressed: authState.isloading
+                    ? null
+                    : () async {
+                        if (_formKey.currentState!.validate()) {
+                          final request = LoginRequest(
+                            email: emailController.text.trim(),
+                            password: passwordController.text.trim(),
+                          );
+                          ref
+                              .read(authControllerProvider.notifier)
+                              .loginProvider(request);
+                        }
+                      },
                 onTap: () => context.go(Approutes.register),
               ),
             ],

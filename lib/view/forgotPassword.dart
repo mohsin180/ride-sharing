@@ -18,24 +18,30 @@ class Forgotpassword extends ConsumerStatefulWidget {
 class _ForgotpasswordState extends ConsumerState<Forgotpassword> {
   final emailController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
-  // Timer? timer;
-  // @override
-  // void initState(){
-  //  super.initState();
-  //  startPolling();
-  // }
 
-  // void startPolling(){
-  //   timer= Timer.periodic(Duration(seconds: 5), (timer) async{
-  //     final state= ref.read(authControllerProvider);
-  //     final verified= ref.read(authControllerProvider.notifier).checkResetStatus(token);
-
-  //   });
-  // }
+  @override
+  void dispose() {
+    emailController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authControllerProvider);
+    ref.listen<AuthState>(authControllerProvider, (prev, next) {
+      if (next.error != null) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(CustomWidgets.customErrorSnackBar(next.error!));
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          CustomWidgets.customSuccessSnackBar(
+            "Link was sent to your email. Reset your password",
+          ),
+        );
+      }
+    });
+
     return Scaffold(
       backgroundColor: Consonants.scaffoldBackgroundColor,
       body: Form(
