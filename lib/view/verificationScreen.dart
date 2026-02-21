@@ -18,6 +18,7 @@ class Verificationscreen extends ConsumerStatefulWidget {
 
 class _VerificationscreenState extends ConsumerState<Verificationscreen> {
   Timer? _timer;
+  @override
   void initState() {
     super.initState();
     startPolling();

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:ride_sharing/model/appRoutes.dart';
+import 'package:ride_sharing/view/roleSelection.dart';
 
 void main() {
   runApp(const ProviderScope(child: MyApp()));
@@ -18,9 +19,9 @@ class MyApp extends StatelessWidget {
       minTextAdapt: true,
       splitScreenMode: true,
       builder: (context, child) {
-        return MaterialApp.router(
+        return MaterialApp(
           debugShowCheckedModeBanner: false,
-          routerConfig: appRouter,
+          home: Roleselection(),
         );
       },
     );

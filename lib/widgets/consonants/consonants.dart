@@ -8,4 +8,5 @@ class Consonants {
   static const Color greyColor = Color(0xff64748B);
   static const Color lightGreyColor = Color(0xffF1F5F9);
   static const Color primaryGreenColor = Color(0xffDCFCE7);
+  static const Color lightBlueColor = Color(0xffEFF6FF);
 }
