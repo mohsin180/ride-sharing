@@ -171,3 +171,27 @@ class GenderNotifier extends StateNotifier<String?> {
     }
   }
 }
+
+final roleProvider = StateNotifierProvider<RoleNotifier, String?>((ref) {
+  return RoleNotifier();
+});
+
+class RoleNotifier extends StateNotifier<String?> {
+  RoleNotifier() : super(null);
+
+  void selectPassenger() {
+    if (state == "PASSENGER") {
+      state = null;
+    } else {
+      state = "PASSENGER";
+    }
+  }
+
+  void selectDriver() {
+    if (state == "DRIVER") {
+      state = null;
+    } else {
+      state = "DRIVER";
+    }
+  }
+}

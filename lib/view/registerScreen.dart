@@ -67,11 +67,11 @@ class _RegisterscreenState extends ConsumerState<Registerscreen> {
                     ),
                     SizedBox(height: 20.h),
                     AuthFields(
-                      text: 'Full Name',
+                      text: 'Username',
                       suffixIcon: Icon(Icons.person, size: 10.sp),
                       validator: (value) {
                         if (value == null || value.isEmpty) {
-                          return 'Please enter your full name';
+                          return 'Please enter your username';
                         }
                         return null;
                       },
