@@ -5,4 +5,5 @@ class Apiconsonants {
   static const String forgotPasswordEndpoint = "$baseUrl/forgot-password";
   static const String resetPasswordEndpoint = "$baseUrl/reset-password";
   static const String resetStatusEndpoint = "$baseUrl/reset/status";
+  static const String selectedRoleEndpoint = "$baseUrl/assign-role";
 }

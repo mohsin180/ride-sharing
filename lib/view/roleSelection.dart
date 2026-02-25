@@ -14,115 +14,55 @@ class Roleselection extends ConsumerStatefulWidget {
 }
 
 class _RoleselectionState extends ConsumerState<Roleselection> {
-  final formKey = GlobalKey<FormState>();
-  final TextEditingController fullNameController = TextEditingController();
-  final TextEditingController cnicController = TextEditingController();
-  @override
-  void dispose() {
-    fullNameController.clear();
-    cnicController.clear();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
     final selectedRole = ref.watch(roleProvider);
     return Scaffold(
       backgroundColor: Consonants.scaffoldBackgroundColor,
-      body: Column(
-        children: [
-          Expanded(
-            child: Form(
-              key: formKey,
+      body: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   CustomWidgets.customText(
-                    "Complete Your Profile",
+                    "How will you use the app?",
                     20.sp,
                     Consonants.boldTextColor,
                     FontWeight.w700,
                   ),
-                  AuthFields(
-                    text: "Full Name",
-                    suffixIcon: Icon(Icons.person),
-                    controller: fullNameController,
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return "Enter your full Name";
-                      }
-                      return null;
-                    },
+                  SizedBox(height: 10.h),
+                  roleSelection(
+                    context,
+                    ref,
+                    "PASSENGER",
+                    "Passenger",
+                    Icons.person_4,
+                    "assets/passenger.jpg",
                   ),
                   SizedBox(height: 10.h),
-                  AuthFields(
-                    text: "CNIC Number",
-                    suffixIcon: Icon(Icons.format_indent_decrease),
-                    controller: cnicController,
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Please enter your password';
-                      }
-                      if (value.length < 13) {
-                        return 'CNIC is too short';
-                      }
-                      if (value.length > 13) {
-                        return 'CNIC is too long';
-                      }
-
-                      return null;
-                    },
-                  ),
-                  SizedBox(height: 10.h),
-                  Padding(
-                    padding: EdgeInsets.only(left: 30.w),
-                    child: Row(
-                      children: [
-                        CustomWidgets.customText(
-                          "Select your role",
-                          10.sp,
-                          Consonants.boldTextColor,
-                          FontWeight.w600,
-                        ),
-                      ],
-                    ),
-                  ),
-                  SizedBox(height: 10.h),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      roleSelection(
-                        "Passenger",
-                        Icons.person_4,
-                        selectedRole == "PASSENGER",
-                        () {
-                          ref.read(roleProvider.notifier).selectPassenger();
-                        },
-                      ),
-                      SizedBox(width: 10.h),
-                      roleSelection(
-                        "Driver",
-                        Icons.drive_eta,
-                        selectedRole == "DRIVER",
-                        () {
-                          ref.read(roleProvider.notifier).selectDriver();
-                        },
-                      ),
-                    ],
+                  roleSelection(
+                    context,
+                    ref,
+                    "DRIVER",
+                    "Driver",
+                    Icons.person_4,
+                    "assets/driver.jpg",
                   ),
                 ],
               ),
             ),
-          ),
-          RoleSelectedContainer(
-            onPressed: () async {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => Bottomnavbar()),
-              );
-            },
-          ),
-        ],
+            RoleSelectedContainer(
+              onPressed: () async {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => Bottomnavbar()),
+                );
+              },
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -156,16 +96,26 @@ class RoleSelectedContainer extends StatelessWidget {
 }
 
 Widget roleSelection(
+  BuildContext context,
+  WidgetRef ref,
+  String roleValue,
   String text,
   IconData icon,
-  bool isSelected,
-  VoidCallback onTap,
+  String image,
 ) {
-  return GestureDetector(
-    onTap: onTap,
+  final selectedRole = ref.watch(roleProvider).value;
+  final isSelected = selectedRole == roleValue;
+  return InkWell(
+    onTap: () {
+      if (roleValue == "PASSENGER") {
+        ref.read(roleProvider.notifier).selectPassenger();
+      } else {
+        ref.read(roleProvider.notifier).selectDriver();
+      }
+    },
     child: Container(
-      height: 120.h,
-      width: 128.w,
+      height: 280.h,
+      width: 212.w,
       padding: EdgeInsets.symmetric(horizontal: 15.w, vertical: 8.h),
       decoration: BoxDecoration(
         color: isSelected ? Consonants.lightBlueColor : Consonants.whiteColor,
@@ -176,16 +126,37 @@ Widget roleSelection(
         ),
       ),
       child: Center(
-        child: Column(
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Icon(icon, size: 16.sp, color: Consonants.boldTextColor),
-            SizedBox(height: 8.w),
-            CustomWidgets.customText(
-              text,
-              12.sp,
-              Consonants.boldTextColor,
-              FontWeight.w600,
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Card(
+                  color: Consonants.scaffoldBackgroundColor,
+                  elevation: 2,
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 5.w,
+                      vertical: 5.h,
+                    ),
+                    child: Icon(
+                      icon,
+                      size: 16.sp,
+                      color: Consonants.boldTextColor,
+                    ),
+                  ),
+                ),
+                SizedBox(height: 8.w),
+                CustomWidgets.customText(
+                  text,
+                  12.sp,
+                  Consonants.boldTextColor,
+                  FontWeight.w600,
+                ),
+              ],
             ),
+            CircleAvatar(backgroundImage: AssetImage(image), radius: 80.r),
           ],
         ),
       ),

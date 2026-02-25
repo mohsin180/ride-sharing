@@ -7,25 +7,32 @@ class Apiclient {
 
   Future<Map<String, dynamic>> post(
     String url,
-    Map<String, dynamic> body,
-  ) async {
+    Map<String, dynamic> body, {
+    String? accessToken,
+  }) async {
+    final headers = {
+      'Content-Type': 'application/json',
+      if (accessToken != null) 'Authorization': 'Bearer $accessToken',
+    };
     final response = await _client.post(
       Uri.parse(url),
       body: jsonEncode(body),
-      headers: {'Content-Type': 'application/json'},
+      headers: headers,
     );
     if (response.statusCode >= 200 && response.statusCode < 300) {
+      if (response.body.isEmpty) return {};
       return jsonDecode(response.body);
     } else {
       throw Exception(response.body);
     }
   }
 
-  Future<bool> get(String url) async {
-    final response = await _client.get(
-      Uri.parse(url),
-      headers: {'Content-Type': 'application/json'},
-    );
+  Future<bool> get(String url, {String? accessToken}) async {
+    final headers = {
+      'Content-Type': 'application/json',
+      if (accessToken != null) 'Authorization': 'Bearer $accessToken',
+    };
+    final response = await _client.get(Uri.parse(url), headers: headers);
     if (response.statusCode == 200) {
       return jsonDecode(response.body) as bool;
     } else {

@@ -46,4 +46,13 @@ class Authservice {
     );
     return respose;
   }
+
+  Future<void> assignRole({
+    required String role,
+    required String accessToken,
+  }) async {
+    await apiclient.post(Apiconsonants.selectedRoleEndpoint, {
+      "role": role,
+    }, accessToken: accessToken);
+  }
 }

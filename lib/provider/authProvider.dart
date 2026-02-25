@@ -1,3 +1,4 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:ride_sharing/controller/authService.dart';
 import 'package:ride_sharing/model/authModels.dart';
@@ -9,6 +10,9 @@ final authControllerProvider = StateNotifierProvider<Authprovider, AuthState>((
   final authservice = ref.read(authServiceProvider);
   return Authprovider(authservice);
 });
+
+// This provider holds the JWT access token
+final accessTokenProvider = StateProvider<String?>((ref) => null);
 
 class Authprovider extends StateNotifier<AuthState> {
   final Authservice authservice;
@@ -172,26 +176,47 @@ class GenderNotifier extends StateNotifier<String?> {
   }
 }
 
-final roleProvider = StateNotifierProvider<RoleNotifier, String?>((ref) {
-  return RoleNotifier();
-});
+enum Role {
+  // ignore: constant_identifier_names
+  PASSENGER,
+  // ignore: constant_identifier_names
+  DRIVER,
+}
 
-class RoleNotifier extends StateNotifier<String?> {
-  RoleNotifier() : super(null);
+class RoleNotifier extends StateNotifier<AsyncValue<Role?>> {
+  final Authservice authservice;
+  final String accessToken;
+  RoleNotifier({required this.authservice, required this.accessToken})
+    : super(const AsyncData(null));
 
-  void selectPassenger() {
-    if (state == "PASSENGER") {
-      state = null;
-    } else {
-      state = "PASSENGER";
+  void selectPassenger() => state = AsyncData(Role.PASSENGER);
+  void selectDriver() => state = AsyncData(Role.DRIVER);
+
+  Future<void> assignRole(String userId) async {
+    final currentRole = state.value;
+    if (currentRole == null) {
+      throw Exception("No role selected");
     }
-  }
-
-  void selectDriver() {
-    if (state == "DRIVER") {
-      state = null;
-    } else {
-      state = "DRIVER";
+    try {
+      state = const AsyncLoading();
+      await authservice.assignRole(
+        role: currentRole.name,
+        accessToken: accessToken,
+      );
+      state = AsyncData(currentRole);
+    } catch (e, st) {
+      state = AsyncError(e, st);
+      rethrow;
     }
   }
 }
+
+final roleProvider = StateNotifierProvider<RoleNotifier, AsyncValue<Role?>>((
+  ref,
+) {
+  final authService = ref.read(authServiceProvider);
+  final token = ref.read(
+    accessTokenProvider,
+  ); // you should have a provider for stored accessToken
+  return RoleNotifier(authservice: authService, accessToken: token!);
+});
