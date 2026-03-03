@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:go_router/go_router.dart';
+import 'package:ride_sharing/model/appRoutes.dart';
 import 'package:ride_sharing/provider/authProvider.dart';
-import 'package:ride_sharing/view/bottomNavbar.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
 
@@ -16,7 +17,9 @@ class Roleselection extends ConsumerStatefulWidget {
 class _RoleselectionState extends ConsumerState<Roleselection> {
   @override
   Widget build(BuildContext context) {
-    final selectedRole = ref.watch(roleProvider);
+    final selectedRole = ref.watch(selectedRoleProvider);
+    final roleState = ref.watch(roleProvider);
+
     return Scaffold(
       backgroundColor: Consonants.scaffoldBackgroundColor,
       body: SafeArea(
@@ -32,134 +35,130 @@ class _RoleselectionState extends ConsumerState<Roleselection> {
                     Consonants.boldTextColor,
                     FontWeight.w700,
                   ),
-                  SizedBox(height: 10.h),
+                  SizedBox(height: 20.h),
+
                   roleSelection(
-                    context,
-                    ref,
-                    "PASSENGER",
-                    "Passenger",
-                    Icons.person_4,
-                    "assets/passenger.jpg",
+                    ref: ref,
+                    roleValue: "PASSENGER",
+                    text: "Passenger",
+                    image: "assets/passenger.jpg",
+                    icon: Icons.person_2_outlined,
                   ),
-                  SizedBox(height: 10.h),
+
+                  SizedBox(height: 15.h),
+
                   roleSelection(
-                    context,
-                    ref,
-                    "DRIVER",
-                    "Driver",
-                    Icons.person_4,
-                    "assets/driver.jpg",
+                    ref: ref,
+                    roleValue: "DRIVER",
+                    text: "  Driver  ",
+                    image: "assets/driver.jpg",
+                    icon: Icons.drive_eta,
                   ),
                 ],
               ),
             ),
-            RoleSelectedContainer(
-              onPressed: () async {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => Bottomnavbar()),
-                );
-              },
+
+            /// Bottom Continue Button
+            Container(
+              width: double.infinity,
+              padding: EdgeInsets.all(20.w),
+              decoration: BoxDecoration(
+                color: Consonants.whiteColor,
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(24.r),
+                  topRight: Radius.circular(24.r),
+                ),
+              ),
+              child: CustomWidgets.customButton(
+                roleState.isLoading ? "Please wait..." : "Continue",
+                roleState.isLoading
+                    ? null
+                    : () async {
+                        if (selectedRole == null) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            CustomWidgets.customErrorSnackBar(
+                              "Please select a role",
+                            ),
+                          );
+                          return;
+                        }
+
+                        try {
+                          final userId = ref
+                              .read(authControllerProvider)
+                              .userId;
+
+                          await ref
+                              .read(roleProvider.notifier)
+                              .selectRole(userId!, selectedRole!);
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            CustomWidgets.customSuccessSnackBar(
+                              "Role assigned successfully",
+                            ),
+                          );
+
+                          context.go(Approutes.bottomNavbar);
+                        } catch (e) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            CustomWidgets.customErrorSnackBar("Failed: $e"),
+                          );
+                        }
+                      },
+              ),
             ),
           ],
         ),
       ),
     );
   }
-}
 
-class RoleSelectedContainer extends StatelessWidget {
-  final Future<void> Function()? onPressed;
-  const RoleSelectedContainer({super.key, required this.onPressed});
+  Widget roleSelection({
+    required WidgetRef ref,
+    required String roleValue,
+    required String text,
+    required String image,
+    required IconData icon,
+  }) {
+    final selectedRole = ref.watch(selectedRoleProvider);
+    final isSelected = selectedRole == roleValue;
 
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: Consonants.whiteColor,
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(24.r),
-          topRight: Radius.circular(24.r),
+    return InkWell(
+      onTap: () {
+        ref.read(selectedRoleProvider.notifier).selectRole(roleValue);
+      },
+      child: Container(
+        height: 150.h,
+        width: 300.w,
+        padding: EdgeInsets.symmetric(horizontal: 15.w),
+        decoration: BoxDecoration(
+          color: isSelected ? Consonants.lightBlueColor : Consonants.whiteColor,
+          borderRadius: BorderRadius.circular(12.r),
+          border: Border.all(
+            color: isSelected ? Consonants.primaryColor : Colors.transparent,
+            width: 2.w,
+          ),
         ),
-      ),
-      child: Column(
-        children: [
-          SizedBox(height: 20.h),
-          CustomWidgets.customButton("Continue", onPressed),
-
-          SizedBox(height: 20.h),
-        ],
-      ),
-    );
-  }
-}
-
-Widget roleSelection(
-  BuildContext context,
-  WidgetRef ref,
-  String roleValue,
-  String text,
-  IconData icon,
-  String image,
-) {
-  final selectedRole = ref.watch(roleProvider).value;
-  final isSelected = selectedRole == roleValue;
-  return InkWell(
-    onTap: () {
-      if (roleValue == "PASSENGER") {
-        ref.read(roleProvider.notifier).selectPassenger();
-      } else {
-        ref.read(roleProvider.notifier).selectDriver();
-      }
-    },
-    child: Container(
-      height: 280.h,
-      width: 212.w,
-      padding: EdgeInsets.symmetric(horizontal: 15.w, vertical: 8.h),
-      decoration: BoxDecoration(
-        color: isSelected ? Consonants.lightBlueColor : Consonants.whiteColor,
-        borderRadius: BorderRadius.circular(12.r),
-        border: Border.all(
-          color: isSelected ? Consonants.primaryColor : Colors.transparent,
-          width: 2.w,
-        ),
-      ),
-      child: Center(
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Card(
-                  color: Consonants.scaffoldBackgroundColor,
-                  elevation: 2,
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 5.w,
-                      vertical: 5.h,
-                    ),
-                    child: Icon(
-                      icon,
-                      size: 16.sp,
-                      color: Consonants.boldTextColor,
-                    ),
-                  ),
-                ),
-                SizedBox(height: 8.w),
+                Icon(icon, size: 20.sp, color: Consonants.primaryColor),
+                SizedBox(height: 10.h),
                 CustomWidgets.customText(
                   text,
-                  12.sp,
+                  16.sp,
                   Consonants.boldTextColor,
                   FontWeight.w600,
                 ),
               ],
             ),
-            CircleAvatar(backgroundImage: AssetImage(image), radius: 80.r),
+            CircleAvatar(backgroundImage: AssetImage(image), radius: 70.r),
           ],
         ),
       ),
-    ),
-  );
+    );
+  }
 }

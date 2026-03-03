@@ -1,4 +1,5 @@
 import 'package:go_router/go_router.dart';
+import 'package:ride_sharing/view/bottomNavbar.dart';
 import 'package:ride_sharing/view/homepage.dart';
 import 'package:ride_sharing/view/loginScreen.dart';
 import 'package:ride_sharing/view/newPassword.dart';
@@ -13,6 +14,7 @@ class Approutes {
   static const String verification = "/verification";
   static const String roleSection = "/role";
   static const String resetPassword = "/reset-password";
+  static const String bottomNavbar = "/bottom-navbar";
 }
 
 final appRouter = GoRouter(
@@ -48,6 +50,12 @@ final appRouter = GoRouter(
       builder: (context, state) {
         final token = state.uri.queryParameters['token'];
         return Newpassword(token);
+      },
+    ),
+    GoRoute(
+      path: Approutes.bottomNavbar,
+      builder: (context, state) {
+        return Bottomnavbar();
       },
     ),
   ],

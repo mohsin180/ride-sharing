@@ -17,15 +17,12 @@ class Registerscreen extends ConsumerStatefulWidget {
 
 class _RegisterscreenState extends ConsumerState<Registerscreen> {
   final _formKey = GlobalKey<FormState>();
-  final TextEditingController nameController = TextEditingController();
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
-  final TextEditingController phoneController = TextEditingController();
   @override
   void dispose() {
     emailController.dispose();
     passwordController.dispose();
-    phoneController.dispose();
     super.dispose();
   }
 
@@ -42,7 +39,7 @@ class _RegisterscreenState extends ConsumerState<Registerscreen> {
             "Account was created successfully",
           ),
         );
-        context.go(Approutes.verification);
+        context.go(Approutes.roleSection);
       }
     });
     final authState = ref.watch(authControllerProvider);
@@ -66,17 +63,7 @@ class _RegisterscreenState extends ConsumerState<Registerscreen> {
                       FontWeight.bold,
                     ),
                     SizedBox(height: 20.h),
-                    AuthFields(
-                      text: 'Username',
-                      suffixIcon: Icon(Icons.person, size: 10.sp),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Please enter your username';
-                        }
-                        return null;
-                      },
-                      controller: nameController,
-                    ),
+
                     SizedBox(height: 10.h),
                     AuthFields(
                       text: 'Email Address',
@@ -115,20 +102,7 @@ class _RegisterscreenState extends ConsumerState<Registerscreen> {
                       controller: passwordController,
                     ),
                     SizedBox(height: 10.h),
-                    AuthFields(
-                      text: 'PhoneNo',
-                      suffixIcon: Icon(Icons.phone, size: 10.sp),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Please enter your phoneNo';
-                        }
-                        if (value.length < 11) {
-                          return 'phone No must be at least 11 characters long';
-                        }
-                        return null;
-                      },
-                      controller: phoneController,
-                    ),
+
                     SizedBox(height: 10.h),
 
                     Padding(
@@ -193,8 +167,6 @@ class _RegisterscreenState extends ConsumerState<Registerscreen> {
                           final request = RegisterRequest(
                             email: emailController.text.trim(),
                             password: passwordController.text.trim(),
-                            username: nameController.text.trim(),
-                            phoneNo: phoneController.text.trim(),
                             gender: gender,
                           );
                           await ref
@@ -221,9 +193,9 @@ Widget genderSelection(
   return GestureDetector(
     onTap: onTap,
     child: Container(
-      height: 80.h,
+      height: 100.h,
       width: 128.w,
-      padding: EdgeInsets.symmetric(horizontal: 15.w, vertical: 8.h),
+
       decoration: BoxDecoration(
         color: isSelected ? Consonants.lightBlueColor : Consonants.whiteColor,
         borderRadius: BorderRadius.circular(12.r),

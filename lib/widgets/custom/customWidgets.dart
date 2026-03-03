@@ -83,11 +83,11 @@ class CustomWidgets {
             message,
             10.sp,
             Consonants.whiteColor,
-            FontWeight.w400,
+            FontWeight.w700,
           ),
         ),
       ),
-      backgroundColor: Colors.red,
+      backgroundColor: const Color.fromARGB(255, 233, 107, 98),
       behavior: SnackBarBehavior.floating,
     );
   }
@@ -101,12 +101,12 @@ class CustomWidgets {
           child: CustomWidgets.customText(
             message,
             10.sp,
-            Consonants.whiteColor,
-            FontWeight.w400,
+            Consonants.boldTextColor,
+            FontWeight.w700,
           ),
         ),
       ),
-      backgroundColor: Colors.red,
+      backgroundColor: Consonants.primaryGreenColor,
       behavior: SnackBarBehavior.floating,
     );
   }

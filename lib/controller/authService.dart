@@ -15,11 +15,11 @@ class Authservice {
   }
 
   Future<RegisterResponse> register(RegisterRequest request) async {
-    final json = await apiclient.post(
+    final response = await apiclient.post(
       Apiconsonants.registerEndpoint,
       request.toJson(),
     );
-    return RegisterResponse.fromJson(json);
+    return RegisterResponse.fromJson(response);
   }
 
   Future<bool> isEmailVerified(String userId) async {
@@ -47,12 +47,9 @@ class Authservice {
     return respose;
   }
 
-  Future<void> assignRole({
-    required String role,
-    required String accessToken,
-  }) async {
-    await apiclient.post(Apiconsonants.selectedRoleEndpoint, {
-      "role": role,
-    }, accessToken: accessToken);
+  Future<LoginResponse> assignRole(String id, String role) async {
+    String url = "http://localhost:8080/api/v1/auth/$id/select-role";
+    final response = await apiclient.post(url, {"role": role});
+    return LoginResponse.fromJson(response);
   }
 }

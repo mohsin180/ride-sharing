@@ -178,3 +178,37 @@ class VerificationContainer extends StatelessWidget {
     );
   }
 }
+
+class VerificationSucceed extends StatelessWidget {
+  const VerificationSucceed({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Column(
+        children: [
+          Card(
+            color: Consonants.whiteColor,
+            elevation: 10,
+            shape: BeveledRectangleBorder(
+              borderRadius: BorderRadius.circular(20.r),
+            ),
+            child: Image.asset(
+              "assets/gmail.png",
+              fit: BoxFit.contain,
+              height: 200.h,
+              width: 200.w,
+            ),
+          ),
+          SizedBox(height: 10),
+          CustomWidgets.customText(
+            "Your email was verified successfully",
+            15.sp,
+            Consonants.boldTextColor,
+            FontWeight.w500,
+          ),
+        ],
+      ),
+    );
+  }
+}

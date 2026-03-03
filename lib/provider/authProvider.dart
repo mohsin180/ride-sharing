@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/legacy.dart';
 import 'package:ride_sharing/controller/authService.dart';
 import 'package:ride_sharing/model/authModels.dart';
 import 'package:ride_sharing/provider/providers.dart';
+import 'package:ride_sharing/widgets/consonants/tokenStorage.dart';
 
 final authControllerProvider = StateNotifierProvider<Authprovider, AuthState>((
   ref,
@@ -12,7 +13,6 @@ final authControllerProvider = StateNotifierProvider<Authprovider, AuthState>((
 });
 
 // This provider holds the JWT access token
-final accessTokenProvider = StateProvider<String?>((ref) => null);
 
 class Authprovider extends StateNotifier<AuthState> {
   final Authservice authservice;
@@ -33,6 +33,7 @@ class Authprovider extends StateNotifier<AuthState> {
     state = state.copyWith(isloading: true, error: null, isLoggedIn: false);
     try {
       final response = await authservice.login(request);
+      await Tokenstorage.saveToken(response.token);
       state = state.copyWith(isloading: false, error: null, isLoggedIn: true);
       return response;
     } catch (e) {
@@ -53,7 +54,7 @@ class Authprovider extends StateNotifier<AuthState> {
         isloading: false,
         error: null,
         isRegistered: true,
-        userId: response.userId,
+        userId: response.id,
       );
       return response;
     } catch (e) {
@@ -176,47 +177,66 @@ class GenderNotifier extends StateNotifier<String?> {
   }
 }
 
-enum Role {
-  // ignore: constant_identifier_names
-  PASSENGER,
-  // ignore: constant_identifier_names
-  DRIVER,
+class RoleState {
+  final bool isLoading;
+  final String? error;
+  final LoginResponse? response;
+  RoleState({this.isLoading = false, this.error, this.response});
+
+  RoleState copyWith({
+    bool? isLoading,
+    String? error,
+    LoginResponse? response,
+  }) {
+    return RoleState(
+      isLoading: isLoading ?? this.isLoading,
+      error: error,
+      response: response ?? this.response,
+    );
+  }
 }
 
-class RoleNotifier extends StateNotifier<AsyncValue<Role?>> {
+class RoleNotifier extends StateNotifier<RoleState> {
   final Authservice authservice;
-  final String accessToken;
-  RoleNotifier({required this.authservice, required this.accessToken})
-    : super(const AsyncData(null));
+  RoleNotifier({required this.authservice}) : super(RoleState());
 
-  void selectPassenger() => state = AsyncData(Role.PASSENGER);
-  void selectDriver() => state = AsyncData(Role.DRIVER);
-
-  Future<void> assignRole(String userId) async {
-    final currentRole = state.value;
-    if (currentRole == null) {
-      throw Exception("No role selected");
-    }
+  Future<void> selectRole(String userId, String role) async {
     try {
-      state = const AsyncLoading();
-      await authservice.assignRole(
-        role: currentRole.name,
-        accessToken: accessToken,
-      );
-      state = AsyncData(currentRole);
-    } catch (e, st) {
-      state = AsyncError(e, st);
-      rethrow;
+      state = state.copyWith(isLoading: true, error: null);
+      final response = await authservice.assignRole(userId, role);
+      await Tokenstorage.saveToken(response.token);
+      state = state.copyWith(isLoading: false, response: response);
+    } catch (e) {
+      state = state.copyWith(error: e.toString());
     }
   }
 }
 
-final roleProvider = StateNotifierProvider<RoleNotifier, AsyncValue<Role?>>((
-  ref,
-) {
-  final authService = ref.read(authServiceProvider);
-  final token = ref.read(
-    accessTokenProvider,
-  ); // you should have a provider for stored accessToken
-  return RoleNotifier(authservice: authService, accessToken: token!);
+final roleProvider = StateNotifierProvider<RoleNotifier, RoleState>((ref) {
+  final authservice = ref.read(authServiceProvider);
+  return RoleNotifier(authservice: authservice);
 });
+
+final selectedRoleProvider =
+    StateNotifierProvider<RoleSelectionNotifier, String?>(
+      (ref) => RoleSelectionNotifier(),
+    );
+
+class RoleSelectionNotifier extends StateNotifier<String?> {
+  RoleSelectionNotifier() : super(null);
+
+  /// Select passenger
+  void selectPassenger() {
+    state = state == "PASSENGER" ? null : "PASSENGER";
+  }
+
+  /// Select driver
+  void selectDriver() {
+    state = state == "DRIVER" ? null : "DRIVER";
+  }
+
+  /// Generic setter
+  void selectRole(String role) {
+    state = state == role ? null : role;
+  }
+}
