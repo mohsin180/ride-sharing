@@ -22,6 +22,11 @@ class Authservice {
     return RegisterResponse.fromJson(response);
   }
 
+  Future<void> verifyEmail(String token) async {
+    final url = "http://localhost:8001/api/v1/auth/verify-email?token=$token";
+    await apiclient.get(url);
+  }
+
   Future<bool> isEmailVerified(String userId) async {
     final isEmailVerifiedEndpoint =
         "http://localhost:8080/api/v1/user/$userId/is-Email-Verified";
@@ -47,6 +52,7 @@ class Authservice {
     return respose;
   }
 
+  // selecting-role endpoint
   Future<LoginResponse> assignRole(String id, String role) async {
     String url = "http://localhost:8080/api/v1/auth/$id/select-role";
     final response = await apiclient.post(url, {"role": role});

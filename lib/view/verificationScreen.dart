@@ -179,35 +179,69 @@ class VerificationContainer extends StatelessWidget {
   }
 }
 
-class VerificationSucceed extends StatelessWidget {
-  const VerificationSucceed({super.key});
+class VerificationSucceed extends ConsumerStatefulWidget {
+  final String? token;
+
+  const VerificationSucceed({super.key, required this.token});
+
+  @override
+  ConsumerState<VerificationSucceed> createState() =>
+      _VerificationSucceedState();
+}
+
+class _VerificationSucceedState extends ConsumerState<VerificationSucceed> {
+  @override
+  void initState() {
+    super.initState();
+
+    Future.microtask(() {
+      ref.read(authControllerProvider.notifier).verifyEmail(widget.token!);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
+    final verifyState = ref.watch(authControllerProvider);
+
     return Scaffold(
-      body: Column(
-        children: [
-          Card(
-            color: Consonants.whiteColor,
-            elevation: 10,
-            shape: BeveledRectangleBorder(
-              borderRadius: BorderRadius.circular(20.r),
-            ),
-            child: Image.asset(
-              "assets/gmail.png",
-              fit: BoxFit.contain,
-              height: 200.h,
-              width: 200.w,
-            ),
-          ),
-          SizedBox(height: 10),
-          CustomWidgets.customText(
-            "Your email was verified successfully",
-            15.sp,
-            Consonants.boldTextColor,
-            FontWeight.w500,
-          ),
-        ],
+      body: Center(
+        child: verifyState.isloading
+            ? const CircularProgressIndicator()
+            : Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Card(
+                    color: Consonants.whiteColor,
+                    elevation: 10,
+                    shape: BeveledRectangleBorder(
+                      borderRadius: BorderRadius.circular(20.r),
+                    ),
+                    child: Image.asset(
+                      "assets/gmail.png",
+                      fit: BoxFit.contain,
+                      height: 200.h,
+                      width: 200.w,
+                    ),
+                  ),
+
+                  SizedBox(height: 10),
+
+                  if (verifyState.emailVerified == true)
+                    CustomWidgets.customText(
+                      "Your email was verified successfully",
+                      15.sp,
+                      Consonants.boldTextColor,
+                      FontWeight.w500,
+                    )
+                  else
+                    CustomWidgets.customText(
+                      "Verification failed or token expired",
+                      15.sp,
+                      Consonants.boldTextColor,
+                      FontWeight.w500,
+                    ),
+                ],
+              ),
       ),
     );
   }

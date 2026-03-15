@@ -15,6 +15,7 @@ class Approutes {
   static const String roleSection = "/role";
   static const String resetPassword = "/reset-password";
   static const String bottomNavbar = "/bottom-navbar";
+  static const String emailVerification = "/verify-email";
 }
 
 final appRouter = GoRouter(
@@ -50,6 +51,13 @@ final appRouter = GoRouter(
       builder: (context, state) {
         final token = state.uri.queryParameters['token'];
         return Newpassword(token);
+      },
+    ),
+    GoRoute(
+      path: Approutes.emailVerification,
+      builder: (context, state) {
+        final token = state.uri.queryParameters['token'];
+        return VerificationSucceed(token: token);
       },
     ),
     GoRoute(

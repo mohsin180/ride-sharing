@@ -1,4 +1,3 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:ride_sharing/controller/authService.dart';
 import 'package:ride_sharing/model/authModels.dart';
@@ -64,6 +63,20 @@ class Authprovider extends StateNotifier<AuthState> {
         isRegistered: false,
       );
       rethrow;
+    }
+  }
+
+  Future<void> verifyEmail(String token) async {
+    state = state.copyWith(isloading: true, error: null);
+    try {
+      await authservice.verifyEmail(token);
+      state = state.copyWith(isloading: false, emailVerified: true);
+    } catch (e) {
+      state = state.copyWith(
+        isloading: false,
+        emailVerified: false,
+        error: e.toString(),
+      );
     }
   }
 
