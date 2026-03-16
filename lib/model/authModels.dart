@@ -15,10 +15,11 @@ class RegisterRequest {
 }
 
 class RegisterResponse {
-  String id;
-  RegisterResponse({required this.id});
+  final String id;
+  final String email;
+  RegisterResponse({required this.id, required this.email});
   factory RegisterResponse.fromJson(Map<String, dynamic> json) {
-    return RegisterResponse(id: json['id']);
+    return RegisterResponse(id: json['id'], email: json['email']);
   }
 }
 

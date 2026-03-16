@@ -25,6 +25,7 @@ class Authprovider extends StateNotifier<AuthState> {
           emailVerified: null,
           userId: null,
           isSuccess: null,
+          email: null,
         ),
       );
 
@@ -54,6 +55,7 @@ class Authprovider extends StateNotifier<AuthState> {
         error: null,
         isRegistered: true,
         userId: response.id,
+        email: response.email,
       );
       return response;
     } catch (e) {
@@ -70,13 +72,9 @@ class Authprovider extends StateNotifier<AuthState> {
     state = state.copyWith(isloading: true, error: null);
     try {
       await authservice.verifyEmail(token);
-      state = state.copyWith(isloading: false, emailVerified: true);
+      state = state.copyWith(isloading: false);
     } catch (e) {
-      state = state.copyWith(
-        isloading: false,
-        emailVerified: false,
-        error: e.toString(),
-      );
+      state = state.copyWith(isloading: false, error: e.toString());
     }
   }
 
@@ -133,6 +131,7 @@ class AuthState {
   final bool? emailVerified;
   final String? userId; // null = not checked yet
   final bool? isSuccess;
+  final String? email;
 
   AuthState({
     required this.isloading,
@@ -142,6 +141,7 @@ class AuthState {
     this.emailVerified,
     this.userId,
     this.isSuccess,
+    this.email,
   });
 
   AuthState copyWith({
@@ -152,6 +152,7 @@ class AuthState {
     bool? emailVerified,
     String? userId,
     bool? isSuccess,
+    String? email,
   }) {
     return AuthState(
       isloading: isloading ?? this.isloading,
@@ -162,6 +163,7 @@ class AuthState {
       emailVerified: emailVerified ?? this.emailVerified,
       userId: userId ?? this.userId,
       isSuccess: isSuccess ?? this.isSuccess,
+      email: email ?? this.email,
     );
   }
 }

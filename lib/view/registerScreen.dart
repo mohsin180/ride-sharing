@@ -39,7 +39,7 @@ class _RegisterscreenState extends ConsumerState<Registerscreen> {
             "Account was created successfully",
           ),
         );
-        context.go(Approutes.roleSection);
+        context.go(Approutes.verification);
       }
     });
     final authState = ref.watch(authControllerProvider);

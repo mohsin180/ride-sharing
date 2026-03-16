@@ -1,6 +1,7 @@
 import 'package:ride_sharing/controller/apiClient.dart';
 import 'package:ride_sharing/model/authModels.dart';
 import 'package:ride_sharing/widgets/consonants/apiConsonants.dart';
+import 'package:http/http.dart' as http;
 
 class Authservice {
   final Apiclient apiclient;
@@ -23,13 +24,18 @@ class Authservice {
   }
 
   Future<void> verifyEmail(String token) async {
-    final url = "http://localhost:8001/api/v1/auth/verify-email?token=$token";
-    await apiclient.get(url);
+    final url = "http://localhost:8080/api/v1/auth/verify-email?token=$token";
+    final response = await http.get(
+      Uri.parse(url),
+      headers: {'Content-Type': 'application/json'},
+    );
+    print("STATUS: ${response.statusCode}");
+    print("BODY: ${response.body}");
   }
 
   Future<bool> isEmailVerified(String userId) async {
     final isEmailVerifiedEndpoint =
-        "http://localhost:8080/api/v1/user/$userId/is-Email-Verified";
+        "http://localhost:8080/api/v1/user/is-Email-Verified/$userId";
     final result = await apiclient.get(isEmailVerifiedEndpoint);
     return result;
   }

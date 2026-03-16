@@ -8,11 +8,11 @@ class Apiclient {
   Future<Map<String, dynamic>> post(
     String url,
     Map<String, dynamic> body, {
-    String? accessToken,
+    String? token,
   }) async {
     final headers = {
       'Content-Type': 'application/json',
-      if (accessToken != null) 'Authorization': 'Bearer $accessToken',
+      if (token != null) 'Authorization': 'Bearer $token',
     };
     final response = await _client.post(
       Uri.parse(url),
@@ -27,10 +27,10 @@ class Apiclient {
     }
   }
 
-  Future<bool> get(String url, {String? accessToken}) async {
+  Future<bool> get(String url, {String? token}) async {
     final headers = {
       'Content-Type': 'application/json',
-      if (accessToken != null) 'Authorization': 'Bearer $accessToken',
+      if (token != null) 'Authorization': 'Bearer $token',
     };
     final response = await _client.get(Uri.parse(url), headers: headers);
     if (response.statusCode == 200) {
