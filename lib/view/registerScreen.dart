@@ -67,7 +67,7 @@ class _RegisterscreenState extends ConsumerState<Registerscreen> {
                     SizedBox(height: 10.h),
                     AuthFields(
                       text: 'Email Address',
-                      suffixIcon: Icon(Icons.email_rounded, size: 10.sp),
+                      suffixIcon: Icon(Icons.email_rounded),
                       validator: (value) {
                         if (value == null || value.isEmpty) {
                           return 'Please enter your email address';
@@ -86,10 +86,7 @@ class _RegisterscreenState extends ConsumerState<Registerscreen> {
                     AuthFields(
                       text: 'Password',
                       obscure: true,
-                      suffixIcon: Icon(
-                        Icons.remove_red_eye_rounded,
-                        size: 10.sp,
-                      ),
+                      suffixIcon: Icon(Icons.remove_red_eye_rounded),
                       validator: (value) {
                         if (value == null || value.isEmpty) {
                           return 'Please enter your password';

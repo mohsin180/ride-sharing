@@ -35,7 +35,7 @@ class Authservice {
 
   Future<bool> isEmailVerified(String userId) async {
     final isEmailVerifiedEndpoint =
-        "http://localhost:8080/api/v1/user/is-Email-Verified/$userId";
+        "http://localhost:8080/api/v1/auth/is-email-verified/$userId";
     final result = await apiclient.get(isEmailVerifiedEndpoint);
     return result;
   }

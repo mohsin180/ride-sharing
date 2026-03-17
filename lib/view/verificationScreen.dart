@@ -107,7 +107,7 @@ class _VerificationscreenState extends ConsumerState<Verificationscreen> {
               ],
             ),
           ),
-          VerificationContainer(onPressed: () async {}),
+          VerificationContainer(),
         ],
       ),
     );
@@ -137,8 +137,7 @@ class _VerificationscreenState extends ConsumerState<Verificationscreen> {
 // }
 
 class VerificationContainer extends StatelessWidget {
-  final Future<void> Function()? onPressed;
-  const VerificationContainer({super.key, required this.onPressed});
+  const VerificationContainer({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -154,23 +153,12 @@ class VerificationContainer extends StatelessWidget {
       child: Column(
         children: [
           SizedBox(height: 20.h),
-          CustomWidgets.customButton("Open Email App", onPressed),
           SizedBox(height: 20.h),
           CustomWidgets.customText(
             'Resend Code',
             10.sp,
             Consonants.primaryColor,
             FontWeight.w600,
-          ),
-          SizedBox(height: 20.h),
-          GestureDetector(
-            onTap: () => Approutes.register,
-            child: CustomWidgets.customText(
-              'Change Email Address',
-              10.sp,
-              Consonants.greyColor,
-              FontWeight.w400,
-            ),
           ),
           SizedBox(height: 20.h),
         ],

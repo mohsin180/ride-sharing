@@ -58,7 +58,7 @@ class _LoginscreenState extends ConsumerState<Loginscreen> {
                     SizedBox(height: 20.h),
                     AuthFields(
                       text: 'Email Address',
-                      suffixIcon: Icon(Icons.email_rounded, size: 10.sp),
+                      suffixIcon: Icon(Icons.email_rounded),
                       validator: (value) {
                         if (value == null || value.isEmpty) {
                           return 'Please enter your email';
@@ -75,7 +75,7 @@ class _LoginscreenState extends ConsumerState<Loginscreen> {
                     AuthFields(
                       text: 'Password',
                       obscure: true,
-                      suffixIcon: Icon(Icons.remove_red_eye, size: 10.sp),
+                      suffixIcon: Icon(Icons.remove_red_eye),
                       validator: (value) {
                         if (value == null || value.isEmpty) {
                           return 'Please enter your password';

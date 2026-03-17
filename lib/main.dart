@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_web_plugins/flutter_web_plugins.dart';
 import 'package:ride_sharing/model/appRoutes.dart';
+import 'package:ride_sharing/view/profileData.dart';
 import 'package:ride_sharing/view/roleSelection.dart';
 
 void main() {
@@ -21,9 +22,10 @@ class MyApp extends StatelessWidget {
       minTextAdapt: true,
       splitScreenMode: true,
       builder: (context, child) {
-        return MaterialApp.router(
+        return MaterialApp(
           debugShowCheckedModeBanner: false,
-          routerConfig: appRouter,
+          // routerConfig: appRouter,
+          home: PassengerProfileData(),
         );
       },
     );
