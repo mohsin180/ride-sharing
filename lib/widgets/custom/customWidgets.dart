@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 
@@ -118,6 +119,12 @@ class AuthFields extends StatelessWidget {
   final Widget suffixIcon;
   final String? Function(String?)? validator;
   final TextEditingController controller;
+
+  // ✅ NEW OPTIONAL FIELDS
+  final TextInputType? keyboardType;
+  final List<TextInputFormatter>? inputFormatters;
+  final int? maxLength;
+
   const AuthFields({
     super.key,
     required this.text,
@@ -125,6 +132,11 @@ class AuthFields extends StatelessWidget {
     required this.suffixIcon,
     this.validator,
     required this.controller,
+
+    // ✅ optional (won’t affect old code)
+    this.keyboardType,
+    this.inputFormatters,
+    this.maxLength,
   });
 
   @override
@@ -146,7 +158,14 @@ class AuthFields extends StatelessWidget {
             obscureText: obscure,
             validator: validator,
             autovalidateMode: AutovalidateMode.onUserInteraction,
+
+            // ✅ APPLY OPTIONALS
+            keyboardType: keyboardType,
+            inputFormatters: inputFormatters,
+            maxLength: maxLength,
+
             decoration: InputDecoration(
+              counterText: "", // hides maxLength counter (clean UI)
               suffixIcon: suffixIcon,
               suffixIconColor: Consonants.primaryColor,
               hoverColor: Consonants.whiteColor,
@@ -255,6 +274,39 @@ class AuthContainer extends StatelessWidget {
           SizedBox(height: 10.h),
         ],
       ),
+    );
+  }
+}
+
+class CnicInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    String digitsOnly = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+
+    // Limit to 13 digits
+    if (digitsOnly.length > 13) {
+      digitsOnly = digitsOnly.substring(0, 13);
+    }
+
+    String formatted = '';
+
+    for (int i = 0; i < digitsOnly.length; i++) {
+      formatted += digitsOnly[i];
+
+      // Add dashes at correct positions
+      if (i == 4 || i == 11) {
+        if (i != digitsOnly.length - 1) {
+          formatted += '-';
+        }
+      }
+    }
+
+    return TextEditingValue(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: formatted.length),
     );
   }
 }

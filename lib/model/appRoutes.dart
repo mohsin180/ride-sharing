@@ -3,6 +3,7 @@ import 'package:ride_sharing/view/bottomNavbar.dart';
 import 'package:ride_sharing/view/homepage.dart';
 import 'package:ride_sharing/view/loginScreen.dart';
 import 'package:ride_sharing/view/newPassword.dart';
+import 'package:ride_sharing/view/profileData.dart';
 import 'package:ride_sharing/view/registerScreen.dart';
 import 'package:ride_sharing/view/roleSelection.dart';
 import 'package:ride_sharing/view/verificationScreen.dart';
@@ -16,6 +17,8 @@ class Approutes {
   static const String resetPassword = "/reset-password";
   static const String bottomNavbar = "/bottom-navbar";
   static const String emailVerification = "/verify-email";
+  static const String passengerProfileData = "/passenger";
+  static const String driverProfileData = "/driver";
 }
 
 final appRouter = GoRouter(
@@ -59,6 +62,14 @@ final appRouter = GoRouter(
         final token = state.uri.queryParameters['token'];
         return VerificationSucceed(token: token);
       },
+    ),
+    GoRoute(
+      path: Approutes.passengerProfileData,
+      builder: (context, state) => PassengerProfileData(),
+    ),
+    GoRoute(
+      path: Approutes.driverProfileData,
+      builder: (context, state) => DriverProfileData(),
     ),
     GoRoute(
       path: Approutes.bottomNavbar,

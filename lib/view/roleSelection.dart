@@ -70,7 +70,7 @@ class _RoleselectionState extends ConsumerState<Roleselection> {
                 ),
               ),
               child: CustomWidgets.customButton(
-                roleState.isLoading ? "Please wait..." : "Continue",
+                roleState.isLoading ? "" : "",
                 roleState.isLoading
                     ? null
                     : () async {
@@ -90,7 +90,7 @@ class _RoleselectionState extends ConsumerState<Roleselection> {
 
                           await ref
                               .read(roleProvider.notifier)
-                              .selectRole(userId!, selectedRole!);
+                              .selectRole(userId!, selectedRole);
 
                           ScaffoldMessenger.of(context).showSnackBar(
                             CustomWidgets.customSuccessSnackBar(
@@ -98,7 +98,12 @@ class _RoleselectionState extends ConsumerState<Roleselection> {
                             ),
                           );
 
-                          context.go(Approutes.bottomNavbar);
+                          if (selectedRole == "PASSENGER") {
+                            context.go(Approutes.passengerProfileData);
+                          }
+                          if (selectedRole == "DRIVER") {
+                            context.go(Approutes.driverProfileData);
+                          }
                         } catch (e) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             CustomWidgets.customErrorSnackBar("Failed: $e"),
