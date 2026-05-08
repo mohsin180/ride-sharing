@@ -9,4 +9,7 @@ class Consonants {
   static const Color lightGreyColor = Color(0xffF1F5F9);
   static const Color primaryGreenColor = Color(0xffDCFCE7);
   static const Color lightBlueColor = Color(0xffEFF6FF);
+
+  // Registered globally in main.dart via GoogleFonts.poppinsTextTheme().
+  static const String fontFamily = 'Poppins';
 }

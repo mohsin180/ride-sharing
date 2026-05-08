@@ -1,7 +1,6 @@
 import 'package:ride_sharing/controller/apiClient.dart';
 import 'package:ride_sharing/model/authModels.dart';
 import 'package:ride_sharing/widgets/consonants/apiConsonants.dart';
-import 'package:http/http.dart' as http;
 
 class Authservice {
   final Apiclient apiclient;
@@ -12,32 +11,30 @@ class Authservice {
       Apiconsonants.loginEndpoint,
       request.toJson(),
     );
-    return LoginResponse.fromJson(json);
+    return LoginResponse.fromJson(json as Map<String, dynamic>);
   }
 
   Future<RegisterResponse> register(RegisterRequest request) async {
-    final response = await apiclient.post(
+    final json = await apiclient.post(
       Apiconsonants.registerEndpoint,
       request.toJson(),
     );
-    return RegisterResponse.fromJson(response);
+    return RegisterResponse.fromJson(json as Map<String, dynamic>);
   }
 
   Future<void> verifyEmail(String token) async {
-    final url = "http://localhost:8080/api/v1/auth/verify-email?token=$token";
-    final response = await http.get(
-      Uri.parse(url),
-      headers: {'Content-Type': 'application/json'},
-    );
-    print("STATUS: ${response.statusCode}");
-    print("BODY: ${response.body}");
+    await apiclient.get("${Apiconsonants.verifyEmailEndpoint}?token=$token");
   }
 
   Future<bool> isEmailVerified(String userId) async {
-    final isEmailVerifiedEndpoint =
-        "http://localhost:8080/api/v1/auth/is-email-verified/$userId";
-    final result = await apiclient.get(isEmailVerifiedEndpoint);
-    return result;
+    final result = await apiclient.get(
+      Apiconsonants.isEmailVerifiedEndpoint(userId),
+    );
+    if (result is bool) return result;
+    if (result is Map && result['verified'] is bool) {
+      return result['verified'] as bool;
+    }
+    return false;
   }
 
   Future<void> forgotPassword(ForgotPassword request) async {
@@ -48,20 +45,28 @@ class Authservice {
   }
 
   Future<void> resetPassword(ResetPasswordDto request) async {
-    await apiclient.post(Apiconsonants.resetPasswordEndpoint, request.toJson());
+    await apiclient.post(
+      Apiconsonants.resetPasswordEndpoint,
+      request.toJson(),
+    );
   }
 
   Future<bool> checkResetStatus(String token) async {
-    final respose = await apiclient.get(
+    final result = await apiclient.get(
       "${Apiconsonants.resetStatusEndpoint}?token=$token",
     );
-    return respose;
+    if (result is bool) return result;
+    if (result is Map && result['valid'] is bool) {
+      return result['valid'] as bool;
+    }
+    return false;
   }
 
-  // selecting-role endpoint
-  Future<LoginResponse> assignRole(String id, String role) async {
-    String url = "http://localhost:8080/api/v1/auth/$id/select-role";
-    final response = await apiclient.post(url, {"role": role});
-    return LoginResponse.fromJson(response);
+  Future<LoginResponse> assignRole(String userId, String role) async {
+    final json = await apiclient.post(
+      Apiconsonants.selectRoleEndpoint(userId),
+      {"role": role},
+    );
+    return LoginResponse.fromJson(json as Map<String, dynamic>);
   }
 }

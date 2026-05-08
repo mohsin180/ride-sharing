@@ -19,9 +19,15 @@ migrate_working_dir/
 .idea/
 
 # The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
-#.vscode/
+# VS Code. Ignored here because launch.json holds the GOOGLE_MAPS_KEY
+# dart-define value, which must not land in source control.
+.vscode/
+
+# Local environment files — hold API keys and secrets. Never commit.
+# `.env.example` is committed so contributors know which keys are required.
+.env
+.env.local
+.env.*.local
 
 # Flutter/Dart/Pub related
 **/doc/api/

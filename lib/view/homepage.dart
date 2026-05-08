@@ -1,51 +1,280 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:go_router/go_router.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:ride_sharing/model/appRoutes.dart';
+import 'package:ride_sharing/model/rideModels.dart';
+import 'package:ride_sharing/provider/mapProvider.dart';
+import 'package:ride_sharing/provider/rideCreationProvider.dart';
+import 'package:ride_sharing/provider/rideRequestProvider.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
+import 'package:ride_sharing/widgets/consonants/errorHandler.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
+import 'package:ride_sharing/widgets/home/homeBookingSheet.dart';
+import 'package:ride_sharing/widgets/home/homePickupPin.dart';
 
-class Homepage extends StatelessWidget {
+/// SafeRide home — real Google Map as background, fixed-center pickup pin,
+/// floating header (greeting + messages + notification icons) and a
+/// draggable booking sheet at the bottom.
+///
+/// State lives in Riverpod providers (see [mapProvider.dart]); widgets below
+/// watch only the slices they care about so map panning doesn't rebuild
+/// the whole tree.
+class Homepage extends ConsumerStatefulWidget {
   const Homepage({super.key});
 
   @override
+  ConsumerState<Homepage> createState() => _HomepageState();
+}
+
+class _HomepageState extends ConsumerState<Homepage> {
+  @override
+  void initState() {
+    super.initState();
+    // Wipe stale isSuccess/error from a prior booking so the listener
+    // below only fires for *this* tab's tap.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.read(rideCreationProvider.notifier).reset();
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    // ref.listen subscribes the provider (triggering its build/GPS fetch)
+    // without rebuilding this widget when the value changes.
+    ref.listen<AsyncValue<LatLng>>(currentLocationProvider, (_, next) {
+      next.whenOrNull(
+        data: (location) => _onLocationResolved(location),
+        error: (err, _) => ErrorHandler.show(context, err),
+      );
+    });
+
+    // Surface ride-creation outcomes: errors → snackbar, success →
+    // navigate to viewRequest with the freshly created ride payload.
+    ref.listen<RideCreationState>(rideCreationProvider, (prev, next) {
+      if (next.error != null && next.error != prev?.error) {
+        ErrorHandler.show(context, next.error);
+      } else if (next.isSuccess &&
+          prev?.isSuccess != true &&
+          next.ride != null) {
+        final ride = next.ride!;
+        ErrorHandler.success(context, "Ride requested. Finding drivers…");
+        context.push(
+          Approutes.viewRequest,
+          extra: <String, dynamic>{
+            'rideId': ride.id,
+            'pickup': ride.pickup,
+            'drop': ride.drop,
+            'seats': ride.seats,
+            'pickupLatLng': (ride.pickupLat != null && ride.pickupLng != null)
+                ? LatLng(ride.pickupLat!, ride.pickupLng!)
+                : null,
+            'dropLatLng': (ride.dropLat != null && ride.dropLng != null)
+                ? LatLng(ride.dropLat!, ride.dropLng!)
+                : null,
+          },
+        );
+      }
+    });
+
+    final isBooking = ref.watch(
+      rideCreationProvider.select((s) => s.isLoading),
+    );
+
     return Scaffold(
-      backgroundColor: Consonants.scaffoldBackgroundColor,
       body: Stack(
         children: [
-          Container(color: Consonants.scaffoldBackgroundColor),
-          DraggableScrollableSheet(
-            initialChildSize: 0.34,
-            minChildSize: 0.25,
-            maxChildSize: 0.5,
-            builder: (context, scrollController) {
-              return Container(
-                padding: EdgeInsets.only(left: 20.w, right: 20.w, bottom: 20.h),
-                decoration: BoxDecoration(
-                  color: Consonants.whiteColor,
-                  borderRadius: BorderRadius.vertical(
-                    top: Radius.circular(30.r),
-                  ),
+          const _MapLayer(),
+          const HomePickupPin(),
+          SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(16.w, 8.h, 16.w, 0),
+              child: const _HomeHeader(),
+            ),
+          ),
+          HomeBookingSheet(
+            isBooking: isBooking,
+            onBookPressed: isBooking ? null : _onBookPressed,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _onLocationResolved(LatLng location) async {
+    final completer = ref.read(mapControllerCompleterProvider);
+    final controller = await completer.future;
+    await controller.animateCamera(
+      CameraUpdate.newLatLngZoom(location, kDefaultZoom),
+    );
+    ref.read(pickupLocationProvider.notifier).update(location);
+  }
+
+  Future<void> _onBookPressed() async {
+    final pickup = ref.read(pickupLocationProvider);
+    final rideReq = ref.read(rideRequestProvider);
+    final selectedIndex = ref.read(selectedRideIndexProvider);
+
+    if (pickup == null) {
+      ErrorHandler.show(
+        context,
+        "We couldn't detect your pickup location yet. Please wait a moment and try again.",
+      );
+      return;
+    }
+    if (rideReq.drop.isEmpty || rideReq.dropLatLng == null) {
+      ErrorHandler.show(
+        context,
+        "Please choose your drop-off location from the suggestions.",
+      );
+      return;
+    }
+
+    // Resolve pickup text — prefer the reverse-geocoded address, fall
+    // back to coords so the backend always gets something human-readable.
+    final pickupAddress = ref
+            .read(pickupAddressProvider)
+            .whenOrNull(data: (a) => (a == null || a.isEmpty) ? null : a) ??
+        '${pickup.latitude.toStringAsFixed(5)}, '
+            '${pickup.longitude.toStringAsFixed(5)}';
+
+    final request = CreateRideRequest(
+      pickup: pickupAddress,
+      drop: rideReq.drop,
+      pickupLat: pickup.latitude,
+      pickupLng: pickup.longitude,
+      dropLat: rideReq.dropLatLng!.latitude,
+      dropLng: rideReq.dropLatLng!.longitude,
+      seats: rideReq.seats,
+      rideType: kRideOptions[selectedIndex].title.toUpperCase(),
+    );
+
+    try {
+      await ref.read(rideCreationProvider.notifier).createRide(request);
+      // Navigation handled by ref.listen above.
+    } catch (_) {
+      // Surfaced via state.error → ref.listen.
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HOME HEADER  — greeting pill on the left, message + notification icons
+// on the right. Mirrors the driver homepage's `_Header` look so both flows
+// feel like the same app, but wrapped in a white pill to stay readable
+// over the GoogleMap background.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _HomeHeader extends StatelessWidget {
+  const _HomeHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        const Expanded(child: _GreetingPill()),
+        SizedBox(width: 10.w),
+        _CircleIconButton(
+          icon: Icons.send_outlined,
+          badge: true,
+          onTap: () => context.push(Approutes.passengerMessages),
+        ),
+        SizedBox(width: 8.w),
+        _CircleIconButton(
+          icon: Icons.notifications_none_rounded,
+          badge: true,
+          onTap: () => context.push(Approutes.passengerNotification),
+        ),
+      ],
+    );
+  }
+}
+
+class _GreetingPill extends StatelessWidget {
+  const _GreetingPill();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 8.h),
+      decoration: BoxDecoration(
+        color: Consonants.whiteColor,
+        borderRadius: BorderRadius.circular(14.r),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 38.w,
+            height: 38.w,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Consonants.primaryColor, Color(0xff5AC8FA)],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Consonants.primaryColor.withValues(alpha: 0.30),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
                 ),
-                child: SingleChildScrollView(
-                  controller: scrollController,
-                  child: Column(
-                    children: [
-                      Divider(
-                        color: Consonants.lightGreyColor,
-                        thickness: 4.h,
-                        indent: 150.w,
-                        endIndent: 150.w,
-                      ),
-                      homeCustomWidgets().homeContainer(),
-                      SizedBox(height: 15.h),
-                      homeCustomWidgets().seatsCustomContainer(),
-                      SizedBox(height: 20.h),
-                      CustomWidgets.customButton("Publish", () async {}),
-                    ],
-                  ),
+              ],
+            ),
+            child: Text(
+              "M",
+              style: TextStyle(
+                fontFamily: Consonants.fontFamily,
+                fontSize: 15.sp,
+                fontWeight: FontWeight.w800,
+                color: Consonants.whiteColor,
+              ),
+            ),
+          ),
+          SizedBox(width: 10.w),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    CustomWidgets.customText(
+                      "Good morning,",
+                      10.sp,
+                      Consonants.greyColor,
+                      FontWeight.w500,
+                    ),
+                    SizedBox(width: 4.w),
+                    CustomWidgets.customText(
+                      "👋",
+                      10.sp,
+                      Consonants.greyColor,
+                      FontWeight.w500,
+                    ),
+                  ],
                 ),
-              );
-            },
+                SizedBox(height: 2.h),
+                CustomWidgets.customText(
+                  "Mohsin Karim",
+                  13.sp,
+                  Consonants.boldTextColor,
+                  FontWeight.w800,
+                  maxLines: 1,
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -53,90 +282,97 @@ class Homepage extends StatelessWidget {
   }
 }
 
-class homeCustomWidgets {
-  Widget homeContainer() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Consonants.scaffoldBackgroundColor,
-        borderRadius: BorderRadius.circular(10.r),
-      ),
-      child: Column(
+class _CircleIconButton extends StatelessWidget {
+  final IconData icon;
+  final bool badge;
+  final VoidCallback? onTap;
+
+  const _CircleIconButton({
+    required this.icon,
+    this.badge = false,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Stack(
+        clipBehavior: Clip.none,
         children: [
-          homeTextField(
-            "Current Location",
-            Icons.location_city_outlined,
-            Consonants.primaryColor,
+          Container(
+            width: 44.w,
+            height: 44.w,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: Consonants.whiteColor,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.06),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Icon(icon, size: 20.sp, color: Consonants.boldTextColor),
           ),
-          Divider(color: Consonants.whiteColor),
-          homeTextField(
-            "Where are you going?",
-            Icons.search,
-            Consonants.boldTextColor,
-          ),
+          if (badge)
+            Positioned(
+              top: 6.h,
+              right: 8.w,
+              child: Container(
+                width: 9.w,
+                height: 9.w,
+                decoration: BoxDecoration(
+                  color: const Color(0xffEF4444),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Consonants.whiteColor, width: 1.5),
+                ),
+              ),
+            ),
         ],
       ),
     );
   }
+}
 
-  Widget homeTextField(String hintText, IconData icon, Color iconColor) {
-    return TextField(
-      decoration: InputDecoration(
-        hintStyle: TextStyle(
-          color: Consonants.greyColor,
-          fontSize: 10.sp,
-          fontWeight: FontWeight.w500,
-        ),
-        border: InputBorder.none,
-        hintText: hintText,
-        contentPadding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 15.h),
-        prefixIcon: Icon(icon, color: iconColor),
-      ),
-    );
-  }
+// ─────────────────────────────────────────────────────────────────────────────
+// Map layer — isolated so camera events don't rebuild the sheet / top bar.
+//
+// The GoogleMap widget itself never rebuilds: all props are const, and state
+// flows outward via `ref.read` inside the callbacks. `onCameraMove` pushes the
+// center coordinate into [pickupLocationProvider] so the pickup row reflects
+// the pan in real time.
+// ─────────────────────────────────────────────────────────────────────────────
 
-  Widget homeIncrementDecrementButton(IconData icon, VoidCallback onpressed) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Consonants.whiteColor,
-        borderRadius: BorderRadius.circular(50.r),
-      ),
-      child: Center(
-        child: IconButton(
-          onPressed: onpressed,
-          icon: Icon(icon, size: 10.sp, color: Consonants.primaryColor),
-        ),
-      ),
-    );
-  }
+class _MapLayer extends ConsumerWidget {
+  const _MapLayer();
 
-  Widget seatsCustomContainer() {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 5.h),
-      decoration: BoxDecoration(
-        color: Consonants.scaffoldBackgroundColor,
-        borderRadius: BorderRadius.circular(10.r),
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return GoogleMap(
+      initialCameraPosition: const CameraPosition(
+        target: kDefaultLatLng,
+        zoom: kDefaultZoom,
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Icon(Icons.person_sharp, color: Consonants.greyColor, size: 12.sp),
-          CustomWidgets.customText(
-            "Select Seats",
-            13.sp,
-            Consonants.greyColor,
-            FontWeight.w600,
-          ),
-          SizedBox(width: 30.w),
-          homeIncrementDecrementButton(Icons.minimize, () {}),
-          CustomWidgets.customText(
-            "1",
-            12.sp,
-            Consonants.boldTextColor,
-            FontWeight.bold,
-          ),
-          homeIncrementDecrementButton(Icons.add, () {}),
-        ],
+      style: kMinimalMapStyle,
+      myLocationEnabled: true,
+      myLocationButtonEnabled: true,
+      compassEnabled: true,
+      zoomControlsEnabled: false,
+      mapToolbarEnabled: false,
+      padding: EdgeInsets.only(
+        top: 80.h,
+        bottom: MediaQuery.of(context).size.height * 0.42,
       ),
+      onMapCreated: (controller) {
+        final completer = ref.read(mapControllerCompleterProvider);
+        if (!completer.isCompleted) completer.complete(controller);
+      },
+      onCameraMove: (position) {
+        ref.read(pickupLocationProvider.notifier).update(position.target);
+      },
     );
   }
 }

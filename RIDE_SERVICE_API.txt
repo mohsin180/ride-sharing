@@ -1,0 +1,324 @@
+================================================================================
+RIDE-SERVICE API CONTRACT
+================================================================================
+
+This document is the source of truth for the ride-service REST endpoints
+the Flutter frontend consumes. The backend MUST conform exactly to these
+shapes — field names, types, casing, and status codes are all checked
+against this contract by the client.
+
+If you need to change a shape, update this document FIRST and let the
+frontend team know so the parser can be updated in lockstep.
+
+
+--------------------------------------------------------------------------------
+1. CONVENTIONS
+--------------------------------------------------------------------------------
+
+Base URL
+    All endpoints below are RELATIVE to:
+
+        ${API_BASE_URL}/rides
+
+    Where API_BASE_URL is configured per environment (e.g.
+    http://localhost:8080/api/v1, https://api.production.com/api/v1).
+    The /rides prefix is part of every ride-service path.
+
+Authentication
+    Every endpoint REQUIRES a valid JWT in the Authorization header:
+
+        Authorization: Bearer <jwt>
+
+    The user's identity (passenger or driver) is read from the token's
+    claims. The frontend NEVER sends a userId in the body or path.
+    Reject with 401 if the token is missing/invalid/expired.
+
+Content type
+    Request and response bodies are application/json with UTF-8 encoding.
+    Send `Content-Type: application/json` on all requests with a body.
+
+Timestamps
+    Use ISO-8601 UTC strings, e.g. "2026-05-04T10:23:45Z".
+    Frontend parses with `DateTime.tryParse` — malformed values are
+    silently dropped, so prefer correct formatting over guessing.
+
+Numeric types
+    Ints stay ints, doubles stay doubles. Don't quote them as strings.
+    The frontend coerces `num` defensively but it's a code smell.
+
+Casing
+    All field names are lowerCamelCase, exactly as shown in the examples.
+    Status enum values are UPPER_SNAKE_CASE strings (see §5).
+
+Successful responses
+    Use 200 OK for reads, 201 Created for creates. Body is the resource.
+
+Error responses
+    For any 4xx/5xx, return:
+
+        {
+          "message": "Human-readable explanation."
+        }
+
+    The frontend's ErrorHandler picks `message` (also accepts `error`
+    and `detail` as fallback keys) and surfaces it via a snackbar.
+    Include enough detail for the user to act, e.g. "Drop-off address
+    is too far from pickup" — NOT a stack trace or internal code.
+
+
+--------------------------------------------------------------------------------
+2. GET /rides/stats
+--------------------------------------------------------------------------------
+
+Purpose
+    Returns aggregate ride statistics for the authenticated user. Used
+    on the passenger and driver profile screens to render the
+    "Trips / Rating / Member Since" stats card. The same endpoint
+    serves both roles; the backend disambiguates from the JWT.
+
+Request
+    Method:  GET
+    Path:    /rides/stats
+    Headers: Authorization: Bearer <jwt>
+    Body:    (none)
+
+Response 200 OK
+    {
+      "trips":  24,
+      "rating": 4.8
+    }
+
+Field reference
+    trips   int, REQUIRED. Count of COMPLETED rides for the
+            authenticated user.
+              - passenger → rides taken
+              - driver    → rides offered
+
+    rating  double 1.0–5.0, OPTIONAL. Average rating across all of
+            this user's completed rides.
+              - Send `null` (or omit the field) for users who have
+                never been rated. The frontend renders "—" in that
+                case rather than "0.0".
+              - Frontend formats to one decimal place (4.8 → "4.8").
+
+Errors
+    401 Unauthorized   — missing/invalid token.
+    500 Server error   — unexpected backend failure.
+
+Notes
+    The frontend caches this response per-session via Riverpod's
+    FutureProvider. After a ride completes, the client invalidates the
+    cache and re-hits this endpoint — so respond with the current
+    aggregate, not a long-cached value, on every call.
+
+
+--------------------------------------------------------------------------------
+3. POST /rides
+--------------------------------------------------------------------------------
+
+Purpose
+    Passenger creates a new ride request. Backend should:
+      - validate the request,
+      - persist a new Ride row with status = PENDING,
+      - return the created ride (with its assigned id).
+
+    Driver matching / dispatch is OUT OF SCOPE for this endpoint — it
+    can happen asynchronously after the response is returned.
+
+Request
+    Method:  POST
+    Path:    /rides
+    Headers: Authorization: Bearer <jwt>    (must be a passenger)
+             Content-Type: application/json
+
+    Body:
+    {
+      "pickup":    "Hostel City, Block B",
+      "drop":      "Faizabad Metro",
+      "pickupLat": 33.6844,
+      "pickupLng": 73.0479,
+      "dropLat":   33.6620,
+      "dropLng":   73.0708,
+      "seats":     2,
+      "rideType":  "ECONOMY"
+    }
+
+Field reference (request)
+    pickup     string, REQUIRED. Human-readable pickup address. The
+               frontend prefers a reverse-geocoded address but falls
+               back to "lat, lng" when geocoding hasn't resolved.
+
+    drop       string, REQUIRED. Human-readable drop-off address from
+               Google Places autocomplete.
+
+    pickupLat  double, REQUIRED. Pickup latitude in decimal degrees.
+    pickupLng  double, REQUIRED. Pickup longitude.
+    dropLat    double, REQUIRED. Drop latitude.
+    dropLng    double, REQUIRED. Drop longitude.
+
+    seats      int, REQUIRED. Number of seats requested. Range [1, 6].
+               The frontend's UI exposes 1–4; the wider range is for
+               future flexibility.
+
+    rideType   string enum, REQUIRED. One of:
+                 - "ECONOMY"
+                 - "PREMIUM"
+               Sent in UPPERCASE. Reject other values with 400.
+
+Validation expected on the backend
+    - All required fields present and well-typed.
+    - Coordinates within valid ranges (lat ∈ [-90, 90],
+      lng ∈ [-180, 180]).
+    - seats within [1, 6].
+    - rideType ∈ {"ECONOMY", "PREMIUM"}.
+    - The authenticated user is a PASSENGER (not a DRIVER). Drivers
+      requesting a ride should be rejected with 403.
+    - (Optional) Reject if the passenger already has an active
+      (non-terminal) ride. Suggested status code: 409 Conflict.
+
+Response 201 Created
+    {
+      "id":          "f2b8a1d4-...",
+      "passengerId": "u_9c2e...",
+      "driverId":    null,
+      "pickup":      "Hostel City, Block B",
+      "drop":        "Faizabad Metro",
+      "pickupLat":   33.6844,
+      "pickupLng":   73.0479,
+      "dropLat":     33.6620,
+      "dropLng":     73.0708,
+      "seats":       2,
+      "rideType":    "ECONOMY",
+      "status":      "PENDING",
+      "createdAt":   "2026-05-04T10:23:45Z"
+    }
+
+Field reference (response)
+    id           string, REQUIRED. Server-assigned ride identifier.
+                 Frontend uses this as the handle for downstream
+                 screens (status polling, cancellation, etc.).
+
+    passengerId  string, OPTIONAL. The user id of the requesting
+                 passenger. Useful when the same response shape is
+                 reused on driver-facing endpoints; can be omitted
+                 from this passenger-create response.
+
+    driverId     string | null, OPTIONAL. Always null on creation
+                 (no driver matched yet). Send null or omit.
+
+    pickup       string, REQUIRED. Echo the pickup text the client
+                 sent. (Do NOT silently re-geocode on the server —
+                 the frontend already did the lookup.)
+
+    drop         string, REQUIRED. Echo the drop text.
+
+    pickupLat /
+    pickupLng /
+    dropLat /
+    dropLng      double, OPTIONAL. Echo the coords. Recommended to
+                 always send so downstream screens can render the
+                 map without a refetch.
+
+    seats        int, REQUIRED. Echo the seat count.
+
+    rideType     string enum, REQUIRED. Echo the ride type.
+
+    status       string enum, REQUIRED. Always "PENDING" on the
+                 create response. See §5 for the full state machine.
+
+    createdAt    ISO-8601 UTC, OPTIONAL but recommended. Used for
+                 sort order and "X minutes ago" labels.
+
+Errors
+    400 Bad Request    — invalid body (missing fields, bad types,
+                         out-of-range values).
+    401 Unauthorized   — missing/invalid token.
+    403 Forbidden      — authenticated user is not a passenger.
+    409 Conflict       — passenger already has an active ride
+                         (optional; if backend chooses to enforce).
+    500 Server error   — unexpected backend failure.
+
+
+--------------------------------------------------------------------------------
+4. ERROR RESPONSE FORMAT (applies to ALL endpoints)
+--------------------------------------------------------------------------------
+
+For any non-2xx response, return JSON with a `message` field:
+
+    HTTP/1.1 400 Bad Request
+    Content-Type: application/json
+
+    {
+      "message": "seats must be between 1 and 6."
+    }
+
+The frontend's shared error handler:
+  1. Reads `message` from the JSON body. Falls back to `error`, then
+     `detail`, then a generic message keyed off the status code.
+  2. Wraps it as an ApiException with the HTTP status code attached.
+  3. Surfaces it via a snackbar to the user.
+
+Generic fallbacks the client uses if the body is missing/malformed:
+    400 → "Bad request. Please check your input and try again."
+    401 → "Unauthorized. Please log in again."
+    403 → "You do not have permission to perform this action."
+    404 → "Resource not found."
+    409 → "Conflict. This resource already exists."
+    5xx → "Server error. Please try again later."
+
+
+--------------------------------------------------------------------------------
+5. RIDE STATUS STATE MACHINE
+--------------------------------------------------------------------------------
+
+The `status` field on a Ride moves through these states:
+
+    PENDING     Initial state on POST /rides. Waiting for a driver
+                to accept.
+
+    ACCEPTED    A driver has accepted the ride. driverId is now
+                populated.
+
+    STARTED     Pickup has occurred; the trip is underway.
+                (Synonym accepted by frontend: IN_PROGRESS.)
+
+    COMPLETED   Trip finished successfully (drop-off reached).
+                Counted in the user's `trips` stat.
+
+    CANCELLED   Ride was cancelled by passenger, driver, or system
+                before completion. NOT counted in trips.
+                (Synonym accepted by frontend: CANCELED, US spelling.)
+
+The frontend tolerates unknown values (e.g. a future "EN_ROUTE" state)
+by mapping them to UNKNOWN — older app versions won't crash, but they
+also won't render meaningfully, so coordinate before adding new states.
+
+Send the status as the UPPERCASE string, NOT as an integer.
+
+
+--------------------------------------------------------------------------------
+6. ENDPOINTS NOT YET IMPLEMENTED ON THE FRONTEND
+--------------------------------------------------------------------------------
+
+The following endpoints are anticipated but NOT currently consumed by
+the Flutter client. Coordinate before building so the contracts can be
+agreed on up front rather than retrofitted.
+
+    GET    /rides/{id}           — fetch a single ride (status polling)
+    GET    /rides/me/active      — current passenger's active ride
+    GET    /rides/me/history     — paginated list of completed rides
+    POST   /rides/{id}/cancel    — passenger cancels their pending ride
+    POST   /rides/{id}/accept    — driver accepts a pending ride
+    POST   /rides/{id}/start     — driver marks pickup complete
+    POST   /rides/{id}/complete  — driver marks drop-off complete
+    POST   /rides/{id}/rate      — passenger rates the driver
+    GET    /rides/available      — driver lists pending rides nearby
+
+Hold off on building these until they're explicitly requested — the
+contract above (stats + create) is the full set of ride-service
+endpoints the frontend currently needs.
+
+
+--------------------------------------------------------------------------------
+END OF CONTRACT
+--------------------------------------------------------------------------------

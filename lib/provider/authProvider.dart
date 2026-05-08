@@ -1,7 +1,9 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:ride_sharing/controller/authService.dart';
 import 'package:ride_sharing/model/authModels.dart';
 import 'package:ride_sharing/provider/providers.dart';
+import 'package:ride_sharing/widgets/consonants/errorHandler.dart';
 import 'package:ride_sharing/widgets/consonants/tokenStorage.dart';
 
 final authControllerProvider = StateNotifierProvider<Authprovider, AuthState>((
@@ -39,7 +41,7 @@ class Authprovider extends StateNotifier<AuthState> {
     } catch (e) {
       state = state.copyWith(
         isloading: false,
-        error: e.toString(),
+        error: ErrorHandler.message(e),
         isLoggedIn: false,
       );
       rethrow;
@@ -61,7 +63,7 @@ class Authprovider extends StateNotifier<AuthState> {
     } catch (e) {
       state = state.copyWith(
         isloading: false,
-        error: e.toString(),
+        error: ErrorHandler.message(e),
         isRegistered: false,
       );
       rethrow;
@@ -74,7 +76,7 @@ class Authprovider extends StateNotifier<AuthState> {
       await authservice.verifyEmail(token);
       state = state.copyWith(isloading: false);
     } catch (e) {
-      state = state.copyWith(isloading: false, error: e.toString());
+      state = state.copyWith(isloading: false, error: ErrorHandler.message(e));
     }
   }
 
@@ -85,7 +87,7 @@ class Authprovider extends StateNotifier<AuthState> {
       state = state.copyWith(isloading: false, emailVerified: verified);
       return verified;
     } catch (e) {
-      state = state.copyWith(isloading: false, error: e.toString());
+      state = state.copyWith(isloading: false, error: ErrorHandler.message(e));
       rethrow;
     }
   }
@@ -96,7 +98,7 @@ class Authprovider extends StateNotifier<AuthState> {
       await authservice.forgotPassword(request);
       state = state.copyWith(isloading: false, isSuccess: true);
     } catch (e) {
-      state = state.copyWith(error: e.toString());
+      state = state.copyWith(isloading: false, error: ErrorHandler.message(e));
       rethrow;
     }
   }
@@ -107,9 +109,19 @@ class Authprovider extends StateNotifier<AuthState> {
       await authservice.resetPassword(request);
       state = state.copyWith(isloading: false, isSuccess: true);
     } catch (e) {
-      state = state.copyWith(error: e.toString());
+      state = state.copyWith(isloading: false, error: ErrorHandler.message(e));
       rethrow;
     }
+  }
+
+  Future<void> logout() async {
+    await Tokenstorage.deleteToken();
+    state = AuthState(
+      isloading: false,
+      error: null,
+      isLoggedIn: false,
+      isRegistered: false,
+    );
   }
 
   Future<bool> checkResetStatus(String token) async {
@@ -168,6 +180,16 @@ class AuthState {
   }
 }
 
+/// Validates a password-reset token against the backend on demand.
+/// Used by [Newpassword] to gate the form behind a valid token. Family
+/// param is the token string from the deep link.
+final resetTokenStatusProvider = FutureProvider.family<bool, String>((
+  ref,
+  token,
+) {
+  return ref.read(authServiceProvider).checkResetStatus(token);
+});
+
 final genderProvider = StateNotifierProvider<GenderNotifier, String?>((ref) {
   return GenderNotifier();
 });
@@ -222,7 +244,7 @@ class RoleNotifier extends StateNotifier<RoleState> {
       await Tokenstorage.saveToken(response.token);
       state = state.copyWith(isLoading: false, response: response);
     } catch (e) {
-      state = state.copyWith(error: e.toString());
+      state = state.copyWith(isLoading: false, error: ErrorHandler.message(e));
     }
   }
 }

@@ -1,35 +1,46 @@
 // register models
 class RegisterRequest {
-  String email;
-  String password;
-  String gender;
+  final String email;
+  final String password;
+  final String gender;
+
   RegisterRequest({
     required this.email,
     required this.password,
     required this.gender,
   });
 
-  Map<String, dynamic> toJson() {
-    return {"email": email, "password": password, "gender": gender};
-  }
+  Map<String, dynamic> toJson() => {
+    "email": email,
+    "password": password,
+    "gender": gender,
+  };
 }
 
 class RegisterResponse {
   final String id;
   final String email;
+
   RegisterResponse({required this.id, required this.email});
+
   factory RegisterResponse.fromJson(Map<String, dynamic> json) {
-    return RegisterResponse(id: json['id'], email: json['email']);
+    return RegisterResponse(
+      id: (json['id'] ?? '').toString(),
+      email: (json['email'] ?? '').toString(),
+    );
   }
+
+  Map<String, dynamic> toJson() => {"id": id, "email": email};
 }
 
 // login Models
 class LoginRequest {
   final String email;
   final String password;
+
   LoginRequest({required this.email, required this.password});
 
-  Map<String, dynamic> toJson() => {'email': email, 'password': password};
+  Map<String, dynamic> toJson() => {"email": email, "password": password};
 }
 
 class LoginResponse {
@@ -38,8 +49,10 @@ class LoginResponse {
   LoginResponse({required this.token});
 
   factory LoginResponse.fromJson(Map<String, dynamic> json) {
-    return LoginResponse(token: json['token']);
+    return LoginResponse(token: (json['token'] ?? '').toString());
   }
+
+  Map<String, dynamic> toJson() => {"token": token};
 }
 
 // reset Password
@@ -49,7 +62,10 @@ class ResetPasswordDto {
 
   ResetPasswordDto({required this.token, required this.newPassword});
 
-  Map<String, dynamic> toJson() => {'token': token, 'newPassword': newPassword};
+  Map<String, dynamic> toJson() => {
+    "token": token,
+    "newPassword": newPassword,
+  };
 }
 
 class ForgotPassword {
