@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ride_sharing/provider/authProvider.dart';
+import 'package:ride_sharing/provider/availableRidesProvider.dart';
+import 'package:ride_sharing/provider/driverFeedProvider.dart';
+import 'package:ride_sharing/provider/myRidesProvider.dart';
 import 'package:ride_sharing/view/driverScreens/driverHomepage.dart';
 import 'package:ride_sharing/view/driverScreens/driverProfile.dart';
 import 'package:ride_sharing/view/driverScreens/driverRides.dart';
@@ -79,6 +82,18 @@ class _BottomnavbarState extends ConsumerState<Bottomnavbar> {
           backgroundColor: Consonants.whiteColor,
           onDestinationSelected: (index) {
             ref.read(bottomNavIndexProvider.notifier).select(index);
+            // Opening the Ride tab refetches the ride lists so changes made
+            // elsewhere show up immediately — e.g. a ride the host cancelled
+            // disappears from a co-passenger's "Your Rides", and a cancelled
+            // request drops off the driver feed.
+            if (index == 1) {
+              if (isDriver) {
+                ref.invalidate(driverFeedProvider);
+              } else {
+                ref.invalidate(myRidesProvider);
+                ref.invalidate(availableRidesProvider);
+              }
+            }
           },
           destinations: const [
             NavigationDestination(

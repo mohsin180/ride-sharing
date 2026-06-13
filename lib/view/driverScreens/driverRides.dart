@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:ride_sharing/model/rideModels.dart';
+import 'package:ride_sharing/provider/driverFeedProvider.dart';
 import 'package:ride_sharing/provider/driverStatusProvider.dart';
 import 'package:ride_sharing/view/driverScreens/driverViewDetails.dart';
+import 'package:ride_sharing/widgets/consonants/apiException.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
 
@@ -12,148 +15,202 @@ import 'package:ride_sharing/widgets/custom/customWidgets.dart';
 /// see requests from passengers they're comfortable picking up. Each
 /// request is rendered as a summary card with the host info, route,
 /// total fare, rider count, and CTAs to decline or view full details.
-class Driverrides extends StatefulWidget {
+///
+/// Backed by `driverFeedProvider` (GET /api/v1/rides/driver/feed) while
+/// the driver is online; offline it shows a placeholder and skips the
+/// fetch. Locally-declined ride ids are hidden until the next refresh.
+class Driverrides extends ConsumerStatefulWidget {
   const Driverrides({super.key});
 
   @override
-  State<Driverrides> createState() => _DriverridesState();
+  ConsumerState<Driverrides> createState() => _DriverridesState();
 }
 
 enum _GenderFilter { all, male, female }
 
-class _DriverridesState extends State<Driverrides> {
+class _DriverridesState extends ConsumerState<Driverrides> {
   _GenderFilter _filter = _GenderFilter.all;
 
-  // Demo seed — real data will come from the rides API. Mix of male and
-  // female hosts so the filter is visibly useful out of the box.
-  static const List<_RideRequest> _rides = [
-    _RideRequest(
-      hostName: "Sarah Ahmed",
-      hostInitial: "S",
-      hostRating: "4.9",
-      gender: "FEMALE",
-      totalFare: 650,
-      riderCount: 3,
-      startPoint: "Hostel City, Block B",
-      endPoint: "Taramri Chowk",
-      distance: "12.4 km",
-      duration: "32 min",
-    ),
-    _RideRequest(
-      hostName: "Ali Raza",
-      hostInitial: "A",
-      hostRating: "4.7",
-      gender: "MALE",
-      totalFare: 480,
-      riderCount: 2,
-      startPoint: "Bahria Phase 7",
-      endPoint: "Faizabad Metro",
-      distance: "8.2 km",
-      duration: "22 min",
-    ),
-    _RideRequest(
-      hostName: "Hina Malik",
-      hostInitial: "H",
-      hostRating: "4.8",
-      gender: "FEMALE",
-      totalFare: 320,
-      riderCount: 1,
-      startPoint: "G-9 Markaz",
-      endPoint: "Saddar",
-      distance: "9.5 km",
-      duration: "26 min",
-    ),
-    _RideRequest(
-      hostName: "Usman Khan",
-      hostInitial: "U",
-      hostRating: "4.6",
-      gender: "MALE",
-      totalFare: 540,
-      riderCount: 2,
-      startPoint: "I-8 Sector",
-      endPoint: "Zero Point",
-      distance: "11.2 km",
-      duration: "28 min",
-    ),
-  ];
+  // Ride ids the driver declined this session — hidden from the list
+  // without a backend round-trip (there's no per-driver decline yet, so
+  // a refresh brings them back).
+  final Set<String> _declined = {};
 
-  List<_RideRequest> get _filtered {
+  List<_RideRequest> _applyGenderFilter(List<_RideRequest> rides) {
     switch (_filter) {
       case _GenderFilter.all:
-        return _rides;
+        return rides;
       case _GenderFilter.male:
-        return _rides.where((r) => r.gender == "MALE").toList();
+        return rides.where((r) => r.gender == "MALE").toList();
       case _GenderFilter.female:
-        return _rides.where((r) => r.gender == "FEMALE").toList();
+        return rides.where((r) => r.gender == "FEMALE").toList();
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final filtered = _filtered;
-    final maleCount = _rides.where((r) => r.gender == "MALE").length;
-    final femaleCount = _rides.where((r) => r.gender == "FEMALE").length;
+    final isOnline = ref.watch(driverOnlineProvider);
 
     return Scaffold(
       backgroundColor: Consonants.scaffoldBackgroundColor,
       body: SafeArea(
-        child: Consumer(
-          builder: (context, ref, _) {
-            final isOnline = ref.watch(driverOnlineProvider);
-            return SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              padding: EdgeInsets.only(bottom: 24.h),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _Header(
-                    rideCount: isOnline ? filtered.length : 0,
-                    isOnline: isOnline,
-                  ),
-                  SizedBox(height: 14.h),
-                  if (!isOnline)
-                    _OfflinePlaceholder(
-                      onGoOnline: () =>
-                          ref.read(driverOnlineProvider.notifier).goOnline(),
-                    )
-                  else ...[
-                    _FilterPills(
-                      selected: _filter,
-                      allCount: _rides.length,
-                      maleCount: maleCount,
-                      femaleCount: femaleCount,
-                      onSelect: (v) => setState(() => _filter = v),
-                    ),
-                    SizedBox(height: 14.h),
-                    if (filtered.isEmpty)
-                      _EmptyState(filter: _filter)
-                    else
-                      for (int i = 0; i < filtered.length; i++) ...[
-                        _RideSummaryCard(
-                          ride: filtered[i],
-                          onViewDetails: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const DriverViewDetails(),
-                            ),
+        child: RefreshIndicator(
+          onRefresh: () async => ref.invalidate(driverFeedProvider),
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics(),
+            ),
+            padding: EdgeInsets.only(bottom: 24.h),
+            child: !isOnline
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const _Header(rideCount: 0, isOnline: false),
+                      SizedBox(height: 14.h),
+                      _OfflinePlaceholder(
+                        onGoOnline: () =>
+                            ref.read(driverOnlineProvider.notifier).goOnline(),
+                      ),
+                    ],
+                  )
+                : ref.watch(driverFeedProvider).when(
+                      loading: () => Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const _Header(rideCount: 0, isOnline: true),
+                          SizedBox(height: 80.h),
+                          const Center(child: CircularProgressIndicator()),
+                        ],
+                      ),
+                      error: (e, _) => Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const _Header(rideCount: 0, isOnline: true),
+                          SizedBox(height: 14.h),
+                          _FeedError(
+                            message: e is ApiException
+                                ? e.message
+                                : "Couldn't load ride requests",
+                            onRetry: () => ref.invalidate(driverFeedProvider),
                           ),
-                          onDecline: () {
-                            ScaffoldMessenger.of(context)
-                              ..hideCurrentSnackBar()
-                              ..showSnackBar(
-                                CustomWidgets.customErrorSnackBar(
-                                    "Ride declined"),
-                              );
-                          },
-                        ),
-                        if (i != filtered.length - 1) SizedBox(height: 14.h),
-                      ],
-                  ],
-                ],
-              ),
-            );
-          },
+                        ],
+                      ),
+                      data: (rides) {
+                        final all = rides
+                            .where((r) => !_declined.contains(r.id))
+                            .map(_RideRequest.fromAvailable)
+                            .toList();
+                        final filtered = _applyGenderFilter(all);
+                        final maleCount =
+                            all.where((r) => r.gender == "MALE").length;
+                        final femaleCount =
+                            all.where((r) => r.gender == "FEMALE").length;
+
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _Header(
+                                rideCount: filtered.length, isOnline: true),
+                            SizedBox(height: 14.h),
+                            _FilterPills(
+                              selected: _filter,
+                              allCount: all.length,
+                              maleCount: maleCount,
+                              femaleCount: femaleCount,
+                              onSelect: (v) => setState(() => _filter = v),
+                            ),
+                            SizedBox(height: 14.h),
+                            if (filtered.isEmpty)
+                              _EmptyState(filter: _filter)
+                            else
+                              for (int i = 0; i < filtered.length; i++) ...[
+                                _RideSummaryCard(
+                                  ride: filtered[i],
+                                  onViewDetails: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => DriverViewDetails(
+                                        ride: filtered[i].source,
+                                      ),
+                                    ),
+                                  ),
+                                  onDecline: () {
+                                    setState(
+                                        () => _declined.add(filtered[i].id));
+                                    ScaffoldMessenger.of(context)
+                                      ..hideCurrentSnackBar()
+                                      ..showSnackBar(
+                                        CustomWidgets.customErrorSnackBar(
+                                            "Ride declined"),
+                                      );
+                                  },
+                                ),
+                                if (i != filtered.length - 1)
+                                  SizedBox(height: 14.h),
+                              ],
+                          ],
+                        );
+                      },
+                    ),
+          ),
         ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FEED ERROR
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _FeedError extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+  const _FeedError({required this.message, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: 20.w),
+      padding: EdgeInsets.symmetric(vertical: 32.h, horizontal: 20.w),
+      decoration: BoxDecoration(
+        color: Consonants.whiteColor,
+        borderRadius: BorderRadius.circular(20.r),
+        border: Border.all(color: Consonants.lightGreyColor, width: 1.2),
+      ),
+      child: Column(
+        children: [
+          Icon(Icons.cloud_off_rounded,
+              size: 36.sp, color: Consonants.greyColor),
+          SizedBox(height: 12.h),
+          CustomWidgets.customText(
+            message,
+            12.sp,
+            Consonants.boldTextColor,
+            FontWeight.w700,
+            textAlign: TextAlign.center,
+            maxLines: 3,
+          ),
+          SizedBox(height: 14.h),
+          GestureDetector(
+            onTap: onRetry,
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 22.w, vertical: 10.h),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Consonants.primaryColor, Color(0xff5AC8FA)],
+                ),
+                borderRadius: BorderRadius.circular(40.r),
+              ),
+              child: CustomWidgets.customText(
+                "Retry",
+                12.sp,
+                Consonants.whiteColor,
+                FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1021,6 +1078,7 @@ class _RideSummaryCard extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _RideRequest {
+  final String id;
   final String hostName;
   final String hostInitial;
   final String hostRating;
@@ -1032,7 +1090,12 @@ class _RideRequest {
   final String distance;
   final String duration;
 
+  /// The backend ride this card was built from — handed to the details
+  /// screen so it can seed its review + Accept flow without a refetch.
+  final AvailableRide source;
+
   const _RideRequest({
+    required this.id,
     required this.hostName,
     required this.hostInitial,
     required this.hostRating,
@@ -1043,5 +1106,29 @@ class _RideRequest {
     required this.endPoint,
     required this.distance,
     required this.duration,
+    required this.source,
   });
+
+  /// View-model from a backend [AvailableRide]. distanceKm / etaMinutes
+  /// come back null on the driver feed (no rider location), so those
+  /// fields render as "—". seatsAvailable stands in for the rider count.
+  factory _RideRequest.fromAvailable(AvailableRide r) {
+    final name = r.hostName.trim();
+    return _RideRequest(
+      id: r.id,
+      hostName: name.isEmpty ? "Passenger" : name,
+      hostInitial: name.isEmpty ? "?" : name[0].toUpperCase(),
+      hostRating: r.hostRatingLabel,
+      gender: r.hostGender ?? "",
+      totalFare: r.fareForRider != null ? r.fareForRider!.round() : 0,
+      riderCount: r.seatsAvailable,
+      startPoint: r.pickup,
+      endPoint: r.drop,
+      distance: r.distanceKm != null
+          ? "${r.distanceKm!.toStringAsFixed(1)} km"
+          : "—",
+      duration: r.etaMinutes != null ? "${r.etaMinutes} min" : "—",
+      source: r,
+    );
+  }
 }

@@ -1,5 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:latlong2/latlong.dart';
 
 /// Captures the ride request a passenger is composing on the rides
 /// screen — the pickup / destination they entered, plus seats wanted.

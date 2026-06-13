@@ -1,14 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:google_places_flutter/google_places_flutter.dart';
-import 'package:google_places_flutter/model/prediction.dart';
-import 'package:ride_sharing/provider/directionsProvider.dart' show kGoogleMapsKey;
 import 'package:ride_sharing/provider/mapProvider.dart';
 import 'package:ride_sharing/provider/rideRequestProvider.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
+import 'package:ride_sharing/widgets/maps/placeSearchField.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Ride option model + static data
@@ -136,8 +133,6 @@ class _SheetBody extends StatelessWidget {
                       SizedBox(height: 18.h),
                       const _SeatsPicker(),
                       SizedBox(height: 18.h),
-                      const _QuickActions(),
-                      SizedBox(height: 18.h),
                       CustomWidgets.customText(
                         'Choose a ride',
                         13.sp,
@@ -226,12 +221,18 @@ class _PickupRow extends ConsumerWidget {
     final pickup = ref.watch(pickupLocationProvider);
     final addressAsync = ref.watch(pickupAddressProvider);
 
+    // Pickup is now `latlong2.LatLng?` (post mapProvider migration). The
+    // helper used to take Google's LatLng — switched to plain doubles so
+    // this row stays type-agnostic until homeBookingSheet itself migrates
+    // off google_places_flutter in Stage 3.
     final label = pickup == null
         ? 'Detecting location…'
         : addressAsync.maybeWhen(
-            data: (a) =>
-                (a == null || a.isEmpty) ? _coordsLabel(pickup) : a,
-            orElse: () => _coordsLabel(pickup),
+            data: (a) => (a == null || a.isEmpty)
+                ? _coordsLabel(pickup.latitude, pickup.longitude)
+                : a,
+            orElse: () =>
+                _coordsLabel(pickup.latitude, pickup.longitude),
           );
 
     return Padding(
@@ -262,8 +263,11 @@ class _PickupRow extends ConsumerWidget {
     );
   }
 
-  String _coordsLabel(LatLng p) =>
-      '${p.latitude.toStringAsFixed(5)}, ${p.longitude.toStringAsFixed(5)}';
+  /// Lat/lng → "31.52040, 74.35870". Takes raw doubles instead of a
+  /// LatLng so the row works with whatever coordinate type the pickup
+  /// provider returns (Google's LatLng pre-migration, latlong2's now).
+  String _coordsLabel(double lat, double lon) =>
+      '${lat.toStringAsFixed(5)}, ${lon.toStringAsFixed(5)}';
 }
 
 /// Places-autocomplete drop-off field. Suggestions render in a dropdown
@@ -297,6 +301,10 @@ class _DropoffRowState extends ConsumerState<_DropoffRow> {
 
   @override
   Widget build(BuildContext context) {
+    // Bias autocomplete toward the user's current pickup so suggestions
+    // near them rank higher — significantly better UX than alphabetical.
+    final bias = ref.watch(pickupLocationProvider);
+
     return Row(
       children: [
         Icon(
@@ -306,12 +314,10 @@ class _DropoffRowState extends ConsumerState<_DropoffRow> {
         ),
         SizedBox(width: 10.w),
         Expanded(
-          child: GooglePlaceAutoCompleteTextField(
-            textEditingController: _controller,
-            googleAPIKey: kGoogleMapsKey,
-            debounceTime: 400,
-            isLatLngRequired: true,
-            countries: const ["pk"],
+          child: PlaceSearchField(
+            controller: _controller,
+            hint: 'Where to?',
+            bias: bias,
             inputDecoration: InputDecoration(
               isDense: true,
               hintText: 'Where to?',
@@ -330,32 +336,10 @@ class _DropoffRowState extends ConsumerState<_DropoffRow> {
               fontWeight: FontWeight.w600,
               color: Consonants.boldTextColor,
             ),
-            boxDecoration: BoxDecoration(
-              color: Consonants.whiteColor,
-              borderRadius: BorderRadius.circular(14.r),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.06),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            itemClick: (Prediction p) {
-              _controller.text = p.description ?? '';
-              _controller.selection = TextSelection.fromPosition(
-                TextPosition(offset: _controller.text.length),
-              );
-            },
-            getPlaceDetailWithLatLng: (Prediction p) {
-              final lat = double.tryParse(p.lat ?? '');
-              final lng = double.tryParse(p.lng ?? '');
-              ref.read(rideRequestProvider.notifier).setDrop(
-                    p.description ?? '',
-                    latLng: (lat != null && lng != null)
-                        ? LatLng(lat, lng)
-                        : null,
-                  );
+            onPicked: (s) {
+              ref
+                  .read(rideRequestProvider.notifier)
+                  .setDrop(s.formatted, latLng: s.coords);
             },
           ),
         ),
@@ -489,110 +473,6 @@ class _SeatChip extends StatelessWidget {
               14.sp,
               isSelected ? Consonants.whiteColor : Consonants.boldTextColor,
               FontWeight.w800,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Quick actions
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _QuickActions extends StatelessWidget {
-  const _QuickActions();
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: _QuickChip(
-            icon: Icons.home_rounded,
-            label: 'Home',
-            subtitle: 'Set location',
-            onTap: () {},
-          ),
-        ),
-        SizedBox(width: 10.w),
-        Expanded(
-          child: _QuickChip(
-            icon: Icons.work_rounded,
-            label: 'Work',
-            subtitle: 'Set location',
-            onTap: () {},
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _QuickChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String subtitle;
-  final VoidCallback onTap;
-
-  const _QuickChip({
-    required this.icon,
-    required this.label,
-    required this.subtitle,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
-        decoration: BoxDecoration(
-          color: Consonants.lightBlueColor,
-          borderRadius: BorderRadius.circular(14.r),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: EdgeInsets.all(6.r),
-              decoration: const BoxDecoration(
-                color: Consonants.whiteColor,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                icon,
-                color: Consonants.primaryColor,
-                size: 16.sp,
-              ),
-            ),
-            SizedBox(width: 10.w),
-            Flexible(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CustomWidgets.customText(
-                    label,
-                    12.sp,
-                    Consonants.boldTextColor,
-                    FontWeight.w700,
-                  ),
-                  SizedBox(height: 2.h),
-                  Text(
-                    subtitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontFamily: Consonants.fontFamily,
-                      fontSize: 9.sp,
-                      color: Consonants.greyColor,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
             ),
           ],
         ),

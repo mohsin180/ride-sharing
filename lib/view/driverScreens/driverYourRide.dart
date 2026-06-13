@@ -1,13 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:ride_sharing/provider/directionsProvider.dart';
-import 'package:ride_sharing/provider/mapProvider.dart' show kMinimalMapStyle;
+import 'package:latlong2/latlong.dart';
+import 'package:ride_sharing/model/rideModels.dart';
+import 'package:ride_sharing/provider/driverActiveRideProvider.dart';
+import 'package:ride_sharing/provider/driverFeedProvider.dart';
+import 'package:ride_sharing/provider/providers.dart';
+import 'package:ride_sharing/widgets/custom/liveTrackingMap.dart';
 import 'package:ride_sharing/view/bottomNavbar.dart' show bottomNavIndexProvider;
 import 'package:ride_sharing/view/driverScreens/driverViewDetails.dart';
+import 'package:ride_sharing/widgets/consonants/apiException.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
+import 'package:ride_sharing/widgets/custom/ratingSheet.dart';
 
 /// Index of the "Your Ride" tab inside [bottomNavIndexProvider]. Used to
 /// lazily mount the [GoogleMap] only after the user has visited this tab
@@ -21,14 +26,15 @@ const int _kYourRideTabIndex = 2;
 /// that morphs through pickup/drop phases. When there's no active ride
 /// the tab falls back to a clean empty state with a shortcut to Rides.
 ///
-/// State is local for now (`_demoActive`, `_currentIndex`, `_phase`) so
-/// the demo flow runs end-to-end. Lift into a provider when the rides
-/// API lands so other tabs can react to the in-progress trip.
-class Driveryourride extends StatefulWidget {
+/// The active trip is sourced from `driverActiveRideProvider`
+/// (GET /api/v1/rides/driver/active). The per-passenger pickup/drop
+/// ordering (`_currentIndex`, `_phase`) is local UI state, seeded once
+/// per ride; advancing to the final drop calls `completeRide`.
+class Driveryourride extends ConsumerStatefulWidget {
   const Driveryourride({super.key});
 
   @override
-  State<Driveryourride> createState() => _DriveryourrideState();
+  ConsumerState<Driveryourride> createState() => _DriveryourrideState();
 }
 
 enum _RidePhase {
@@ -39,27 +45,32 @@ enum _RidePhase {
   lastDropoff,
 }
 
-class _DriveryourrideState extends State<Driveryourride>
+class _DriveryourrideState extends ConsumerState<Driveryourride>
     with TickerProviderStateMixin {
-  // Hardcoded route in the Lahore area — kept consistent with kDefaultLatLng
-  // so the map style and zoom feel right.
-  static const _pickup = LatLng(31.5142, 74.3625);
-  static const _drop = LatLng(31.5290, 74.3500);
-  static const _driver = LatLng(31.5180, 74.3590);
-  static const _via1 = LatLng(31.5210, 74.3585);
-  static const _via2 = LatLng(31.5260, 74.3540);
+  // Lahore-area fallback used only when a ride has no usable coordinates.
+  static const _fallbackPickup = LatLng(31.5142, 74.3625);
+  static const _fallbackDrop = LatLng(31.5290, 74.3500);
 
-  late List<Passenger> _passengers;
+  List<Passenger> _passengers = const [];
   int _currentIndex = 0;
   _RidePhase _phase = _RidePhase.headingToPickup;
 
-  bool _demoActive = true;
+  /// Id of the ride the local phase machine is currently seeded from, so
+  /// a provider refresh (e.g. after auto-start) doesn't wipe in-trip
+  /// progress. Null when no ride is loaded.
+  String? _loadedRideId;
+
+  /// The latest active ride detail — kept so the post-trip flow can rate
+  /// each passenger by their real userId after completion.
+  RideDetails? _ride;
+
+  /// True while the complete-trip request is in flight.
+  bool _completing = false;
 
   /// True once the user has selected the "Your Ride" tab at least once.
   /// While false the map area renders a tinted placeholder, so the
-  /// expensive [GoogleMap] platform view is not created on the same
-  /// frame that the bottom navbar mounts (which would crash on Android
-  /// without a Google Maps API key configured in AndroidManifest.xml).
+  /// expensive map platform view is not created on the same frame that
+  /// the bottom navbar mounts.
   bool _mapMounted = false;
 
   late final AnimationController _pulse;
@@ -67,7 +78,6 @@ class _DriveryourrideState extends State<Driveryourride>
   @override
   void initState() {
     super.initState();
-    _passengers = List.of(kSamplePassengers);
     _pulse = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1100),
@@ -78,6 +88,86 @@ class _DriveryourrideState extends State<Driveryourride>
   void dispose() {
     _pulse.dispose();
     super.dispose();
+  }
+
+  // ─── Seeding from the backend ride ──────────────────────
+
+  /// Seed the local phase machine the first time a given ride appears.
+  /// Re-runs only when the active ride id changes, so refreshes mid-trip
+  /// preserve pickup/drop progress.
+  void _seedIfNeeded(RideDetails ride) {
+    _ride = ride;
+    if (_loadedRideId == ride.id) return;
+    _loadedRideId = ride.id;
+    _passengers = _passengersFrom(ride);
+    _currentIndex = 0;
+    _phase = _RidePhase.headingToPickup;
+    // An ACCEPTED ride the driver is now actively viewing should move to
+    // STARTED so the backend lifecycle tracks the cockpit.
+    if (ride.status == RideStatus.accepted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _ensureStarted(ride.id));
+    }
+  }
+
+  List<Passenger> _passengersFrom(RideDetails ride) {
+    const palette = [
+      Color(0xff60A5FA),
+      Color(0xffF472B6),
+      Color(0xffFBBF24),
+      Color(0xff34D399),
+      Color(0xffA78BFA),
+    ];
+    final fare = ride.fare;
+    final fareLabel = fare != null ? fare.format(fare.perRider) : "Rs —";
+
+    String nameOr(String raw) => raw.trim().isEmpty ? "Passenger" : raw.trim();
+
+    final list = <Passenger>[];
+    final hostName = nameOr(ride.host.name);
+    list.add(Passenger(
+      name: hostName,
+      initial: hostName[0].toUpperCase(),
+      avatarColor: palette[0],
+      rating: ride.host.rating != null
+          ? ride.host.rating!.toStringAsFixed(1)
+          : "—",
+      pickup: ride.pickup,
+      drop: ride.drop,
+      distanceToPickup: "—",
+      etaToPickup: "—",
+      fare: fareLabel,
+      seats: 1,
+      status: PickupStatus.current,
+      isHost: true,
+    ));
+    for (int i = 0; i < ride.coPassengers.length; i++) {
+      final c = ride.coPassengers[i];
+      final n = nameOr(c.name);
+      list.add(Passenger(
+        name: n,
+        initial: n[0].toUpperCase(),
+        avatarColor: palette[(i + 1) % palette.length],
+        rating: c.rating != null ? c.rating!.toStringAsFixed(1) : "—",
+        pickup: ride.pickup,
+        drop: ride.drop,
+        distanceToPickup: "—",
+        etaToPickup: "—",
+        fare: fareLabel,
+        seats: 1,
+        status: PickupStatus.upcoming,
+      ));
+    }
+    return list;
+  }
+
+  Future<void> _ensureStarted(String id) async {
+    try {
+      await ref.read(rideServiceProvider).startRide(id);
+      ref.invalidate(driverActiveRideProvider);
+    } catch (_) {
+      // Already STARTED or a transient error — the cockpit still works
+      // and complete will re-validate the status, so swallow it.
+    }
   }
 
   // ─── Phase machine ───────────────────────────────────────
@@ -142,24 +232,133 @@ class _DriveryourrideState extends State<Driveryourride>
     });
   }
 
-  void _completeTrip() {
-    setState(() {
-      _demoActive = false;
-    });
+  /// All riders dropped — close out the ride on the backend
+  /// (STARTED → COMPLETED), prompt the driver to rate each passenger, then
+  /// let the active-ride list empty out to the tab's empty state.
+  Future<void> _completeTrip() async {
+    final id = _loadedRideId;
+    final ride = _ride;
+    if (id == null || _completing) return;
+    setState(() => _completing = true);
+    try {
+      await ref.read(rideServiceProvider).completeRide(id);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _completing = false);
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(CustomWidgets.customErrorSnackBar(e.message));
+      return;
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _completing = false);
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          CustomWidgets.customErrorSnackBar("Couldn't complete trip"),
+        );
+      return;
+    }
+
+    if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(
-        CustomWidgets.customSuccessSnackBar("Trip completed"),
-      );
+      ..showSnackBar(CustomWidgets.customSuccessSnackBar("Trip completed"));
+
+    // Rate each passenger (best-effort, sequential) before clearing the
+    // trip. The ride is COMPLETED now, so rate-passenger is permitted.
+    if (ride != null) {
+      await _ratePassengers(id, ride);
+    }
+
+    ref.invalidate(driverActiveRideProvider);
+    ref.invalidate(driverFeedProvider);
+    if (mounted) setState(() => _completing = false);
   }
 
-  void _restartDemo() {
-    setState(() {
-      _passengers = List.of(kSamplePassengers);
-      _currentIndex = 0;
-      _phase = _RidePhase.headingToPickup;
-      _demoActive = true;
-    });
+  /// Walk the driver through rating the host + each co-passenger. Skipping
+  /// a passenger (or a failed submit) just moves on — rating is optional.
+  Future<void> _ratePassengers(String rideId, RideDetails ride) async {
+    final people = <({String id, String name})>[
+      (id: ride.host.id, name: ride.host.name),
+      ...ride.coPassengers.map((c) => (id: c.id, name: c.name)),
+    ];
+    for (final p in people) {
+      if (!mounted) return;
+      if (p.id.isEmpty) continue;
+      final name = p.name.trim().isEmpty ? "Passenger" : p.name.trim();
+      final stars = await showRatingSheet(
+        context: context,
+        title: "Rate $name",
+        subtitle: "How was your passenger this trip?",
+        avatarInitial: name[0].toUpperCase(),
+      );
+      if (stars == null) continue;
+      try {
+        await ref.read(rideServiceProvider).ratePassenger(rideId, p.id, stars);
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+            ..hideCurrentSnackBar()
+            ..showSnackBar(
+              CustomWidgets.customSuccessSnackBar("Rated $name"),
+            );
+        }
+      } on ApiException catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+            ..hideCurrentSnackBar()
+            ..showSnackBar(CustomWidgets.customErrorSnackBar(e.message));
+        }
+      } catch (_) {
+        // Best-effort — keep going to the next passenger.
+      }
+    }
+  }
+
+  /// The driver backs out of the trip. The ride is re-opened for another
+  /// driver (it does NOT cancel the passengers' trip). Confirms first.
+  Future<void> _dropRide() async {
+    final id = _loadedRideId;
+    if (id == null) return;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Drop this ride?"),
+        content: const Text(
+          "It'll be re-opened for another driver. Your passengers keep their trip.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text("Keep driving"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text("Drop ride"),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+    try {
+      await ref.read(rideServiceProvider).driverCancelRide(id);
+      ref.invalidate(driverActiveRideProvider);
+      ref.invalidate(driverFeedProvider);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(CustomWidgets.customSuccessSnackBar("Ride dropped"));
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(CustomWidgets.customErrorSnackBar(e.message));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(CustomWidgets.customErrorSnackBar("Couldn't drop ride"));
+    }
   }
 
   // ─── Phase-driven copy ──────────────────────────────────
@@ -204,26 +403,38 @@ class _DriveryourrideState extends State<Driveryourride>
 
   @override
   Widget build(BuildContext context) {
+    // Flip _mapMounted on the first frame after the tab becomes selected.
+    // This keeps the map out of the widget tree until the user actually
+    // views this tab — avoids initializing the platform view inside the
+    // IndexedStack on app launch.
+    final selectedTab = ref.watch(bottomNavIndexProvider);
+    if (!_mapMounted && selectedTab == _kYourRideTabIndex) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !_mapMounted) {
+          setState(() => _mapMounted = true);
+        }
+      });
+    }
+
+    final asyncRides = ref.watch(driverActiveRideProvider);
+
     return Scaffold(
       backgroundColor: Consonants.scaffoldBackgroundColor,
-      body: Consumer(
-        builder: (context, ref, _) {
-          // Flip _mapMounted on the first frame after the tab becomes
-          // selected. This keeps the GoogleMap out of the widget tree
-          // until the user actually views this tab — avoids initializing
-          // the platform view inside the IndexedStack on app launch
-          // (which crashes natively on Android without a Maps API key).
-          final selectedTab = ref.watch(bottomNavIndexProvider);
-          if (!_mapMounted && selectedTab == _kYourRideTabIndex) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted && !_mapMounted) {
-                setState(() => _mapMounted = true);
-              }
-            });
+      body: asyncRides.when(
+        loading: () => _loadingState(),
+        error: (e, _) => _emptyState(
+          message: e is ApiException
+              ? e.message
+              : "Couldn't load your active ride",
+        ),
+        data: (rides) {
+          if (rides.isEmpty) {
+            _loadedRideId = null;
+            return _emptyState();
           }
-
-          if (!_demoActive) return _emptyState(ref);
-          return _activeRide();
+          final ride = rides.first;
+          _seedIfNeeded(ride);
+          return _activeRide(ride);
         },
       ),
     );
@@ -231,7 +442,19 @@ class _DriveryourrideState extends State<Driveryourride>
 
   // ─── Active ride layout ─────────────────────────────────
 
-  Widget _activeRide() {
+  Widget _activeRide(RideDetails ride) {
+    // Real route coordinates from the ride; fall back to the Lahore demo
+    // points only when the ride is missing usable lat/lng.
+    final hasCoords = ride.pickupLat != null &&
+        ride.pickupLng != null &&
+        ride.dropLat != null &&
+        ride.dropLng != null;
+    final pickupLL = hasCoords
+        ? LatLng(ride.pickupLat!, ride.pickupLng!)
+        : _fallbackPickup;
+    final dropLL =
+        hasCoords ? LatLng(ride.dropLat!, ride.dropLng!) : _fallbackDrop;
+
     final media = MediaQuery.of(context);
     final mediaH = media.size.height;
     // Clamp the map portion so it stays usable on both very small phones
@@ -266,12 +489,11 @@ class _DriveryourrideState extends State<Driveryourride>
           right: 0,
           height: mapHeight,
           child: _mapMounted
-              ? const _RouteMap(
-                  pickup: _pickup,
-                  drop: _drop,
-                  driver: _driver,
-                  via1: _via1,
-                  via2: _via2,
+              ? LiveTrackingMap(
+                  rideId: ride.id,
+                  pickup: pickupLL,
+                  drop: dropLL,
+                  myRole: 'DRIVER',
                 )
               : _mapLoadingPlaceholder(),
         ),
@@ -351,15 +573,7 @@ class _DriveryourrideState extends State<Driveryourride>
                 children: [
                   _circleIconButton(
                     icon: Icons.arrow_back_rounded,
-                    onTap: () {
-                      ScaffoldMessenger.of(context)
-                        ..hideCurrentSnackBar()
-                        ..showSnackBar(
-                          CustomWidgets.customErrorSnackBar(
-                            "Trip in progress — finish before leaving",
-                          ),
-                        );
-                    },
+                    onTap: _dropRide,
                   ),
                   const Spacer(),
                   Container(
@@ -1050,9 +1264,17 @@ class _DriveryourrideState extends State<Driveryourride>
     );
   }
 
+  // ─── Loading state ──────────────────────────────────────
+
+  Widget _loadingState() {
+    return const SafeArea(
+      child: Center(child: CircularProgressIndicator()),
+    );
+  }
+
   // ─── Empty state ────────────────────────────────────────
 
-  Widget _emptyState(WidgetRef ref) {
+  Widget _emptyState({String? message}) {
     return SafeArea(
       child: Padding(
         padding: EdgeInsets.symmetric(horizontal: 24.w),
@@ -1089,7 +1311,7 @@ class _DriveryourrideState extends State<Driveryourride>
             ),
             SizedBox(height: 6.h),
             CustomWidgets.customText(
-              "Accepted rides from the Rides tab will appear here",
+              message ?? "Accepted rides from the Rides tab will appear here",
               11.sp,
               Consonants.greyColor,
               FontWeight.w500,
@@ -1131,19 +1353,6 @@ class _DriveryourrideState extends State<Driveryourride>
                 ),
               ),
             ),
-            SizedBox(height: 14.h),
-            GestureDetector(
-              onTap: _restartDemo,
-              child: Padding(
-                padding: EdgeInsets.symmetric(vertical: 6.h),
-                child: CustomWidgets.customText(
-                  "Start demo ride",
-                  11.sp,
-                  Consonants.greyColor,
-                  FontWeight.w600,
-                ),
-              ),
-            ),
           ],
         ),
       ),
@@ -1157,82 +1366,5 @@ class _RemainingItem {
   const _RemainingItem({required this.passenger, required this.asPickup});
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Live route map
-//
-// Renders the active-ride map. The polyline points come from the Directions
-// API via [directionsProvider] when it resolves; until then (and on any
-// failure / missing key) we fall back to the hand-picked `_pickup → _via1
-// → _driver → _via2 → _drop` waypoints so the screen still renders a route.
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _RouteMap extends ConsumerWidget {
-  final LatLng pickup;
-  final LatLng drop;
-  final LatLng driver;
-  final LatLng via1;
-  final LatLng via2;
-
-  const _RouteMap({
-    required this.pickup,
-    required this.drop,
-    required this.driver,
-    required this.via1,
-    required this.via2,
-  });
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(directionsProvider(
-      DirectionsRequest(origin: pickup, destination: drop),
-    ));
-    final routePoints = async.maybeWhen(
-      data: (r) => r.points,
-      orElse: () => <LatLng>[pickup, via1, driver, via2, drop],
-    );
-
-    return GoogleMap(
-      initialCameraPosition: const CameraPosition(
-        target: LatLng(31.5210, 74.3565),
-        zoom: 13.5,
-      ),
-      style: kMinimalMapStyle,
-      myLocationEnabled: false,
-      myLocationButtonEnabled: false,
-      zoomControlsEnabled: false,
-      mapToolbarEnabled: false,
-      compassEnabled: false,
-      markers: {
-        Marker(
-          markerId: const MarkerId("pickup"),
-          position: pickup,
-          infoWindow: const InfoWindow(title: "Pickup"),
-          icon: BitmapDescriptor.defaultMarkerWithHue(
-              BitmapDescriptor.hueAzure),
-        ),
-        Marker(
-          markerId: const MarkerId("drop"),
-          position: drop,
-          infoWindow: const InfoWindow(title: "Drop-off"),
-          icon: BitmapDescriptor.defaultMarkerWithHue(
-              BitmapDescriptor.hueRed),
-        ),
-        Marker(
-          markerId: const MarkerId("driver"),
-          position: driver,
-          infoWindow: const InfoWindow(title: "You"),
-          icon: BitmapDescriptor.defaultMarkerWithHue(
-              BitmapDescriptor.hueGreen),
-        ),
-      },
-      polylines: {
-        Polyline(
-          polylineId: const PolylineId("route"),
-          color: Consonants.primaryColor,
-          width: 4,
-          points: routePoints,
-        ),
-      },
-    );
-  }
-}
+// The active-ride map is now the shared LiveTrackingMap (real-time car /
+// person markers); the old static _RouteMap was removed.

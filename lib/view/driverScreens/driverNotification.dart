@@ -1,10 +1,17 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
+import 'package:ride_sharing/model/notificationModels.dart';
+import 'package:ride_sharing/provider/notificationProvider.dart';
+import 'package:ride_sharing/provider/providers.dart';
 import 'package:ride_sharing/view/bottomNavbar.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
+import 'package:ride_sharing/widgets/consonants/errorHandler.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
+import 'package:ride_sharing/widgets/custom/ratingSheet.dart';
 
 /// Driver notifications screen.
 ///
@@ -35,6 +42,9 @@ class _NotificationItem {
   final String timeAgo;
   final bool isToday;
   final bool unread;
+  final String? rideId;
+  final String? subjectUserId;
+  final String? subjectName;
 
   const _NotificationItem({
     required this.id,
@@ -44,7 +54,17 @@ class _NotificationItem {
     required this.timeAgo,
     required this.isToday,
     required this.unread,
+    this.rideId,
+    this.subjectUserId,
+    this.subjectName,
   });
+
+  /// True when tapping should open a rating sheet for a co-passenger who left.
+  bool get isRatePrompt =>
+      type == _NotifType.rating &&
+      rideId != null &&
+      subjectUserId != null &&
+      subjectUserId!.isNotEmpty;
 
   _NotificationItem copyWith({bool? unread}) => _NotificationItem(
         id: id,
@@ -54,74 +74,70 @@ class _NotificationItem {
         timeAgo: timeAgo,
         isToday: isToday,
         unread: unread ?? this.unread,
+        rideId: rideId,
+        subjectUserId: subjectUserId,
+        subjectName: subjectName,
       );
 }
 
 class _DrivernotificationState extends ConsumerState<Drivernotification> {
   _Filter _filter = _Filter.all;
-  late List<_NotificationItem> _items;
+  List<_NotificationItem> _items = const [];
+  bool _loading = true;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
-    _items = const [
-      _NotificationItem(
-        id: "n1",
-        type: _NotifType.request,
-        title: "New ride request",
-        message:
-            "Sarah Ahmed wants a pickup from Hostel City, Block B • Rs 250",
-        timeAgo: "5 min ago",
-        isToday: true,
-        unread: true,
-      ),
-      _NotificationItem(
-        id: "n2",
-        type: _NotifType.trip,
-        title: "Trip completed",
-        message: "You earned Rs 250 from the ride to Taramri Chowk",
-        timeAgo: "1 hour ago",
-        isToday: true,
-        unread: true,
-      ),
-      _NotificationItem(
-        id: "n3",
-        type: _NotifType.rating,
-        title: "5-star rating received",
-        message: "Hina Malik gave you 5 stars — \"Great driver!\"",
-        timeAgo: "3 hours ago",
-        isToday: true,
-        unread: false,
-      ),
-      _NotificationItem(
-        id: "n4",
-        type: _NotifType.earnings,
-        title: "Bonus unlocked",
-        message: "Rs 500 weekly bonus has been added to your earnings",
-        timeAgo: "Yesterday",
-        isToday: false,
-        unread: false,
-      ),
-      _NotificationItem(
-        id: "n5",
-        type: _NotifType.request,
-        title: "New ride request",
-        message: "Ayesha Khan wants a pickup from Bahria Phase 7",
-        timeAgo: "Yesterday",
-        isToday: false,
-        unread: false,
-      ),
-      _NotificationItem(
-        id: "n6",
-        type: _NotifType.system,
-        title: "Document verified",
-        message: "Your driving license has been successfully verified",
-        timeAgo: "2 days ago",
-        isToday: false,
-        unread: false,
-      ),
-    ];
+    _load();
   }
+
+  /// Fetch real notifications. On first open also clears the home-screen
+  /// badge (mark-all-read server-side) while keeping the unread styling
+  /// for this view so the driver can still see what's new.
+  Future<void> _load({bool clearBadge = true}) async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final list = await ref.read(notificationServiceProvider).getNotifications();
+      if (!mounted) return;
+      setState(() {
+        _items = list.map(_fromServer).toList();
+        _loading = false;
+      });
+      if (clearBadge && list.any((n) => !n.read)) {
+        await ref.read(notificationServiceProvider).markAllRead();
+        ref.invalidate(unreadCountProvider);
+        ref.invalidate(notificationsProvider);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = ErrorHandler.message(e);
+      });
+    }
+  }
+
+  _NotificationItem _fromServer(AppNotification n) => _NotificationItem(
+        id: n.id,
+        type: switch (n.type) {
+          NotifType.request => _NotifType.request,
+          NotifType.trip => _NotifType.trip,
+          NotifType.rating => _NotifType.rating,
+          NotifType.system => _NotifType.system,
+        },
+        title: n.title,
+        message: n.body,
+        timeAgo: n.relativeTime,
+        isToday: n.isToday,
+        unread: !n.read,
+        rideId: n.rideId,
+        subjectUserId: n.subjectUserId,
+        subjectName: n.subjectName,
+      );
 
   // ─── State mutations ─────────────────────────────────────
 
@@ -129,19 +145,31 @@ class _DrivernotificationState extends ConsumerState<Drivernotification> {
     setState(() {
       _items = _items.map((n) => n.copyWith(unread: false)).toList();
     });
+    ref.read(notificationServiceProvider).markAllRead();
+    ref.invalidate(unreadCountProvider);
   }
 
   void _toggleRead(String id) {
+    final wasUnread = _items.any((n) => n.id == id && n.unread);
     setState(() {
       _items = _items
           .map((n) => n.id == id ? n.copyWith(unread: !n.unread) : n)
           .toList();
     });
+    // Only a mark-as-read is persisted; toggling back to unread is local.
+    if (wasUnread) {
+      ref.read(notificationServiceProvider).markAsRead(id);
+      ref.invalidate(unreadCountProvider);
+    }
   }
 
   /// Opens the notification — marks it read and, if it's a ride
   /// request, pops back to the navbar and switches to the Rides tab.
-  void _openNotification(_NotificationItem n) {
+  Future<void> _openNotification(_NotificationItem n) async {
+    if (n.unread) {
+      ref.read(notificationServiceProvider).markAsRead(n.id);
+      ref.invalidate(unreadCountProvider);
+    }
     setState(() {
       _items = _items
           .map((it) => it.id == n.id ? it.copyWith(unread: false) : it)
@@ -151,6 +179,35 @@ class _DrivernotificationState extends ConsumerState<Drivernotification> {
     if (n.type == _NotifType.request) {
       ref.read(bottomNavIndexProvider.notifier).select(1);
       context.pop();
+      return;
+    }
+
+    // A passenger left mid-trip — let the driver rate them right away.
+    if (n.isRatePrompt) {
+      final name = (n.subjectName ?? '').trim().isEmpty
+          ? 'passenger'
+          : n.subjectName!.trim();
+      final stars = await showRatingSheet(
+        context: context,
+        title: 'Rate $name',
+        subtitle: 'How was your passenger this trip?',
+        avatarInitial: name[0].toUpperCase(),
+      );
+      if (stars == null || !mounted) return;
+      try {
+        await ref
+            .read(rideServiceProvider)
+            .ratePassenger(n.rideId!, n.subjectUserId!, stars);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(CustomWidgets.customSuccessSnackBar("Rating submitted"));
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(CustomWidgets.customErrorSnackBar(ErrorHandler.message(e)));
+      }
     }
   }
 
@@ -162,7 +219,17 @@ class _DrivernotificationState extends ConsumerState<Drivernotification> {
       _items = List.of(_items)..removeAt(originalIndex);
     });
 
-    final messenger = ScaffoldMessenger.of(context)
+    // Commit the delete to the backend after the undo window; UNDO cancels it.
+    final commit = Timer(const Duration(seconds: 4), () async {
+      try {
+        await ref.read(notificationServiceProvider).deleteNotification(n.id);
+        ref.invalidate(unreadCountProvider);
+      } catch (_) {
+        // Network hiccup — a later refresh reconciles the list.
+      }
+    });
+
+    ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
@@ -188,6 +255,7 @@ class _DrivernotificationState extends ConsumerState<Drivernotification> {
             label: "UNDO",
             textColor: Consonants.primaryColor,
             onPressed: () {
+              commit.cancel();
               setState(() {
                 _items = List.of(_items)..insert(originalIndex, n);
               });
@@ -195,27 +263,11 @@ class _DrivernotificationState extends ConsumerState<Drivernotification> {
           ),
         ),
       );
-    // Reference messenger so the lint doesn't complain about the cascade.
-    messenger.toString();
   }
 
   Future<void> _onRefresh() async {
-    await Future<void>.delayed(const Duration(milliseconds: 900));
-    if (!mounted) return;
-    setState(() {
-      _items = [
-        const _NotificationItem(
-          id: "n_new",
-          type: _NotifType.request,
-          title: "New ride request",
-          message: "Mariam Iqbal wants a pickup from F-10 Markaz • Rs 320",
-          timeAgo: "Just now",
-          isToday: true,
-          unread: true,
-        ),
-        ..._items,
-      ];
-    });
+    // Don't re-clear the badge on a manual refresh.
+    await _load(clearBadge: false);
   }
 
   // ─── Long-press action sheet ─────────────────────────────
@@ -355,9 +407,17 @@ class _DrivernotificationState extends ConsumerState<Drivernotification> {
                 color: Consonants.primaryColor,
                 backgroundColor: Consonants.whiteColor,
                 onRefresh: _onRefresh,
-                child: filtered.isEmpty
-                    ? _emptyState()
-                    : ListView(
+                child: _loading && _items.isEmpty
+                    ? _statusList(const Center(
+                        child: CircularProgressIndicator(
+                          color: Consonants.primaryColor,
+                        ),
+                      ))
+                    : _error != null && _items.isEmpty
+                        ? _statusList(_errorState(_error!))
+                        : filtered.isEmpty
+                            ? _emptyState()
+                            : ListView(
                         physics: const AlwaysScrollableScrollPhysics(
                           parent: BouncingScrollPhysics(),
                         ),
@@ -406,6 +466,48 @@ class _DrivernotificationState extends ConsumerState<Drivernotification> {
       case _Filter.earnings:
         return all.where((n) => n.type == _NotifType.earnings).toList();
     }
+  }
+
+  /// Wraps a status widget (spinner/error) in a scroll view so the
+  /// RefreshIndicator can still be pulled while it's shown.
+  Widget _statusList(Widget child) {
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: BouncingScrollPhysics(),
+      ),
+      children: [SizedBox(height: 160.h), child],
+    );
+  }
+
+  Widget _errorState(String message) {
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 32.w),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.cloud_off_rounded,
+                size: 36.sp, color: Consonants.greyColor),
+            SizedBox(height: 12.h),
+            CustomWidgets.customText(
+              message,
+              12.sp,
+              Consonants.boldTextColor,
+              FontWeight.w700,
+              textAlign: TextAlign.center,
+              maxLines: 3,
+            ),
+            SizedBox(height: 6.h),
+            CustomWidgets.customText(
+              "Pull down to retry",
+              10.sp,
+              Consonants.greyColor,
+              FontWeight.w500,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   // ─── Top bar ─────────────────────────────────────────────

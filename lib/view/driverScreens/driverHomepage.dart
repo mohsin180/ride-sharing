@@ -4,6 +4,9 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
 import 'package:ride_sharing/model/appRoutes.dart';
 import 'package:ride_sharing/provider/driverStatusProvider.dart';
+import 'package:ride_sharing/provider/messagingProvider.dart';
+import 'package:ride_sharing/provider/notificationProvider.dart';
+import 'package:ride_sharing/provider/rideStatsProvider.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
 
@@ -154,16 +157,32 @@ class _Header extends StatelessWidget {
               ],
             ),
           ),
-          _circleIconButton(
-            icon: Icons.send_outlined,
-            badge: true,
-            onTap: () => context.push(Approutes.driverMessages),
+          Consumer(
+            builder: (context, ref, _) {
+              final unread = ref.watch(unreadMessagesCountProvider).maybeWhen(
+                    data: (c) => c,
+                    orElse: () => 0,
+                  );
+              return _circleIconButton(
+                icon: Icons.send_outlined,
+                badge: unread > 0,
+                onTap: () => context.push(Approutes.driverMessages),
+              );
+            },
           ),
           SizedBox(width: 8.w),
-          _circleIconButton(
-            icon: Icons.notifications_none_rounded,
-            badge: true,
-            onTap: () => context.push(Approutes.driverNotification),
+          Consumer(
+            builder: (context, ref, _) {
+              final unread = ref.watch(unreadCountProvider).maybeWhen(
+                    data: (c) => c,
+                    orElse: () => 0,
+                  );
+              return _circleIconButton(
+                icon: Icons.notifications_none_rounded,
+                badge: unread > 0,
+                onTap: () => context.push(Approutes.driverNotification),
+              );
+            },
           ),
         ],
       ),
@@ -669,9 +688,22 @@ class _OnlineToggleCard extends StatelessWidget {
 // QUICK STATS  — three coloured tiles for at-a-glance stats
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _QuickStatsRow extends StatelessWidget {
+class _QuickStatsRow extends ConsumerWidget {
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Rating + Trips come from the real backend stats (GET /rides/stats,
+    // role-aware). Acceptance has no backend source yet, so it stays a
+    // static placeholder.
+    final stats = ref.watch(rideStatsProvider);
+    final rating = stats.maybeWhen(
+      data: (s) => s.ratingLabel,
+      orElse: () => "—",
+    );
+    final trips = stats.maybeWhen(
+      data: (s) => "${s.trips}",
+      orElse: () => "—",
+    );
+
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 20.w),
       child: Row(
@@ -679,7 +711,7 @@ class _QuickStatsRow extends StatelessWidget {
           Expanded(
             child: _statTile(
               icon: Icons.star_rounded,
-              value: "4.9",
+              value: rating,
               label: "Rating",
               accent: const Color(0xffF59E0B),
               accentBg: const Color(0xffFEF3C7),
@@ -699,7 +731,7 @@ class _QuickStatsRow extends StatelessWidget {
           Expanded(
             child: _statTile(
               icon: Icons.route_rounded,
-              value: "1,284",
+              value: trips,
               label: "Trips",
               accent: Consonants.primaryColor,
               accentBg: Consonants.lightBlueColor,

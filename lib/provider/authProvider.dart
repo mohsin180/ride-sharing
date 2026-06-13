@@ -4,6 +4,7 @@ import 'package:ride_sharing/controller/authService.dart';
 import 'package:ride_sharing/model/authModels.dart';
 import 'package:ride_sharing/provider/providers.dart';
 import 'package:ride_sharing/widgets/consonants/errorHandler.dart';
+import 'package:ride_sharing/widgets/consonants/jwtUtils.dart';
 import 'package:ride_sharing/widgets/consonants/tokenStorage.dart';
 
 final authControllerProvider = StateNotifierProvider<Authprovider, AuthState>((
@@ -36,7 +37,18 @@ class Authprovider extends StateNotifier<AuthState> {
     try {
       final response = await authservice.login(request);
       await Tokenstorage.saveToken(response.token);
-      state = state.copyWith(isloading: false, error: null, isLoggedIn: true);
+      // Pull role + userId out of the freshly-issued JWT so the login
+      // screen can route into the right bottom-navbar variant without
+      // an extra round-trip.
+      final role = JwtUtils.extractRole(response.token);
+      final userId = JwtUtils.extractUserId(response.token);
+      state = state.copyWith(
+        isloading: false,
+        error: null,
+        isLoggedIn: true,
+        role: role,
+        userId: userId,
+      );
       return response;
     } catch (e) {
       state = state.copyWith(
@@ -75,6 +87,26 @@ class Authprovider extends StateNotifier<AuthState> {
     try {
       await authservice.verifyEmail(token);
       state = state.copyWith(isloading: false);
+    } catch (e) {
+      state = state.copyWith(isloading: false, error: ErrorHandler.message(e));
+    }
+  }
+
+  /// Re-sends the verification email to the address captured at register
+  /// time. Backend invalidates any prior unused token first. No-op if we
+  /// don't have an email on hand.
+  Future<void> resendVerification() async {
+    final email = state.email;
+    if (email == null || email.isEmpty) {
+      state = state.copyWith(
+        error: "We don't have your email on file. Please register again.",
+      );
+      return;
+    }
+    state = state.copyWith(isloading: true, error: null, isSuccess: false);
+    try {
+      await authservice.resendVerification(email);
+      state = state.copyWith(isloading: false, isSuccess: true);
     } catch (e) {
       state = state.copyWith(isloading: false, error: ErrorHandler.message(e));
     }
@@ -145,6 +177,11 @@ class AuthState {
   final bool? isSuccess;
   final String? email;
 
+  /// Role the user logged in as ("DRIVER" / "PASSENGER"), decoded from
+  /// the JWT in [Authprovider.loginProvider]. Null until login completes
+  /// — or null if the user logged in before completing role selection.
+  final String? role;
+
   AuthState({
     required this.isloading,
     this.error,
@@ -154,6 +191,7 @@ class AuthState {
     this.userId,
     this.isSuccess,
     this.email,
+    this.role,
   });
 
   AuthState copyWith({
@@ -165,6 +203,7 @@ class AuthState {
     String? userId,
     bool? isSuccess,
     String? email,
+    String? role,
   }) {
     return AuthState(
       isloading: isloading ?? this.isloading,
@@ -176,6 +215,7 @@ class AuthState {
       userId: userId ?? this.userId,
       isSuccess: isSuccess ?? this.isSuccess,
       email: email ?? this.email,
+      role: role ?? this.role,
     );
   }
 }
@@ -275,5 +315,12 @@ class RoleSelectionNotifier extends StateNotifier<String?> {
   /// Generic setter
   void selectRole(String role) {
     state = state == role ? null : role;
+  }
+
+  /// Hard-set the role without toggle behavior. Use after login when we
+  /// already know the role from the JWT and just need the bottom-navbar
+  /// to render the right variant.
+  void setRole(String role) {
+    state = role;
   }
 }

@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
+import 'package:ride_sharing/model/messagingModels.dart';
+import 'package:ride_sharing/provider/messagingProvider.dart';
+import 'package:ride_sharing/provider/providers.dart';
 import 'package:ride_sharing/view/driverScreens/driverChatDetail.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
+import 'package:ride_sharing/widgets/consonants/errorHandler.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
 
 /// Passenger group-chat list. Mirrors [Drivermessages] in look and
@@ -20,11 +25,11 @@ import 'package:ride_sharing/widgets/custom/customWidgets.dart';
 ///   • Swipe left    — archive; snackbar offers undo.
 ///   • Pull to refresh — simulates fetching new messages.
 ///   • Compose icon  — placeholder for "start a new group" flow.
-class Passengermessages extends StatefulWidget {
+class Passengermessages extends ConsumerStatefulWidget {
   const Passengermessages({super.key});
 
   @override
-  State<Passengermessages> createState() => _PassengermessagesState();
+  ConsumerState<Passengermessages> createState() => _PassengermessagesState();
 }
 
 enum _ChatFilter { all, unread, active }
@@ -88,110 +93,85 @@ class _ChatGroup {
       );
 }
 
-class _PassengermessagesState extends State<Passengermessages> {
+class _PassengermessagesState extends ConsumerState<Passengermessages> {
   _ChatFilter _filter = _ChatFilter.all;
   String _query = "";
   late TextEditingController _searchController;
-  late List<_ChatGroup> _chats;
+  List<_ChatGroup> _chats = [];
+  bool _loading = true;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
     _searchController = TextEditingController();
-    _chats = const [
-      _ChatGroup(
-        id: "g1",
-        name: "Hostel City Trip",
-        members: [
-          _ChatMember(initial: "S", color: Color(0xffF472B6)),
-          _ChatMember(initial: "A", color: Color(0xff60A5FA)),
-          _ChatMember(initial: "H", color: Color(0xffFBBF24)),
-        ],
-        lastSender: "Driver",
-        lastMessage: "I'm at the gate, can you see me?",
-        timeAgo: "2m",
-        unread: 3,
-        fromYou: false,
-        readByOthers: false,
-        isActive: true,
-        typing: true,
-        muted: false,
-        pinned: true,
-      ),
-      _ChatGroup(
-        id: "g2",
-        name: "Faizabad Carpool",
-        members: [
-          _ChatMember(initial: "M", color: Color(0xff34D399)),
-          _ChatMember(initial: "N", color: Color(0xffA78BFA)),
-        ],
-        lastSender: "You",
-        lastMessage: "On my way, ETA 4 min",
-        timeAgo: "1h",
-        unread: 0,
-        fromYou: true,
-        readByOthers: true,
-        isActive: false,
-        typing: false,
-        muted: false,
-        pinned: false,
-      ),
-      _ChatGroup(
-        id: "g3",
-        name: "Bahria Phase 7",
-        members: [
-          _ChatMember(initial: "H", color: Color(0xffFBBF24)),
-          _ChatMember(initial: "Z", color: Color(0xffEF4444)),
-          _ChatMember(initial: "K", color: Color(0xff60A5FA)),
-        ],
-        lastSender: "Driver",
-        lastMessage: "On my way to your location 🚗",
-        timeAgo: "Yesterday",
-        unread: 0,
-        fromYou: false,
-        readByOthers: false,
-        isActive: false,
-        typing: false,
-        muted: true,
-        pinned: false,
-      ),
-      _ChatGroup(
-        id: "g4",
-        name: "F-10 Markaz Ride",
-        members: [
-          _ChatMember(initial: "M", color: Color(0xffEC4899)),
-          _ChatMember(initial: "I", color: Color(0xff34D399)),
-        ],
-        lastSender: "Driver",
-        lastMessage: "Almost there — 2 minutes away",
-        timeAgo: "Yesterday",
-        unread: 1,
-        fromYou: false,
-        readByOthers: false,
-        isActive: false,
-        typing: false,
-        muted: false,
-        pinned: false,
-      ),
-      _ChatGroup(
-        id: "g5",
-        name: "Saddar Pickup Group",
-        members: [
-          _ChatMember(initial: "T", color: Color(0xffA78BFA)),
-          _ChatMember(initial: "B", color: Color(0xff60A5FA)),
-        ],
-        lastSender: "You",
-        lastMessage: "Reached destination, ride completed",
-        timeAgo: "2 days ago",
-        unread: 0,
-        fromYou: true,
-        readByOthers: false,
-        isActive: false,
-        typing: false,
-        muted: false,
-        pinned: false,
-      ),
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final chats = await ref.read(messagingServiceProvider).getMyChats();
+      if (!mounted) return;
+      setState(() {
+        _chats = chats.map(_fromConversation).toList();
+        _loading = false;
+      });
+      ref.invalidate(unreadMessagesCountProvider);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = ErrorHandler.message(e);
+      });
+    }
+  }
+
+  _ChatGroup _fromConversation(ChatConversation c) {
+    const palette = [
+      Color(0xff60A5FA),
+      Color(0xffF472B6),
+      Color(0xffFBBF24),
+      Color(0xff34D399),
+      Color(0xffA78BFA),
+      Color(0xffEC4899),
     ];
+    final members = <_ChatMember>[];
+    for (int i = 0; i < c.memberNames.length; i++) {
+      final n = c.memberNames[i].trim();
+      members.add(_ChatMember(
+        initial: n.isNotEmpty ? n[0].toUpperCase() : "?",
+        color: palette[i % palette.length],
+      ));
+    }
+    return _ChatGroup(
+      id: c.rideId,
+      name: c.title,
+      members: members,
+      lastSender: c.lastSenderName ?? "",
+      lastMessage: c.lastMessage ?? "No messages yet",
+      timeAgo: _relativeTime(c.lastSentAt),
+      unread: c.unread,
+      fromYou: false,
+      readByOthers: false,
+      isActive: false,
+      typing: false,
+      muted: false,
+      pinned: false,
+    );
+  }
+
+  String _relativeTime(DateTime? dt) {
+    if (dt == null) return "";
+    final diff = DateTime.now().difference(dt.toLocal());
+    if (diff.inMinutes < 1) return "now";
+    if (diff.inMinutes < 60) return "${diff.inMinutes}m";
+    if (diff.inHours < 24) return "${diff.inHours}h";
+    if (diff.inDays == 1) return "Yesterday";
+    return "${diff.inDays}d ago";
   }
 
   @override
@@ -202,22 +182,6 @@ class _PassengermessagesState extends State<Passengermessages> {
 
   // ─── State mutations ─────────────────────────────────────
 
-  void _togglePin(String id) {
-    setState(() {
-      _chats = _chats
-          .map((c) => c.id == id ? c.copyWith(pinned: !c.pinned) : c)
-          .toList();
-    });
-  }
-
-  void _toggleMute(String id) {
-    setState(() {
-      _chats = _chats
-          .map((c) => c.id == id ? c.copyWith(muted: !c.muted) : c)
-          .toList();
-    });
-  }
-
   void _markAsUnread(String id) {
     setState(() {
       _chats = _chats
@@ -227,69 +191,11 @@ class _PassengermessagesState extends State<Passengermessages> {
     });
   }
 
-  void _archive(_ChatGroup chat) {
-    final originalIndex = _chats.indexWhere((c) => c.id == chat.id);
-    if (originalIndex < 0) return;
-
-    setState(() {
-      _chats = List.of(_chats)..removeAt(originalIndex);
-    });
-
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          backgroundColor: Consonants.boldTextColor,
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 4),
-          content: Row(
-            children: [
-              Icon(Icons.archive_outlined,
-                  size: 16.sp, color: Consonants.whiteColor),
-              SizedBox(width: 8.w),
-              Expanded(
-                child: CustomWidgets.customText(
-                  "Conversation archived",
-                  11.sp,
-                  Consonants.whiteColor,
-                  FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-          action: SnackBarAction(
-            label: "UNDO",
-            textColor: Consonants.primaryColor,
-            onPressed: () {
-              setState(() {
-                _chats = List.of(_chats)..insert(originalIndex, chat);
-              });
-            },
-          ),
-        ),
-      );
-  }
-
   Future<void> _onRefresh() async {
-    await Future<void>.delayed(const Duration(milliseconds: 800));
-    if (!mounted) return;
-    // Bump the most-recent chat's unread count to simulate a new message.
-    setState(() {
-      if (_chats.isNotEmpty) {
-        _chats = List.of(_chats);
-        _chats[0] = _chats[0].copyWith(unread: _chats[0].unread + 1);
-      }
-    });
-    if (!mounted) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        CustomWidgets.customSuccessSnackBar("Messages updated"),
-      );
+    await _load();
   }
 
   void _openChat(_ChatGroup chat) {
-    // Mark all messages as read on open.
     if (chat.unread > 0) {
       setState(() {
         _chats = _chats
@@ -297,17 +203,20 @@ class _PassengermessagesState extends State<Passengermessages> {
             .toList();
       });
     }
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => DriverChatDetail(
-          groupName: chat.name,
-          isActive: chat.isActive,
-          members: chat.members
-              .map((m) => ChatMember(initial: m.initial, color: m.color))
-              .toList(),
-        ),
-      ),
-    );
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute(
+            builder: (_) => DriverChatDetail(
+              rideId: chat.id,
+              title: chat.name,
+              isActive: chat.isActive,
+              members: chat.members
+                  .map((m) => ChatMember(initial: m.initial, color: m.color))
+                  .toList(),
+            ),
+          ),
+        )
+        .then((_) => _load());
   }
 
   // ─── Long-press action sheet ─────────────────────────────
@@ -370,26 +279,6 @@ class _PassengermessagesState extends State<Passengermessages> {
                 SizedBox(height: 14.h),
                 Container(height: 1, color: Consonants.lightGreyColor),
                 _sheetAction(
-                  icon: chat.pinned
-                      ? Icons.push_pin_rounded
-                      : Icons.push_pin_outlined,
-                  label: chat.pinned ? "Unpin chat" : "Pin chat",
-                  onTap: () {
-                    Navigator.of(sheetContext).pop();
-                    _togglePin(chat.id);
-                  },
-                ),
-                _sheetAction(
-                  icon: chat.muted
-                      ? Icons.notifications_active_outlined
-                      : Icons.notifications_off_outlined,
-                  label: chat.muted ? "Unmute" : "Mute notifications",
-                  onTap: () {
-                    Navigator.of(sheetContext).pop();
-                    _toggleMute(chat.id);
-                  },
-                ),
-                _sheetAction(
                   icon: chat.unread > 0
                       ? Icons.mark_chat_read_outlined
                       : Icons.mark_chat_unread_outlined,
@@ -399,15 +288,6 @@ class _PassengermessagesState extends State<Passengermessages> {
                   onTap: () {
                     Navigator.of(sheetContext).pop();
                     _markAsUnread(chat.id);
-                  },
-                ),
-                _sheetAction(
-                  icon: Icons.archive_outlined,
-                  label: "Archive",
-                  destructive: true,
-                  onTap: () {
-                    Navigator.of(sheetContext).pop();
-                    _archive(chat);
                   },
                 ),
                 SizedBox(height: 8.h),
@@ -471,7 +351,15 @@ class _PassengermessagesState extends State<Passengermessages> {
                 color: Consonants.primaryColor,
                 backgroundColor: Consonants.whiteColor,
                 onRefresh: _onRefresh,
-                child: filtered.isEmpty
+                child: _loading && _chats.isEmpty
+                    ? _statusList(const Center(
+                        child: CircularProgressIndicator(
+                          color: Consonants.primaryColor,
+                        ),
+                      ))
+                    : _error != null && _chats.isEmpty
+                        ? _statusList(_errorView(_error!))
+                        : filtered.isEmpty
                     ? _emptyState()
                     : ListView(
                         physics: const AlwaysScrollableScrollPhysics(
@@ -502,6 +390,45 @@ class _PassengermessagesState extends State<Passengermessages> {
                         ],
                       ),
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _statusList(Widget child) {
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: BouncingScrollPhysics(),
+      ),
+      children: [SizedBox(height: 160.h), child],
+    );
+  }
+
+  Widget _errorView(String message) {
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 32.w),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.cloud_off_rounded, size: 36.sp, color: Consonants.greyColor),
+            SizedBox(height: 12.h),
+            CustomWidgets.customText(
+              message,
+              12.sp,
+              Consonants.boldTextColor,
+              FontWeight.w700,
+              textAlign: TextAlign.center,
+              maxLines: 3,
+            ),
+            SizedBox(height: 6.h),
+            CustomWidgets.customText(
+              "Pull down to retry",
+              10.sp,
+              Consonants.greyColor,
+              FontWeight.w500,
             ),
           ],
         ),
@@ -813,30 +740,7 @@ class _PassengermessagesState extends State<Passengermessages> {
   // ─── Chat row (with swipe + long-press) ─────────────────
 
   Widget _chatRow(_ChatGroup chat) {
-    return Dismissible(
-      key: ValueKey(chat.id),
-      direction: DismissDirection.endToStart,
-      background: Container(
-        color: const Color(0xffEF4444).withValues(alpha: 0.10),
-        alignment: Alignment.centerRight,
-        padding: EdgeInsets.only(right: 24.w),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.archive_outlined,
-                size: 18.sp, color: const Color(0xffEF4444)),
-            SizedBox(width: 6.w),
-            CustomWidgets.customText(
-              "Archive",
-              11.sp,
-              const Color(0xffEF4444),
-              FontWeight.w800,
-            ),
-          ],
-        ),
-      ),
-      onDismissed: (_) => _archive(chat),
-      child: Material(
+    return Material(
         color: Consonants.whiteColor,
         child: InkWell(
           onTap: () => _openChat(chat),
@@ -997,7 +901,6 @@ class _PassengermessagesState extends State<Passengermessages> {
             ),
           ),
         ),
-      ),
     );
   }
 

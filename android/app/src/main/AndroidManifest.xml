@@ -1,4 +1,18 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Location permissions required by the `geolocator` plugin.
+         `google_maps_flutter` used to declare these for us; after the
+         migration to flutter_map we have to declare them explicitly.
+         FINE = GPS-grade precision (5 m). COARSE = network/WiFi
+         fallback (~100 m) so the app can still resolve a position when
+         the user denies precise location on Android 12+. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+
+    <!-- Required to reach the dev backend over HTTP (cleartext) on a
+         LAN IP. Already implicit on older Android; explicit here so
+         Android 9+ doesn't block requests to http://192.168.x.x. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+
     <application
         android:label="ride_sharing"
         android:name="${applicationName}"
@@ -30,15 +44,6 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
-
-        <!-- Google Maps SDK for Android.
-             Replace YOUR_GOOGLE_MAPS_API_KEY_HERE with the API key from
-             https://console.cloud.google.com/google/maps-apis/credentials
-             The key must have "Maps SDK for Android" enabled and be
-             restricted to this app's package + SHA-1 in production. -->
-        <meta-data
-            android:name="com.google.android.geo.API_KEY"
-            android:value="AIzaSyAbHIbIEZjSMLxOT1T561BVudivkvIpuqI" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

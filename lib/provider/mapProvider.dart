@@ -1,9 +1,8 @@
-import 'dart:async';
-
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:geocoding/geocoding.dart' as geocoding;
 import 'package:geolocator/geolocator.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:ride_sharing/services/maps/geocodingService.dart';
 
 /// Fallback camera target used until the real GPS fix resolves.
 /// (Gulberg, Lahore — matches the mock top-bar label.)
@@ -20,19 +19,14 @@ class LocationFailure implements Exception {
   String toString() => message;
 }
 
-/// Holds the [Completer] that is completed inside [GoogleMap.onMapCreated].
-/// Exposed as a [Provider] so multiple widgets can await the controller
-/// without rebuilding — the completer reference itself is stable.
-final mapControllerCompleterProvider =
-    Provider<Completer<GoogleMapController>>((ref) {
-  final completer = Completer<GoogleMapController>();
-  ref.onDispose(() async {
-    if (completer.isCompleted) {
-      final controller = await completer.future;
-      controller.dispose();
-    }
-  });
-  return completer;
+/// flutter_map's [MapController] is created synchronously, so unlike
+/// the old `Completer<GoogleMapController>` pattern there's no async
+/// step before consumers can call `move()`. Exposed via a Provider so
+/// the map widget and any external camera-mover share one instance.
+final mapControllerProvider = Provider<MapController>((ref) {
+  final controller = MapController();
+  ref.onDispose(controller.dispose);
+  return controller;
 });
 
 /// Resolves the user's current GPS location with permission handling.
@@ -74,7 +68,7 @@ final currentLocationProvider =
 );
 
 /// The coordinate currently under the fixed center pin. Updated on
-/// every [GoogleMap.onCameraMove] so the pickup field stays in sync.
+/// every gestured camera move so the pickup field stays in sync.
 ///
 /// [update] is a no-op when the new value equals the current one —
 /// keeps downstream rebuilds minimal.
@@ -98,38 +92,28 @@ final pickupLocationProvider =
   PickupLocationNotifier.new,
 );
 
-/// Reverse-geocodes the current [pickupLocationProvider] coordinate into
-/// a human-readable address ("Block B, Hostel City, Lahore"). Pure
-/// derived state — recomputes whenever the pickup pin moves. Uses
-/// [package:geocoding] which talks to the platform geocoder (Geocoding
-/// API on Android, no separate key needed since the Maps SDK key in
-/// AndroidManifest.xml is reused).
-///
-/// Returns null while the pickup hasn't resolved yet, an empty string on
-/// failure (so the UI can fall back to the lat/lng label without blowing
-/// up the widget tree on transient geocoder errors).
+/// Singleton [GeocodingService]. One HTTP client lives for the app's
+/// lifetime; closed automatically on container dispose.
+final geocodingServiceProvider = Provider<GeocodingService>((ref) {
+  final service = GeocodingService();
+  ref.onDispose(service.dispose);
+  return service;
+});
+
+/// Reverse-geocodes the current [pickupLocationProvider] coordinate
+/// into a human-readable address ("Block B, Hostel City, Lahore"),
+/// using Geoapify under the hood. Returns null while the pickup hasn't
+/// resolved yet, an empty string on failure (so the UI can fall back
+/// to a coords label without blowing up the widget tree on transient
+/// service errors).
 final pickupAddressProvider = FutureProvider<String?>((ref) async {
   final pickup = ref.watch(pickupLocationProvider);
   if (pickup == null) return null;
   try {
-    final placemarks = await geocoding.placemarkFromCoordinates(
-      pickup.latitude,
-      pickup.longitude,
-    );
-    if (placemarks.isEmpty) return '';
-    final p = placemarks.first;
-    // Stitch the most useful fields into one line, skipping any that
-    // resolved blank — full street is rarely populated worldwide so we
-    // fall back gracefully through name → subLocality → locality.
-    final parts = <String>[
-      if ((p.name ?? '').isNotEmpty) p.name!,
-      if ((p.subLocality ?? '').isNotEmpty) p.subLocality!,
-      if ((p.locality ?? '').isNotEmpty) p.locality!,
-    ];
-    if (parts.isEmpty && (p.administrativeArea ?? '').isNotEmpty) {
-      parts.add(p.administrativeArea!);
-    }
-    return parts.join(', ');
+    final details =
+        await ref.read(geocodingServiceProvider).reverseGeocode(pickup);
+    if (details == null) return '';
+    return details.displayLine;
   } catch (_) {
     return '';
   }
@@ -147,17 +131,3 @@ final selectedRideIndexProvider =
     NotifierProvider<SelectedRideIndexNotifier, int>(
   SelectedRideIndexNotifier.new,
 );
-
-/// Minimal Uber-style map style — hides POI, transit, road label icons
-/// and softens park greens. Kept as a single const for easy swapping.
-const String kMinimalMapStyle = '''
-[
-  {"featureType":"poi","stylers":[{"visibility":"off"}]},
-  {"featureType":"transit","stylers":[{"visibility":"off"}]},
-  {"featureType":"poi.park","elementType":"geometry","stylers":[{"color":"#e8f3e2"}]},
-  {"featureType":"road","elementType":"labels.icon","stylers":[{"visibility":"off"}]},
-  {"featureType":"road.highway","elementType":"geometry.fill","stylers":[{"color":"#ffffff"}]},
-  {"featureType":"road.arterial","elementType":"geometry.fill","stylers":[{"color":"#ffffff"}]},
-  {"featureType":"water","elementType":"geometry","stylers":[{"color":"#d9e7ee"}]}
-]
-''';

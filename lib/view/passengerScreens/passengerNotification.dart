@@ -1,10 +1,17 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
+import 'package:ride_sharing/model/notificationModels.dart';
+import 'package:ride_sharing/provider/notificationProvider.dart';
+import 'package:ride_sharing/provider/providers.dart';
 import 'package:ride_sharing/view/bottomNavbar.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
+import 'package:ride_sharing/widgets/consonants/errorHandler.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
+import 'package:ride_sharing/widgets/custom/ratingSheet.dart';
 
 /// Passenger notifications screen. Mirrors [Drivernotification] in look
 /// and behaviour but the seed copy is from the passenger's POV — driver
@@ -38,6 +45,17 @@ class _NotificationItem {
   final String timeAgo;
   final bool isToday;
   final bool unread;
+  final String? rideId;
+  final String? subjectUserId;
+  final String? subjectName;
+  final double? subjectRating;
+  final String? requestId;
+  final String? pickup;
+  final String? drop;
+
+  /// Once the host responds, the inline accept/decline buttons are replaced
+  /// by this label ("Accepted" / "Declined"). Null while still actionable.
+  final String? handledLabel;
 
   const _NotificationItem({
     required this.id,
@@ -47,9 +65,32 @@ class _NotificationItem {
     required this.timeAgo,
     required this.isToday,
     required this.unread,
+    this.rideId,
+    this.subjectUserId,
+    this.subjectName,
+    this.subjectRating,
+    this.requestId,
+    this.pickup,
+    this.drop,
+    this.handledLabel,
   });
 
-  _NotificationItem copyWith({bool? unread}) => _NotificationItem(
+  /// True when tapping should open a rating sheet for a co-passenger who left.
+  bool get isRatePrompt =>
+      type == _NotifType.rating &&
+      rideId != null &&
+      subjectUserId != null &&
+      subjectUserId!.isNotEmpty;
+
+  /// True for a host's join request — renders the accept/decline card.
+  bool get isJoinRequest =>
+      rideId != null &&
+      requestId != null &&
+      requestId!.isNotEmpty &&
+      subjectUserId != null;
+
+  _NotificationItem copyWith({bool? unread, String? handledLabel}) =>
+      _NotificationItem(
         id: id,
         type: type,
         title: title,
@@ -57,73 +98,108 @@ class _NotificationItem {
         timeAgo: timeAgo,
         isToday: isToday,
         unread: unread ?? this.unread,
+        rideId: rideId,
+        subjectUserId: subjectUserId,
+        subjectName: subjectName,
+        subjectRating: subjectRating,
+        requestId: requestId,
+        pickup: pickup,
+        drop: drop,
+        handledLabel: handledLabel ?? this.handledLabel,
       );
 }
 
 class _PassengernotificationState extends ConsumerState<Passengernotification> {
   _Filter _filter = _Filter.all;
-  late List<_NotificationItem> _items;
+  List<_NotificationItem> _items = const [];
+  bool _loading = true;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
-    _items = const [
-      _NotificationItem(
-        id: "n1",
-        type: _NotifType.request,
-        title: "Driver on the way",
-        message:
-            "Your driver is heading to Hostel City, Block B • ETA 4 min",
-        timeAgo: "5 min ago",
-        isToday: true,
-        unread: true,
-      ),
-      _NotificationItem(
-        id: "n2",
-        type: _NotifType.trip,
-        title: "Trip completed",
-        message: "You arrived at Taramri Chowk • Rs 250 charged",
-        timeAgo: "1 hour ago",
-        isToday: true,
-        unread: true,
-      ),
-      _NotificationItem(
-        id: "n3",
-        type: _NotifType.rating,
-        title: "Rate your driver",
-        message: "How was your ride? Tap to leave a rating",
-        timeAgo: "3 hours ago",
-        isToday: true,
-        unread: false,
-      ),
-      _NotificationItem(
-        id: "n4",
-        type: _NotifType.earnings,
-        title: "Promo unlocked",
-        message: "Rs 100 off your next ride — code SAFE100",
-        timeAgo: "Yesterday",
-        isToday: false,
-        unread: false,
-      ),
-      _NotificationItem(
-        id: "n5",
-        type: _NotifType.request,
-        title: "Driver matched",
-        message: "Driver assigned for your Bahria Phase 7 booking",
-        timeAgo: "Yesterday",
-        isToday: false,
-        unread: false,
-      ),
-      _NotificationItem(
-        id: "n6",
-        type: _NotifType.system,
-        title: "Account verified",
-        message: "Your phone number has been successfully verified",
-        timeAgo: "2 days ago",
-        isToday: false,
-        unread: false,
-      ),
-    ];
+    _load();
+  }
+
+  /// Fetch real notifications. On first open also clears the home-screen
+  /// badge (mark-all-read server-side) while keeping the unread styling
+  /// for this view so the rider can still see what's new.
+  Future<void> _load({bool clearBadge = true}) async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final list = await ref.read(notificationServiceProvider).getNotifications();
+      if (!mounted) return;
+      setState(() {
+        _items = list.map(_fromServer).toList();
+        _loading = false;
+      });
+      if (clearBadge && list.any((n) => !n.read)) {
+        await ref.read(notificationServiceProvider).markAllRead();
+        ref.invalidate(unreadCountProvider);
+        ref.invalidate(notificationsProvider);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = ErrorHandler.message(e);
+      });
+    }
+  }
+
+  _NotificationItem _fromServer(AppNotification n) => _NotificationItem(
+        id: n.id,
+        type: switch (n.type) {
+          NotifType.request => _NotifType.request,
+          NotifType.trip => _NotifType.trip,
+          NotifType.rating => _NotifType.rating,
+          NotifType.system => _NotifType.system,
+        },
+        title: n.title,
+        message: n.body,
+        timeAgo: n.relativeTime,
+        isToday: n.isToday,
+        unread: !n.read,
+        rideId: n.rideId,
+        subjectUserId: n.subjectUserId,
+        subjectName: n.subjectName,
+        subjectRating: n.subjectRating,
+        requestId: n.requestId,
+        pickup: n.pickup,
+        drop: n.drop,
+      );
+
+  /// Accept or decline a host's join request from the notification card.
+  Future<void> _respondToJoinRequest(_NotificationItem n, bool accept) async {
+    if (n.rideId == null || n.requestId == null) return;
+    try {
+      final service = ref.read(rideServiceProvider);
+      if (accept) {
+        await service.acceptJoinRequest(n.rideId!, n.requestId!);
+      } else {
+        await service.declineJoinRequest(n.rideId!, n.requestId!);
+      }
+      if (!mounted) return;
+      setState(() {
+        _items = _items
+            .map((it) => it.id == n.id
+                ? it.copyWith(handledLabel: accept ? 'Accepted' : 'Declined')
+                : it)
+            .toList();
+      });
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(CustomWidgets.customSuccessSnackBar(
+            accept ? 'Passenger added to your ride' : 'Request declined'));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(CustomWidgets.customErrorSnackBar(ErrorHandler.message(e)));
+    }
   }
 
   // ─── State mutations ─────────────────────────────────────
@@ -132,20 +208,31 @@ class _PassengernotificationState extends ConsumerState<Passengernotification> {
     setState(() {
       _items = _items.map((n) => n.copyWith(unread: false)).toList();
     });
+    ref.read(notificationServiceProvider).markAllRead();
+    ref.invalidate(unreadCountProvider);
   }
 
   void _toggleRead(String id) {
+    final wasUnread = _items.any((n) => n.id == id && n.unread);
     setState(() {
       _items = _items
           .map((n) => n.id == id ? n.copyWith(unread: !n.unread) : n)
           .toList();
     });
+    if (wasUnread) {
+      ref.read(notificationServiceProvider).markAsRead(id);
+      ref.invalidate(unreadCountProvider);
+    }
   }
 
   /// Opens the notification — marks it read and, for driver-assignment
   /// items, pops back to the navbar and switches to the "Your Ride" tab
   /// so the passenger lands straight on the active-ride view.
-  void _openNotification(_NotificationItem n) {
+  Future<void> _openNotification(_NotificationItem n) async {
+    if (n.unread) {
+      ref.read(notificationServiceProvider).markAsRead(n.id);
+      ref.invalidate(unreadCountProvider);
+    }
     setState(() {
       _items = _items
           .map((it) => it.id == n.id ? it.copyWith(unread: false) : it)
@@ -155,6 +242,35 @@ class _PassengernotificationState extends ConsumerState<Passengernotification> {
     if (n.type == _NotifType.request) {
       ref.read(bottomNavIndexProvider.notifier).select(2);
       context.pop();
+      return;
+    }
+
+    // A co-passenger left at their stop — open the rating sheet for them.
+    if (n.isRatePrompt) {
+      final name = (n.subjectName ?? '').trim().isEmpty
+          ? 'co-passenger'
+          : n.subjectName!.trim();
+      final stars = await showRatingSheet(
+        context: context,
+        title: 'Rate $name',
+        subtitle: 'How was riding with them?',
+        avatarInitial: name[0].toUpperCase(),
+      );
+      if (stars == null || !mounted) return;
+      try {
+        await ref
+            .read(rideServiceProvider)
+            .rateCoPassenger(n.rideId!, n.subjectUserId!, stars);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(CustomWidgets.customSuccessSnackBar("Rating submitted"));
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(CustomWidgets.customErrorSnackBar(ErrorHandler.message(e)));
+      }
     }
   }
 
@@ -166,7 +282,17 @@ class _PassengernotificationState extends ConsumerState<Passengernotification> {
       _items = List.of(_items)..removeAt(originalIndex);
     });
 
-    final messenger = ScaffoldMessenger.of(context)
+    // Commit the delete to the backend after the undo window; UNDO cancels it.
+    final commit = Timer(const Duration(seconds: 4), () async {
+      try {
+        await ref.read(notificationServiceProvider).deleteNotification(n.id);
+        ref.invalidate(unreadCountProvider);
+      } catch (_) {
+        // Network hiccup — a later refresh reconciles the list.
+      }
+    });
+
+    ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
@@ -192,6 +318,7 @@ class _PassengernotificationState extends ConsumerState<Passengernotification> {
             label: "UNDO",
             textColor: Consonants.primaryColor,
             onPressed: () {
+              commit.cancel();
               setState(() {
                 _items = List.of(_items)..insert(originalIndex, n);
               });
@@ -199,27 +326,11 @@ class _PassengernotificationState extends ConsumerState<Passengernotification> {
           ),
         ),
       );
-    // Reference messenger so the lint doesn't complain about the cascade.
-    messenger.toString();
   }
 
   Future<void> _onRefresh() async {
-    await Future<void>.delayed(const Duration(milliseconds: 900));
-    if (!mounted) return;
-    setState(() {
-      _items = [
-        const _NotificationItem(
-          id: "n_new",
-          type: _NotifType.request,
-          title: "Driver on the way",
-          message: "Your driver is approaching F-10 Markaz • ETA 3 min",
-          timeAgo: "Just now",
-          isToday: true,
-          unread: true,
-        ),
-        ..._items,
-      ];
-    });
+    // Don't re-clear the badge on a manual refresh.
+    await _load(clearBadge: false);
   }
 
   // ─── Long-press action sheet ─────────────────────────────
@@ -359,7 +470,15 @@ class _PassengernotificationState extends ConsumerState<Passengernotification> {
                 color: Consonants.primaryColor,
                 backgroundColor: Consonants.whiteColor,
                 onRefresh: _onRefresh,
-                child: filtered.isEmpty
+                child: _loading && _items.isEmpty
+                    ? _statusList(const Center(
+                        child: CircularProgressIndicator(
+                          color: Consonants.primaryColor,
+                        ),
+                      ))
+                    : _error != null && _items.isEmpty
+                        ? _statusList(_errorState(_error!))
+                        : filtered.isEmpty
                     ? _emptyState()
                     : ListView(
                         physics: const AlwaysScrollableScrollPhysics(
@@ -389,6 +508,48 @@ class _PassengernotificationState extends ConsumerState<Passengernotification> {
                         ],
                       ),
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Wraps a status widget (spinner/error) in a scroll view so the
+  /// RefreshIndicator can still be pulled while it's shown.
+  Widget _statusList(Widget child) {
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: BouncingScrollPhysics(),
+      ),
+      children: [SizedBox(height: 160.h), child],
+    );
+  }
+
+  Widget _errorState(String message) {
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 32.w),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.cloud_off_rounded,
+                size: 36.sp, color: Consonants.greyColor),
+            SizedBox(height: 12.h),
+            CustomWidgets.customText(
+              message,
+              12.sp,
+              Consonants.boldTextColor,
+              FontWeight.w700,
+              textAlign: TextAlign.center,
+              maxLines: 3,
+            ),
+            SizedBox(height: 6.h),
+            CustomWidgets.customText(
+              "Pull down to retry",
+              10.sp,
+              Consonants.greyColor,
+              FontWeight.w500,
             ),
           ],
         ),
@@ -648,9 +809,230 @@ class _PassengernotificationState extends ConsumerState<Passengernotification> {
     );
   }
 
+  // ─── Join-request card (host: accept / decline) ─────────
+
+  Widget _joinRequestCard(_NotificationItem n) {
+    final name = (n.subjectName ?? '').trim().isEmpty
+        ? 'Passenger'
+        : n.subjectName!.trim();
+    final ratingLabel = (n.subjectRating != null && n.subjectRating! > 0)
+        ? n.subjectRating!.toStringAsFixed(1)
+        : '—';
+    final handled = n.handledLabel;
+
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 20.w),
+      child: Container(
+        padding: EdgeInsets.all(16.w),
+        decoration: BoxDecoration(
+          color: Consonants.whiteColor,
+          borderRadius: BorderRadius.circular(18.r),
+          border: Border.all(
+            color: Consonants.primaryColor.withValues(alpha: 0.25),
+            width: 1.2,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 44.w,
+                  height: 44.w,
+                  alignment: Alignment.center,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      colors: [Consonants.primaryColor, Color(0xff5AC8FA)],
+                    ),
+                  ),
+                  child: Text(
+                    name[0].toUpperCase(),
+                    style: TextStyle(
+                      color: Consonants.whiteColor,
+                      fontSize: 18.sp,
+                      fontWeight: FontWeight.w800,
+                      fontFamily: Consonants.fontFamily,
+                    ),
+                  ),
+                ),
+                SizedBox(width: 12.w),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      CustomWidgets.customText(
+                        name,
+                        14.sp,
+                        Consonants.boldTextColor,
+                        FontWeight.w800,
+                        maxLines: 1,
+                      ),
+                      SizedBox(height: 2.h),
+                      Row(
+                        children: [
+                          Icon(Icons.star_rounded,
+                              size: 12.sp, color: const Color(0xffF5B800)),
+                          SizedBox(width: 3.w),
+                          CustomWidgets.customText(
+                            "$ratingLabel · wants to join",
+                            11.sp,
+                            Consonants.greyColor,
+                            FontWeight.w600,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                CustomWidgets.customText(
+                  n.timeAgo,
+                  9.sp,
+                  Consonants.greyColor,
+                  FontWeight.w500,
+                ),
+              ],
+            ),
+            SizedBox(height: 14.h),
+            _joinRouteRow(
+              Icons.my_location_rounded,
+              const Color(0xff2196F3),
+              "Pickup",
+              n.pickup ?? "—",
+            ),
+            SizedBox(height: 8.h),
+            _joinRouteRow(
+              Icons.location_on_rounded,
+              const Color(0xffEF4444),
+              "Drop-off",
+              n.drop ?? "—",
+            ),
+            SizedBox(height: 16.h),
+            if (handled != null)
+              Container(
+                width: double.infinity,
+                padding: EdgeInsets.symmetric(vertical: 12.h),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: Consonants.lightBlueColor,
+                  borderRadius: BorderRadius.circular(12.r),
+                ),
+                child: CustomWidgets.customText(
+                  handled,
+                  12.sp,
+                  Consonants.primaryColor,
+                  FontWeight.w800,
+                ),
+              )
+            else
+              Row(
+                children: [
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => _respondToJoinRequest(n, false),
+                      child: Container(
+                        padding: EdgeInsets.symmetric(vertical: 13.h),
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: Consonants.whiteColor,
+                          borderRadius: BorderRadius.circular(12.r),
+                          border: Border.all(
+                            color: const Color(0xffEF4444),
+                            width: 1.5,
+                          ),
+                        ),
+                        child: CustomWidgets.customText(
+                          "Decline",
+                          12.sp,
+                          const Color(0xffEF4444),
+                          FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(width: 10.w),
+                  Expanded(
+                    flex: 2,
+                    child: GestureDetector(
+                      onTap: () => _respondToJoinRequest(n, true),
+                      child: Container(
+                        padding: EdgeInsets.symmetric(vertical: 13.h),
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Consonants.primaryColor, Color(0xff5AC8FA)],
+                          ),
+                          borderRadius: BorderRadius.circular(12.r),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Consonants.primaryColor
+                                  .withValues(alpha: 0.30),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: CustomWidgets.customText(
+                          "Accept",
+                          12.sp,
+                          Consonants.whiteColor,
+                          FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _joinRouteRow(IconData icon, Color color, String label, String value) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 14.sp, color: color),
+        SizedBox(width: 8.w),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CustomWidgets.customText(
+                label,
+                9.sp,
+                Consonants.greyColor,
+                FontWeight.w600,
+              ),
+              CustomWidgets.customText(
+                value,
+                12.sp,
+                Consonants.boldTextColor,
+                FontWeight.w700,
+                maxLines: 1,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   // ─── Notification card ──────────────────────────────────
 
   Widget _notificationCard(_NotificationItem n) {
+    // A host's join request gets its own rich card with accept/decline.
+    if (n.isJoinRequest) return _joinRequestCard(n);
+
     final visuals = _visualsFor(n.type);
 
     return Padding(

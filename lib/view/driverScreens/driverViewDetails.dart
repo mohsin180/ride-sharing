@@ -1,11 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:ride_sharing/model/rideModels.dart';
+import 'package:ride_sharing/provider/driverActiveRideProvider.dart';
+import 'package:ride_sharing/provider/driverFeedProvider.dart';
+import 'package:ride_sharing/provider/providers.dart';
+import 'package:ride_sharing/widgets/consonants/apiException.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
 
-/// Detailed view of an accepted ride — list of passengers in pickup
-/// order, per-passenger status, quick actions and a sticky CTA to
-/// complete the trip once all riders have been dropped off.
+/// Review screen for a ride request the driver opened from the feed.
+/// Shows the host + route + fare, with a sticky CTA to Accept. Accepting
+/// claims the ride (PENDING → ACCEPTED) and returns to the feed; the
+/// in-trip pickup/drop management then lives in the "Your Ride" tab,
+/// backed by `GET /api/v1/rides/driver/active`.
 
 enum PickupStatus { upcoming, current, picked, dropped }
 
@@ -54,101 +62,86 @@ class Passenger {
       );
 }
 
-/// Demo seed data — first entry is the trip host (the passenger who
-/// created the shared ride). Both [DriverViewDetails] and `driverRides`
-/// derive their summary stats from this list so they stay in sync.
-const List<Passenger> kSamplePassengers = [
-  Passenger(
-    name: "Sarah Ahmed",
-    initial: "S",
-    avatarColor: Color(0xffF472B6),
-    rating: "4.9",
-    pickup: "Hostel City, Block B",
-    drop: "Taramri Chowk",
-    distanceToPickup: "0.8 km",
-    etaToPickup: "3 min",
-    fare: "Rs 250",
-    seats: 1,
-    status: PickupStatus.current,
-    isHost: true,
-  ),
-  Passenger(
-    name: "Ayesha Khan",
-    initial: "A",
-    avatarColor: Color(0xff60A5FA),
-    rating: "4.8",
-    pickup: "Hostel City, Block A",
-    drop: "Faizabad Metro",
-    distanceToPickup: "0.0 km",
-    etaToPickup: "On board",
-    fare: "Rs 220",
-    seats: 1,
-    status: PickupStatus.upcoming,
-  ),
-  Passenger(
-    name: "Hina Malik",
-    initial: "H",
-    avatarColor: Color(0xffFBBF24),
-    rating: "4.7",
-    pickup: "Bahria Phase 7",
-    drop: "Faizabad Metro",
-    distanceToPickup: "2.4 km",
-    etaToPickup: "8 min",
-    fare: "Rs 180",
-    seats: 1,
-    status: PickupStatus.upcoming,
-  ),
-];
+class DriverViewDetails extends ConsumerStatefulWidget {
+  /// The ride request to review, carried over from the driver feed.
+  final AvailableRide ride;
 
-class DriverViewDetails extends StatefulWidget {
-  const DriverViewDetails({super.key});
+  const DriverViewDetails({super.key, required this.ride});
 
   @override
-  State<DriverViewDetails> createState() => _DriverViewDetailsState();
+  ConsumerState<DriverViewDetails> createState() => _DriverViewDetailsState();
 }
 
-class _DriverViewDetailsState extends State<DriverViewDetails> {
+class _DriverViewDetailsState extends ConsumerState<DriverViewDetails> {
   late List<Passenger> _passengers;
 
-  /// Whether the driver has accepted this ride. While `false` the
-  /// passenger cards are read-only (no call/message/status actions)
-  /// and the bottom CTA reads "Accept Ride". Tapping accept flips
-  /// this to `true` and reveals the management flow.
-  bool _isAccepted = false;
+  /// True while the accept request is in flight, so the CTA can disable
+  /// itself and avoid a double-claim.
+  bool _accepting = false;
 
   @override
   void initState() {
     super.initState();
-    _passengers = List.of(kSamplePassengers);
+    // Pre-accept we only have the feed summary (host + route + fare), so
+    // the trip is shown as the single host rider. The full co-passenger
+    // list becomes available in the "Your Ride" tab once accepted.
+    final r = widget.ride;
+    final name = r.hostName.trim().isEmpty ? "Passenger" : r.hostName.trim();
+    _passengers = [
+      Passenger(
+        name: name,
+        initial: name[0].toUpperCase(),
+        avatarColor: const Color(0xff60A5FA),
+        rating: r.hostRating != null ? r.hostRating!.toStringAsFixed(1) : "—",
+        pickup: r.pickup,
+        drop: r.drop,
+        distanceToPickup:
+            r.distanceKm != null ? "${r.distanceKm!.toStringAsFixed(1)} km" : "—",
+        etaToPickup: r.etaMinutes != null ? "${r.etaMinutes} min" : "—",
+        fare: r.fareForRider != null ? "Rs ${r.fareForRider!.round()}" : "Rs —",
+        seats: 1,
+        status: PickupStatus.current,
+        isHost: true,
+      ),
+    ];
   }
 
-  void _acceptRide() {
-    setState(() => _isAccepted = true);
-    ScaffoldMessenger.of(context).showSnackBar(
-      CustomWidgets.customSuccessSnackBar("Ride accepted"),
-    );
-  }
-
-  void _advance(int index) {
-    setState(() {
-      final p = _passengers[index];
-      PickupStatus? next;
-      switch (p.status) {
-        case PickupStatus.upcoming:
-          next = PickupStatus.current;
-          break;
-        case PickupStatus.current:
-          next = PickupStatus.picked;
-          break;
-        case PickupStatus.picked:
-          next = PickupStatus.dropped;
-          break;
-        case PickupStatus.dropped:
-          next = null;
-          break;
+  Future<void> _acceptRide() async {
+    if (_accepting) return;
+    setState(() => _accepting = true);
+    try {
+      await ref.read(rideServiceProvider).acceptRide(widget.ride.id);
+      // The ride leaves the feed and enters the driver's active trip.
+      ref.invalidate(driverFeedProvider);
+      ref.invalidate(driverActiveRideProvider);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          CustomWidgets.customSuccessSnackBar("Ride accepted — see Your Ride"),
+        );
+      Navigator.of(context).pop();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _accepting = false);
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(CustomWidgets.customErrorSnackBar(e.message));
+      // Conflict / not-found means the ride is no longer claimable —
+      // bounce back to a fresh feed.
+      if (e.isConflict || e.isNotFound) {
+        ref.invalidate(driverFeedProvider);
+        Navigator.of(context).pop();
       }
-      if (next != null) _passengers[index] = p.copyWith(status: next);
-    });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _accepting = false);
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          CustomWidgets.customErrorSnackBar("Couldn't accept ride"),
+        );
+    }
   }
 
   @override
@@ -533,7 +526,6 @@ class _DriverViewDetailsState extends State<DriverViewDetails> {
   // ─── Passenger card ──────────────────────────────────────
   Widget _passengerCard(Passenger p, int index) {
     final isCurrent = p.status == PickupStatus.current;
-    final isFinished = p.status == PickupStatus.dropped;
 
     return Container(
       margin: EdgeInsets.symmetric(horizontal: 20.w),
@@ -746,19 +738,9 @@ class _DriverViewDetailsState extends State<DriverViewDetails> {
                   ],
                 ),
                 const Spacer(),
-                // Per-passenger actions only appear after the driver
-                // has accepted the ride. Before that, the card is
-                // read-only — fare on the left, blank on the right.
-                if (_isAccepted) ...[
-                  _circleAction(Icons.phone_rounded),
-                  SizedBox(width: 8.w),
-                  _circleAction(Icons.message_rounded),
-                  SizedBox(width: 10.w),
-                  _primaryActionButton(
-                    status: p.status,
-                    onTap: isFinished ? null : () => _advance(index),
-                  ),
-                ],
+                // Read-only review screen — fare on the left, no
+                // per-passenger actions until the ride is accepted and
+                // managed from the "Your Ride" tab.
               ],
             ),
           ),
@@ -883,111 +865,15 @@ class _DriverViewDetailsState extends State<DriverViewDetails> {
     );
   }
 
-  Widget _circleAction(IconData icon) {
-    return Container(
-      width: 36.w,
-      height: 36.w,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: Consonants.lightBlueColor,
-        shape: BoxShape.circle,
-      ),
-      child: Icon(icon, size: 16.sp, color: Consonants.primaryColor),
-    );
-  }
-
-  Widget _primaryActionButton({
-    required PickupStatus status,
-    required VoidCallback? onTap,
-  }) {
-    late final String label;
-    switch (status) {
-      case PickupStatus.upcoming:
-        label = "Start";
-        break;
-      case PickupStatus.current:
-        label = "Picked up";
-        break;
-      case PickupStatus.picked:
-        label = "Drop off";
-        break;
-      case PickupStatus.dropped:
-        label = "Done";
-        break;
-    }
-    final disabled = onTap == null;
-
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 10.h),
-        decoration: BoxDecoration(
-          gradient: disabled
-              ? null
-              : const LinearGradient(
-                  colors: [Consonants.primaryColor, Color(0xff5AC8FA)],
-                ),
-          color: disabled ? Consonants.lightGreyColor : null,
-          borderRadius: BorderRadius.circular(12.r),
-          boxShadow: disabled
-              ? null
-              : [
-                  BoxShadow(
-                    color: Consonants.primaryColor.withValues(alpha: 0.30),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CustomWidgets.customText(
-              label,
-              11.sp,
-              disabled ? Consonants.greyColor : Consonants.whiteColor,
-              FontWeight.w800,
-            ),
-            SizedBox(width: 4.w),
-            Icon(
-              Icons.arrow_forward_rounded,
-              size: 13.sp,
-              color: disabled ? Consonants.greyColor : Consonants.whiteColor,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _completeRideBar() {
-    // Three states for the bottom bar:
-    //   1. Not yet accepted   → big gradient "Accept Ride" CTA
-    //   2. Accepted, in-flight → grey "Drop off all riders to finish"
-    //   3. Accepted, all done  → gradient "Complete Trip" CTA
-    if (!_isAccepted) {
-      return _stickyBar(
-        onTap: _acceptRide,
-        active: true,
-        icon: Icons.check_circle_rounded,
-        label: "Accept Ride",
-      );
-    }
-
-    final allDone =
-        _passengers.every((p) => p.status == PickupStatus.dropped);
-
+    // Single CTA: claim the ride. While the request is in flight the bar
+    // greys out to prevent a double-accept; on success the screen pops
+    // and the trip moves to the "Your Ride" tab.
     return _stickyBar(
-      onTap: allDone
-          ? () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                CustomWidgets.customSuccessSnackBar("Trip completed"),
-              );
-            }
-          : null,
-      active: allDone,
-      icon: allDone ? Icons.flag_circle_rounded : Icons.lock_rounded,
-      label: allDone ? "Complete Trip" : "Drop off all riders to finish",
+      onTap: _accepting ? null : _acceptRide,
+      active: !_accepting,
+      icon: Icons.check_circle_rounded,
+      label: _accepting ? "Accepting…" : "Accept Ride",
     );
   }
 

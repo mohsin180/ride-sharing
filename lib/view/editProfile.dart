@@ -279,113 +279,85 @@ class _EditprofileState extends ConsumerState<Editprofile> {
                         SizedBox(height: 24.h),
                         _sectionLabel("Vehicle Details"),
                         SizedBox(height: 12.h),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: AuthFields(
-                                text: "Car Make",
-                                controller: _carMake,
-                                suffixIcon: const Icon(Icons.drive_eta),
-                                validator: (v) {
-                                  if (v == null || v.trim().isEmpty) {
-                                    return "Required";
-                                  }
-                                  if (!RegExp(r'^[a-zA-Z ]+$').hasMatch(v)) {
-                                    return "Letters only";
-                                  }
-                                  return null;
-                                },
-                              ),
-                            ),
-                            Expanded(
-                              child: AuthFields(
-                                text: "Car Model",
-                                controller: _carModel,
-                                suffixIcon: const Icon(Icons.info_outline),
-                                validator: _required("Required"),
-                              ),
-                            ),
-                          ],
+                        AuthFields(
+                          text: "Car Make",
+                          controller: _carMake,
+                          suffixIcon: const Icon(Icons.drive_eta),
+                          validator: (v) {
+                            if (v == null || v.trim().isEmpty) {
+                              return "Required";
+                            }
+                            if (!RegExp(r'^[a-zA-Z ]+$').hasMatch(v)) {
+                              return "Letters only";
+                            }
+                            return null;
+                          },
                         ),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: AuthFields(
-                                text: "Car Number",
-                                controller: _carNumber,
-                                suffixIcon:
-                                    const Icon(Icons.confirmation_number),
-                                validator: (v) {
-                                  if (v == null || v.trim().isEmpty) {
-                                    return "Required";
-                                  }
-                                  if (!RegExp(r'^[A-Za-z]{2,3}-[0-9]{3,4}$')
-                                      .hasMatch(v)) {
-                                    return "Format: ABC-1234";
-                                  }
-                                  return null;
-                                },
-                              ),
-                            ),
-                            Expanded(
-                              child: AuthFields(
-                                text: "Car Color",
-                                controller: _carColor,
-                                suffixIcon: const Icon(Icons.color_lens),
-                                validator: _required("Required"),
-                              ),
-                            ),
-                          ],
+                        AuthFields(
+                          text: "Car Model",
+                          controller: _carModel,
+                          suffixIcon: const Icon(Icons.info_outline),
+                          validator: _required("Required"),
                         ),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: AuthFields(
-                                text: "Car Seats",
-                                controller: _carSeats,
-                                suffixIcon: const Icon(Icons.chair),
-                                keyboardType: TextInputType.number,
-                                validator: (v) {
-                                  if (v == null || v.isEmpty) {
-                                    return "Required";
-                                  }
-                                  if (!RegExp(r'^[0-9]+$').hasMatch(v)) {
-                                    return "Numbers only";
-                                  }
-                                  final seats = int.parse(v);
-                                  if (seats < 1 || seats > 10) {
-                                    return "Invalid";
-                                  }
-                                  return null;
-                                },
-                              ),
-                            ),
-                            Expanded(
-                              child: AuthFields(
-                                text: "Car Year",
-                                controller: _carYear,
-                                suffixIcon: const Icon(Icons.calendar_today),
-                                keyboardType: TextInputType.number,
-                                validator: (v) {
-                                  if (v == null || v.isEmpty) {
-                                    return "Required";
-                                  }
-                                  if (!RegExp(r'^[0-9]{4}$').hasMatch(v)) {
-                                    return "Enter valid year";
-                                  }
-                                  final year = int.parse(v);
-                                  final current = DateTime.now().year;
-                                  if (year < 1980 || year > current) {
-                                    return "1980 – $current";
-                                  }
-                                  return null;
-                                },
-                              ),
-                            ),
-                          ],
+                        AuthFields(
+                          text: "Car Number",
+                          controller: _carNumber,
+                          suffixIcon: const Icon(Icons.confirmation_number),
+                          validator: (v) {
+                            if (v == null || v.trim().isEmpty) {
+                              return "Required";
+                            }
+                            if (!RegExp(r'^[A-Za-z]{2,3}-[0-9]{3,4}$')
+                                .hasMatch(v)) {
+                              return "Format: ABC-1234";
+                            }
+                            return null;
+                          },
+                        ),
+                        AuthFields(
+                          text: "Car Color",
+                          controller: _carColor,
+                          suffixIcon: const Icon(Icons.color_lens),
+                          validator: _required("Required"),
+                        ),
+                        AuthFields(
+                          text: "Car Seats",
+                          controller: _carSeats,
+                          suffixIcon: const Icon(Icons.chair),
+                          keyboardType: TextInputType.number,
+                          validator: (v) {
+                            if (v == null || v.isEmpty) {
+                              return "Required";
+                            }
+                            if (!RegExp(r'^[0-9]+$').hasMatch(v)) {
+                              return "Numbers only";
+                            }
+                            final seats = int.parse(v);
+                            if (seats < 1 || seats > 10) {
+                              return "Invalid";
+                            }
+                            return null;
+                          },
+                        ),
+                        AuthFields(
+                          text: "Car Year",
+                          controller: _carYear,
+                          suffixIcon: const Icon(Icons.calendar_today),
+                          keyboardType: TextInputType.number,
+                          validator: (v) {
+                            if (v == null || v.isEmpty) {
+                              return "Required";
+                            }
+                            if (!RegExp(r'^[0-9]{4}$').hasMatch(v)) {
+                              return "Enter valid year";
+                            }
+                            final year = int.parse(v);
+                            final current = DateTime.now().year;
+                            if (year < 1980 || year > current) {
+                              return "1980 – $current";
+                            }
+                            return null;
+                          },
                         ),
                       ],
                     ],

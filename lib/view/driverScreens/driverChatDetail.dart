@@ -1,8 +1,14 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:ride_sharing/controller/chatSocket.dart';
+import 'package:ride_sharing/model/messagingModels.dart';
+import 'package:ride_sharing/provider/messagingProvider.dart';
+import 'package:ride_sharing/provider/providers.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
+import 'package:ride_sharing/widgets/consonants/errorHandler.dart';
+import 'package:ride_sharing/widgets/consonants/jwtUtils.dart';
+import 'package:ride_sharing/widgets/consonants/tokenStorage.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
 
 /// Group-chat detail screen (driver + passengers in a shared ride).
@@ -24,20 +30,22 @@ class ChatMember {
   const ChatMember({required this.initial, required this.color});
 }
 
-class DriverChatDetail extends StatefulWidget {
-  final String groupName;
+class DriverChatDetail extends ConsumerStatefulWidget {
+  final String rideId;
+  final String title;
   final List<ChatMember> members;
   final bool isActive;
 
   const DriverChatDetail({
     super.key,
-    required this.groupName,
-    required this.members,
+    required this.rideId,
+    required this.title,
+    this.members = const [],
     this.isActive = false,
   });
 
   @override
-  State<DriverChatDetail> createState() => _DriverChatDetailState();
+  ConsumerState<DriverChatDetail> createState() => _DriverChatDetailState();
 }
 
 enum _Status { sending, sent, delivered, read }
@@ -75,14 +83,20 @@ class _Message {
       );
 }
 
-class _DriverChatDetailState extends State<DriverChatDetail> {
+class _DriverChatDetailState extends ConsumerState<DriverChatDetail> {
   late final TextEditingController _composer;
   late final ScrollController _scroll;
   late final FocusNode _focus;
+  final ChatSocket _socket = ChatSocket();
 
-  late List<_Message> _messages;
-  bool _otherTyping = false;
-  String? _typingName;
+  List<_Message> _messages = [];
+  String? _myUserId;
+  bool _loading = true;
+  String? _error;
+
+  // Reserved for a future real typing indicator; never set in this build.
+  final bool _otherTyping = false;
+  final String? _typingName = null;
 
   @override
   void initState() {
@@ -91,156 +105,112 @@ class _DriverChatDetailState extends State<DriverChatDetail> {
     _scroll = ScrollController();
     _focus = FocusNode();
     _composer.addListener(() => setState(() {}));
-    _messages = _seedMessages();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom(jump: true));
+    _init();
+  }
+
+  Future<void> _init() async {
+    final token = await Tokenstorage.getToken();
+    _myUserId = token != null ? JwtUtils.extractUserId(token) : null;
+    try {
+      final history =
+          await ref.read(messagingServiceProvider).getMessages(widget.rideId);
+      if (!mounted) return;
+      setState(() {
+        _messages = history.map(_fromServer).toList();
+        _loading = false;
+      });
+      _scrollToBottomSoon();
+      // Opening the chat clears its unread count.
+      ref.invalidate(unreadMessagesCountProvider);
+      ref.invalidate(myChatsProvider);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = ErrorHandler.message(e);
+      });
+    }
+    // Live updates (best-effort — REST history already loaded above).
+    await _socket.connect(rideId: widget.rideId, onMessage: _onIncoming);
+  }
+
+  _Message _fromServer(ChatMessage m) {
+    final mine = m.isMine(_myUserId);
+    final name = m.senderName.trim();
+    return _Message(
+      id: m.id,
+      senderName: mine ? "You" : (name.isEmpty ? "Member" : name),
+      senderInitial: name.isNotEmpty ? name[0].toUpperCase() : "?",
+      senderColor: _colorFor(m.senderId),
+      text: m.text,
+      time: (m.sentAt ?? DateTime.now()).toLocal(),
+      isMe: mine,
+    );
+  }
+
+  void _onIncoming(ChatMessage m) {
+    if (!mounted) return;
+    if (_messages.any((x) => x.id == m.id)) return; // dedupe our own echo
+    setState(() => _messages = [..._messages, _fromServer(m)]);
+    _scrollToBottomSoon();
+    // A message arrived while we're viewing — keep read-state + badge fresh.
+    ref.read(messagingServiceProvider).markRead(widget.rideId);
+    ref.invalidate(unreadMessagesCountProvider);
+  }
+
+  Color _colorFor(String id) {
+    const palette = [
+      Color(0xff60A5FA),
+      Color(0xffF472B6),
+      Color(0xffFBBF24),
+      Color(0xff34D399),
+      Color(0xffA78BFA),
+      Color(0xffFB923C),
+    ];
+    if (id.isEmpty) return palette[0];
+    return palette[id.hashCode.abs() % palette.length];
   }
 
   @override
   void dispose() {
+    _socket.dispose();
     _composer.dispose();
     _scroll.dispose();
     _focus.dispose();
     super.dispose();
   }
 
-  // ─── Seed conversation (demo) ────────────────────────────
-
-  List<_Message> _seedMessages() {
-    final now = DateTime.now();
-    DateTime t(int hours, int minutes) =>
-        DateTime(now.year, now.month, now.day, hours, minutes);
-
-    final m = widget.members;
-    final a = m.isNotEmpty ? m[0] : const ChatMember(initial: "A", color: Color(0xff60A5FA));
-    final b = m.length > 1 ? m[1] : const ChatMember(initial: "B", color: Color(0xffF472B6));
-
-    return [
-      _Message(
-        id: "1",
-        senderName: "Sarah",
-        senderInitial: a.initial,
-        senderColor: a.color,
-        text: "Hey, are we still on for 9:30?",
-        time: t(9, 15),
-        isMe: false,
-      ),
-      _Message(
-        id: "2",
-        senderName: "You",
-        text: "Yes, just leaving now",
-        time: t(9, 16),
-        isMe: true,
-      ),
-      _Message(
-        id: "3",
-        senderName: "Ahmed",
-        senderInitial: b.initial,
-        senderColor: b.color,
-        text: "I'll be at the front gate.",
-        time: t(9, 18),
-        isMe: false,
-      ),
-      _Message(
-        id: "4",
-        senderName: "You",
-        text: "ETA 4 min, see you all there 🚗",
-        time: t(9, 20),
-        isMe: true,
-      ),
-      _Message(
-        id: "5",
-        senderName: "Sarah",
-        senderInitial: a.initial,
-        senderColor: a.color,
-        text: "Perfect, thanks!",
-        time: t(9, 22),
-        isMe: false,
-      ),
-    ];
-  }
-
   // ─── Sending ─────────────────────────────────────────────
 
-  void _send() {
+  Future<void> _send() async {
     final text = _composer.text.trim();
     if (text.isEmpty) return;
+    _composer.clear();
+    setState(() {});
 
-    final id = DateTime.now().microsecondsSinceEpoch.toString();
-    setState(() {
-      _messages = [
-        ..._messages,
-        _Message(
-          id: id,
-          senderName: "You",
-          text: text,
-          time: DateTime.now(),
-          isMe: true,
-          status: _Status.sending,
-        ),
-      ];
-      _composer.clear();
-    });
-    _scrollToBottom();
-
-    // Promote sending → sent → delivered to feel responsive.
-    Timer(const Duration(milliseconds: 300), () {
+    // Prefer the live socket — the server echoes the message back over the
+    // ride topic, which appends it. If the socket is down, fall back to REST
+    // and append the returned message directly.
+    final overSocket = _socket.send(widget.rideId, text);
+    if (overSocket) return;
+    try {
+      final msg =
+          await ref.read(messagingServiceProvider).sendMessage(widget.rideId, text);
       if (!mounted) return;
-      setState(() {
-        _messages = _messages
-            .map((msg) => msg.id == id ? msg.copyWith(status: _Status.sent) : msg)
-            .toList();
-      });
-    });
-    Timer(const Duration(milliseconds: 900), () {
+      if (!_messages.any((x) => x.id == msg.id)) {
+        setState(() => _messages = [..._messages, _fromServer(msg)]);
+        _scrollToBottomSoon();
+      }
+    } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _messages = _messages
-            .map((msg) => msg.id == id ? msg.copyWith(status: _Status.delivered) : msg)
-            .toList();
-      });
-    });
-
-    // Simulate a quick reply.
-    _simulateReply();
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(CustomWidgets.customErrorSnackBar(ErrorHandler.message(e)));
+    }
   }
 
-  void _simulateReply() {
-    if (widget.members.isEmpty) return;
-    final replier = widget.members.first;
-
-    Timer(const Duration(milliseconds: 700), () {
-      if (!mounted) return;
-      setState(() {
-        _otherTyping = true;
-        _typingName = "Sarah";
-      });
-    });
-
-    Timer(const Duration(milliseconds: 2100), () {
-      if (!mounted) return;
-      setState(() {
-        _otherTyping = false;
-        _typingName = null;
-        _messages = [
-          ..._messages,
-          _Message(
-            id: DateTime.now().microsecondsSinceEpoch.toString(),
-            senderName: "Sarah",
-            senderInitial: replier.initial,
-            senderColor: replier.color,
-            text: "Got it 👍",
-            time: DateTime.now(),
-            isMe: false,
-          ),
-          // Mark our last sent message as read.
-        ];
-        _messages = _messages
-            .map((msg) =>
-                msg.isMe ? msg.copyWith(status: _Status.read) : msg)
-            .toList();
-      });
-      _scrollToBottom();
-    });
+  void _scrollToBottomSoon() {
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom(jump: true));
   }
 
   void _scrollToBottom({bool jump = false}) {
@@ -363,7 +333,17 @@ class _DriverChatDetailState extends State<DriverChatDetail> {
           children: [
             _topBar(),
             if (widget.isActive) _activeRideBanner(),
-            Expanded(child: _messageList()),
+            Expanded(
+              child: _loading
+                  ? const Center(
+                      child: CircularProgressIndicator(
+                        color: Consonants.primaryColor,
+                      ),
+                    )
+                  : _error != null
+                      ? _errorView(_error!)
+                      : _messageList(),
+            ),
             _composerBar(),
           ],
         ),
@@ -420,7 +400,7 @@ class _DriverChatDetailState extends State<DriverChatDetail> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   CustomWidgets.customText(
-                    widget.groupName,
+                    widget.title,
                     14.sp,
                     Consonants.boldTextColor,
                     FontWeight.w800,
@@ -514,6 +494,29 @@ class _DriverChatDetailState extends State<DriverChatDetail> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _errorView(String message) {
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 32.w),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.cloud_off_rounded, size: 36.sp, color: Consonants.greyColor),
+            SizedBox(height: 12.h),
+            CustomWidgets.customText(
+              message,
+              12.sp,
+              Consonants.boldTextColor,
+              FontWeight.w700,
+              textAlign: TextAlign.center,
+              maxLines: 3,
+            ),
+          ],
+        ),
       ),
     );
   }

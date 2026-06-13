@@ -121,6 +121,9 @@ class _DriverVehicleDetailsState extends ConsumerState<DriverVehicleDetails> {
     return ResponsiveAuthScaffold(
       formKey: _formKey,
       body: [
+        SizedBox(height: 8.h),
+        _heroBadge(),
+        SizedBox(height: 16.h),
         CustomWidgets.customText(
           "Tell us about your car",
           20.sp,
@@ -128,148 +131,203 @@ class _DriverVehicleDetailsState extends ConsumerState<DriverVehicleDetails> {
           FontWeight.bold,
         ),
         SizedBox(height: 6.h),
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: 30.w),
-          child: CustomWidgets.customText(
-            "Step 2 of 2 · the vehicle you'll drive",
-            10.sp,
-            Consonants.greyColor,
-            FontWeight.w500,
-            textAlign: TextAlign.center,
-          ),
+        _stepPill(),
+        SizedBox(height: 22.h),
+        _sectionHeader("Vehicle Identity"),
+        SizedBox(height: 6.h),
+        AuthFields(
+          text: "Car Make",
+          suffixIcon: const Icon(Icons.drive_eta),
+          controller: _makeController,
+          validator: (value) {
+            if (value == null || value.trim().isEmpty) {
+              return 'Make is required';
+            }
+            if (!RegExp(r'^[a-zA-Z ]+$').hasMatch(value)) {
+              return 'Only letters allowed';
+            }
+            if (value.trim().length < 2) {
+              return 'Too short';
+            }
+            return null;
+          },
         ),
-        SizedBox(height: 18.h),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: AuthFields(
-                text: "Car Make",
-                suffixIcon: const Icon(Icons.drive_eta),
-                controller: _makeController,
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Make is required';
-                  }
-                  if (!RegExp(r'^[a-zA-Z ]+$').hasMatch(value)) {
-                    return 'Only letters allowed';
-                  }
-                  if (value.trim().length < 2) {
-                    return 'Too short';
-                  }
-                  return null;
-                },
-              ),
-            ),
-            Expanded(
-              child: AuthFields(
-                text: "Car Model",
-                suffixIcon: const Icon(Icons.info_outline),
-                controller: _modelController,
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Model is required';
-                  }
-                  if (!RegExp(r'^[a-zA-Z0-9 ]+$').hasMatch(value)) {
-                    return 'Invalid characters';
-                  }
-                  return null;
-                },
-              ),
-            ),
-          ],
+        AuthFields(
+          text: "Car Model",
+          suffixIcon: const Icon(Icons.info_outline),
+          controller: _modelController,
+          validator: (value) {
+            if (value == null || value.trim().isEmpty) {
+              return 'Model is required';
+            }
+            if (!RegExp(r'^[a-zA-Z0-9 ]+$').hasMatch(value)) {
+              return 'Invalid characters';
+            }
+            return null;
+          },
         ),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: AuthFields(
-                text: "Car Number",
-                suffixIcon: const Icon(Icons.confirmation_number),
-                controller: _numberController,
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Number is required';
-                  }
-                  if (!RegExp(r'^[A-Za-z]{2,3}-[0-9]{3,4}$').hasMatch(value)) {
-                    return 'Format: ABC-1234';
-                  }
-                  return null;
-                },
-              ),
-            ),
-            Expanded(
-              child: AuthFields(
-                text: "Car Color",
-                suffixIcon: const Icon(Icons.color_lens),
-                controller: _colorController,
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Color is required';
-                  }
-                  if (!RegExp(r'^[a-zA-Z ]+$').hasMatch(value)) {
-                    return 'Only letters allowed';
-                  }
-                  return null;
-                },
-              ),
-            ),
-          ],
+        AuthFields(
+          text: "Car Number",
+          suffixIcon: const Icon(Icons.confirmation_number),
+          controller: _numberController,
+          validator: (value) {
+            if (value == null || value.trim().isEmpty) {
+              return 'Number is required';
+            }
+            if (!RegExp(r'^[A-Za-z]{2,3}-[0-9]{3,4}$').hasMatch(value)) {
+              return 'Format: ABC-1234';
+            }
+            return null;
+          },
         ),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: AuthFields(
-                text: "Car Seats",
-                suffixIcon: const Icon(Icons.chair),
-                controller: _seatsController,
-                keyboardType: TextInputType.number,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Seats required';
-                  }
-                  if (!RegExp(r'^[0-9]+$').hasMatch(value)) {
-                    return 'Numbers only';
-                  }
-                  final seats = int.parse(value);
-                  if (seats < 1 || seats > 10) {
-                    return 'Invalid seat count';
-                  }
-                  return null;
-                },
-              ),
-            ),
-            Expanded(
-              child: AuthFields(
-                text: "Car Year",
-                suffixIcon: const Icon(Icons.calendar_today),
-                controller: _yearController,
-                keyboardType: TextInputType.number,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Year is required';
-                  }
-                  if (!RegExp(r'^[0-9]{4}$').hasMatch(value)) {
-                    return 'Enter valid year';
-                  }
-                  final year = int.parse(value);
-                  final current = DateTime.now().year;
-                  if (year < 1980 || year > current) {
-                    return 'Year must be 1980 – $current';
-                  }
-                  return null;
-                },
-              ),
-            ),
-          ],
+        SizedBox(height: 14.h),
+        _sectionHeader("Specifications"),
+        SizedBox(height: 6.h),
+        AuthFields(
+          text: "Car Color",
+          suffixIcon: const Icon(Icons.color_lens),
+          controller: _colorController,
+          validator: (value) {
+            if (value == null || value.trim().isEmpty) {
+              return 'Color is required';
+            }
+            if (!RegExp(r'^[a-zA-Z ]+$').hasMatch(value)) {
+              return 'Only letters allowed';
+            }
+            return null;
+          },
         ),
+        AuthFields(
+          text: "Car Seats",
+          suffixIcon: const Icon(Icons.chair),
+          controller: _seatsController,
+          keyboardType: TextInputType.number,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          validator: (value) {
+            if (value == null || value.isEmpty) {
+              return 'Seats required';
+            }
+            if (!RegExp(r'^[0-9]+$').hasMatch(value)) {
+              return 'Numbers only';
+            }
+            final seats = int.parse(value);
+            if (seats < 1 || seats > 10) {
+              return 'Invalid seat count';
+            }
+            return null;
+          },
+        ),
+        AuthFields(
+          text: "Car Year",
+          suffixIcon: const Icon(Icons.calendar_today),
+          controller: _yearController,
+          keyboardType: TextInputType.number,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          validator: (value) {
+            if (value == null || value.isEmpty) {
+              return 'Year is required';
+            }
+            if (!RegExp(r'^[0-9]{4}$').hasMatch(value)) {
+              return 'Enter valid year';
+            }
+            final year = int.parse(value);
+            final current = DateTime.now().year;
+            if (year < 1980 || year > current) {
+              return 'Year must be 1980 – $current';
+            }
+            return null;
+          },
+        ),
+        SizedBox(height: 8.h),
       ],
       bottomBar: profileContainer(
         saving ? null : _submit,
         isLoading: saving,
+      ),
+    );
+  }
+
+  /// Brand-gradient circular badge with a car icon. Anchors the screen
+  /// visually so the form doesn't read as a wall of inputs.
+  Widget _heroBadge() {
+    return Container(
+      width: 72.w,
+      height: 72.w,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Consonants.primaryColor, Color(0xff5AC8FA)],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Consonants.primaryColor.withValues(alpha: 0.30),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Icon(
+        Icons.directions_car_filled_rounded,
+        color: Consonants.whiteColor,
+        size: 34.sp,
+      ),
+    );
+  }
+
+  /// Pill chip showing the wizard position. Replaces the plain grey
+  /// subtitle with something more deliberate.
+  Widget _stepPill() {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 5.h),
+      decoration: BoxDecoration(
+        color: Consonants.lightBlueColor,
+        borderRadius: BorderRadius.circular(20.r),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.directions_car_rounded,
+            size: 11.sp,
+            color: Consonants.primaryColor,
+          ),
+          SizedBox(width: 5.w),
+          CustomWidgets.customText(
+            "Step 2 of 2 · the vehicle you'll drive",
+            9.sp,
+            Consonants.primaryColor,
+            FontWeight.w700,
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Lightweight section divider with an uppercase label. Matches the
+  /// section style used on the profile screen so the visual language is
+  /// consistent across the app.
+  Widget _sectionHeader(String text) {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 30.w),
+      child: Row(
+        children: [
+          CustomWidgets.customText(
+            text.toUpperCase(),
+            9.sp,
+            Consonants.greyColor,
+            FontWeight.w800,
+          ),
+          SizedBox(width: 10.w),
+          Expanded(
+            child: Container(
+              height: 1,
+              color: Consonants.lightGreyColor,
+            ),
+          ),
+        ],
       ),
     );
   }

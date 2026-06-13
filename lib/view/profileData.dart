@@ -71,6 +71,11 @@ class _PassengerProfileDataState extends ConsumerState<PassengerProfileData> {
         ErrorHandler.show(context, next.error);
       } else if (next.isSuccess && prev?.isSuccess != true) {
         ErrorHandler.success(context, "Profile created successfully");
+        // Bust the cached fetch so the profile tab on the bottom-navbar
+        // sees the freshly-created data instead of any stale value
+        // left over from a previous session. Mirrors what the driver
+        // onboarding flow already does in [driverVehicleDetails].
+        ref.invalidate(passengerProfileProvider);
         context.go(Approutes.bottomNavbar);
       }
     });

@@ -1,5 +1,5 @@
 import 'package:go_router/go_router.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:ride_sharing/view/bottomNavbar.dart';
 import 'package:ride_sharing/view/driverScreens/driverMessages.dart';
 import 'package:ride_sharing/view/driverScreens/driverNotification.dart';
@@ -13,10 +13,12 @@ import 'package:ride_sharing/view/passengerScreens/passengerNotification.dart';
 import 'package:ride_sharing/view/profileData.dart';
 import 'package:ride_sharing/view/registerScreen.dart';
 import 'package:ride_sharing/view/roleSelection.dart';
+import 'package:ride_sharing/view/splashScreen.dart';
 import 'package:ride_sharing/view/verificationScreen.dart';
 import 'package:ride_sharing/view/viewRequest.dart';
 
 class Approutes {
+  static const String splash = "/splash";
   static const String login = "/login";
   static const String register = "/register";
   static const String home = "/home";
@@ -36,8 +38,13 @@ class Approutes {
 }
 
 final appRouter = GoRouter(
-  initialLocation: Approutes.login,
+  initialLocation: Approutes.splash,
   routes: [
+    GoRoute(
+      path: Approutes.splash,
+      name: "splash",
+      builder: (context, state) => const Splashscreen(),
+    ),
     GoRoute(
       path: Approutes.login,
       name: "login",
@@ -100,12 +107,14 @@ final appRouter = GoRouter(
       builder: (context, state) {
         final raw = state.extra;
         final extra = raw is Map ? raw : const {};
+        final rideId = extra['rideId'];
         final pickup = extra['pickup'];
         final drop = extra['drop'];
         final seats = extra['seats'];
         final pickupLatLng = extra['pickupLatLng'];
         final dropLatLng = extra['dropLatLng'];
         return Viewrequest(
+          rideId: rideId is String && rideId.isNotEmpty ? rideId : null,
           pickup: pickup is String && pickup.isNotEmpty
               ? pickup
               : "Hostel City, Block B",

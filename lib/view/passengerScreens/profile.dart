@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:go_router/go_router.dart';
+import 'package:ride_sharing/model/appRoutes.dart';
 import 'package:ride_sharing/model/profileModels.dart';
+import 'package:ride_sharing/provider/authProvider.dart';
 import 'package:ride_sharing/provider/profileProvider.dart';
 import 'package:ride_sharing/provider/rideStatsProvider.dart';
+import 'package:ride_sharing/provider/sessionReset.dart';
 import 'package:ride_sharing/view/driverScreens/driverRideHistory.dart';
 import 'package:ride_sharing/view/editProfile.dart';
-import 'package:ride_sharing/view/loginScreen.dart';
 import 'package:ride_sharing/view/passengerScreens/passengerHistory.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/consonants/errorHandler.dart';
@@ -152,7 +155,7 @@ class _PassengerProfileBody extends ConsumerWidget {
           ]),
           SizedBox(height: 16.h),
           ProfileWidgets.logoutButton(
-            onTap: () => ProfileWidgets.confirmLogout(context),
+            onTap: () => ProfileWidgets.confirmLogout(context, ref),
           ),
         ],
       ),
@@ -433,7 +436,7 @@ class _DriverProfileBody extends ConsumerWidget {
           ]),
           SizedBox(height: 16.h),
           ProfileWidgets.logoutButton(
-            onTap: () => ProfileWidgets.confirmLogout(context),
+            onTap: () => ProfileWidgets.confirmLogout(context, ref),
           ),
         ],
       ),
@@ -834,11 +837,11 @@ class ProfileWidgets {
   }
 
   // ─── Logout confirmation dialog ───────────────────────────
-  /// Shows an "Are you sure you want to logout?" dialog. On confirm
-  /// the dialog closes and the user is sent back to the login screen
-  /// with the entire navigation stack cleared, so the back button can
-  /// not return into the (now logged-out) tab views.
-  static Future<void> confirmLogout(BuildContext context) async {
+  /// Shows an "Are you sure you want to logout?" dialog. On confirm,
+  /// clears the JWT + auth state and routes the user back to login via
+  /// go_router (which also wipes the navigation stack so the back
+  /// button can't return into the now-logged-out tab views).
+  static Future<void> confirmLogout(BuildContext context, WidgetRef ref) async {
     final confirmed = await showDialog<bool>(
       context: context,
       barrierDismissible: true,
@@ -948,11 +951,17 @@ class ProfileWidgets {
     );
 
     if (confirmed != true) return;
+    // Order matters: drop the auth token first so any concurrent
+    // request that fires while we're invalidating doesn't accidentally
+    // re-fetch with the still-valid old JWT and re-prime the caches.
+    await ref.read(authControllerProvider.notifier).logout();
+    // Then wipe every cached user-scoped provider (profile, stats,
+    // rides, search criteria, navbar tab). Without this, the next
+    // user to log in / sign up would see this user's stale cached
+    // data on the profile tab + everywhere it's read from.
+    clearUserSession(ref);
     if (!context.mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const Loginscreen()),
-      (route) => false,
-    );
+    context.go(Approutes.login);
   }
 
   // ─── Logout button ────────────────────────────────────────

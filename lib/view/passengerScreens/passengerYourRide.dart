@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:ride_sharing/provider/directionsProvider.dart';
-import 'package:ride_sharing/provider/mapProvider.dart' show kMinimalMapStyle;
+import 'package:latlong2/latlong.dart';
+import 'package:ride_sharing/model/rideModels.dart';
+import 'package:ride_sharing/provider/passengerActiveRideProvider.dart';
 import 'package:ride_sharing/view/bottomNavbar.dart' show bottomNavIndexProvider;
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
+import 'package:ride_sharing/widgets/custom/liveTrackingMap.dart';
 
 /// Index of the "Your Ride" tab inside [bottomNavIndexProvider]. Used to
 /// lazily mount the [GoogleMap] only after the user has visited this tab
@@ -30,11 +31,11 @@ const int _kRideTabIndex = 1;
 /// State is local for now (`_demoActive`, `_phase`) — same approach as
 /// the driver counterpart. Lift into a provider once the rides API
 /// lands so other tabs can react to the in-progress trip.
-class Passengeryourride extends StatefulWidget {
+class Passengeryourride extends ConsumerStatefulWidget {
   const Passengeryourride({super.key});
 
   @override
-  State<Passengeryourride> createState() => _PassengeryourrideState();
+  ConsumerState<Passengeryourride> createState() => _PassengeryourrideState();
 }
 
 enum _RidePhase {
@@ -44,21 +45,16 @@ enum _RidePhase {
   arrived,
 }
 
-class _PassengeryourrideState extends State<Passengeryourride>
+class _PassengeryourrideState extends ConsumerState<Passengeryourride>
     with TickerProviderStateMixin {
-  // Hardcoded route in the Lahore area — same coords as the driver view
-  // so both perspectives feel like the same trip during demos.
+  // Lahore-area fallback used only when a ride is missing usable lat/lng.
   static const _pickup = LatLng(31.5142, 74.3625);
   static const _drop = LatLng(31.5290, 74.3500);
-  static const _driverLoc = LatLng(31.5180, 74.3590);
-  static const _via1 = LatLng(31.5210, 74.3585);
-  static const _via2 = LatLng(31.5260, 74.3540);
 
   static const _pickupAddr = "Liberty Market, Gulberg III, Lahore";
   static const _dropAddr = "DHA Phase 5, Sector A, Lahore";
 
   _RidePhase _phase = _RidePhase.driverEnRoute;
-  bool _demoActive = true;
 
   /// True once the user has selected the "Your Ride" tab at least once.
   /// Same lazy-mount trick as the driver screen — keeps the GoogleMap
@@ -102,7 +98,9 @@ class _PassengeryourrideState extends State<Passengeryourride>
   }
 
   void _completeTrip() {
-    setState(() => _demoActive = false);
+    // The trip really ends when the driver completes it on the backend;
+    // refetch so this screen flips to its empty state when that happens.
+    ref.invalidate(passengerActiveRideProvider);
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
@@ -110,13 +108,6 @@ class _PassengeryourrideState extends State<Passengeryourride>
           "Trip completed — thanks for riding!",
         ),
       );
-  }
-
-  void _restartDemo() {
-    setState(() {
-      _phase = _RidePhase.driverEnRoute;
-      _demoActive = true;
-    });
   }
 
   void _confirmCancel() {
@@ -230,7 +221,7 @@ class _PassengeryourrideState extends State<Passengeryourride>
   }
 
   void _completeTripCancelled() {
-    setState(() => _demoActive = false);
+    ref.invalidate(passengerActiveRideProvider);
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
@@ -276,31 +267,39 @@ class _PassengeryourrideState extends State<Passengeryourride>
 
   @override
   Widget build(BuildContext context) {
+    // Lazy-mount the map only once the user has visited this tab.
+    final selectedTab = ref.watch(bottomNavIndexProvider);
+    if (!_mapMounted && selectedTab == _kPassengerRideTabIndex) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !_mapMounted) {
+          setState(() => _mapMounted = true);
+        }
+      });
+    }
+
+    // Real in-progress trip (ACCEPTED/STARTED) the passenger is on.
+    final ride = ref.watch(passengerActiveRideProvider).maybeWhen(
+          data: (rides) => rides.isNotEmpty ? rides.first : null,
+          orElse: () => null,
+        );
+
     return Scaffold(
       backgroundColor: Consonants.scaffoldBackgroundColor,
-      body: Consumer(
-        builder: (context, ref, _) {
-          // Same lazy-mount trick used in driverYourRide — only build the
-          // GoogleMap platform view once the user has visited this tab.
-          final selectedTab = ref.watch(bottomNavIndexProvider);
-          if (!_mapMounted && selectedTab == _kPassengerRideTabIndex) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted && !_mapMounted) {
-                setState(() => _mapMounted = true);
-              }
-            });
-          }
-
-          if (!_demoActive) return _emptyState(ref);
-          return _activeRide();
-        },
-      ),
+      body: ride == null ? _emptyState() : _activeRide(ride),
     );
   }
 
   // ─── Active ride layout ─────────────────────────────────
 
-  Widget _activeRide() {
+  Widget _activeRide(RideDetails ride) {
+    final hasCoords = ride.pickupLat != null &&
+        ride.pickupLng != null &&
+        ride.dropLat != null &&
+        ride.dropLng != null;
+    final pickupLL =
+        hasCoords ? LatLng(ride.pickupLat!, ride.pickupLng!) : _pickup;
+    final dropLL = hasCoords ? LatLng(ride.dropLat!, ride.dropLng!) : _drop;
+
     final media = MediaQuery.of(context);
     final mediaH = media.size.height;
     // Same clamp the driver view uses — keeps the map readable on tiny
@@ -320,12 +319,11 @@ class _PassengeryourrideState extends State<Passengeryourride>
           right: 0,
           height: mapHeight,
           child: _mapMounted
-              ? const _RouteMap(
-                  pickup: _pickup,
-                  drop: _drop,
-                  driver: _driverLoc,
-                  via1: _via1,
-                  via2: _via2,
+              ? LiveTrackingMap(
+                  rideId: ride.id,
+                  pickup: pickupLL,
+                  drop: dropLL,
+                  myRole: 'PASSENGER',
                 )
               : _mapLoadingPlaceholder(),
         ),
@@ -1182,7 +1180,7 @@ class _PassengeryourrideState extends State<Passengeryourride>
 
   // ─── Empty state ────────────────────────────────────────
 
-  Widget _emptyState(WidgetRef ref) {
+  Widget _emptyState() {
     return SafeArea(
       child: Padding(
         padding: EdgeInsets.symmetric(horizontal: 24.w),
@@ -1263,19 +1261,6 @@ class _PassengeryourrideState extends State<Passengeryourride>
                 ),
               ),
             ),
-            SizedBox(height: 14.h),
-            GestureDetector(
-              onTap: _restartDemo,
-              child: Padding(
-                padding: EdgeInsets.symmetric(vertical: 6.h),
-                child: CustomWidgets.customText(
-                  "Start demo ride",
-                  11.sp,
-                  Consonants.greyColor,
-                  FontWeight.w600,
-                ),
-              ),
-            ),
           ],
         ),
       ),
@@ -1324,81 +1309,5 @@ const _Driver _kSampleDriver = _Driver(
   avatarColor: Color(0xff5AC8FA),
 );
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Live route map
-//
-// Mirrors the driver-side `_RouteMap` — fetches the real road polyline via
-// [directionsProvider] and falls back to `pickup → via1 → driver → via2 →
-// drop` waypoints until it resolves.
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _RouteMap extends ConsumerWidget {
-  final LatLng pickup;
-  final LatLng drop;
-  final LatLng driver;
-  final LatLng via1;
-  final LatLng via2;
-
-  const _RouteMap({
-    required this.pickup,
-    required this.drop,
-    required this.driver,
-    required this.via1,
-    required this.via2,
-  });
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(directionsProvider(
-      DirectionsRequest(origin: pickup, destination: drop),
-    ));
-    final routePoints = async.maybeWhen(
-      data: (r) => r.points,
-      orElse: () => <LatLng>[pickup, via1, driver, via2, drop],
-    );
-
-    return GoogleMap(
-      initialCameraPosition: const CameraPosition(
-        target: LatLng(31.5210, 74.3565),
-        zoom: 13.5,
-      ),
-      style: kMinimalMapStyle,
-      myLocationEnabled: false,
-      myLocationButtonEnabled: false,
-      zoomControlsEnabled: false,
-      mapToolbarEnabled: false,
-      compassEnabled: false,
-      markers: {
-        Marker(
-          markerId: const MarkerId("pickup"),
-          position: pickup,
-          infoWindow: const InfoWindow(title: "Pickup"),
-          icon: BitmapDescriptor.defaultMarkerWithHue(
-              BitmapDescriptor.hueAzure),
-        ),
-        Marker(
-          markerId: const MarkerId("drop"),
-          position: drop,
-          infoWindow: const InfoWindow(title: "Drop-off"),
-          icon: BitmapDescriptor.defaultMarkerWithHue(
-              BitmapDescriptor.hueRed),
-        ),
-        Marker(
-          markerId: const MarkerId("driver"),
-          position: driver,
-          infoWindow: const InfoWindow(title: "Your driver"),
-          icon: BitmapDescriptor.defaultMarkerWithHue(
-              BitmapDescriptor.hueGreen),
-        ),
-      },
-      polylines: {
-        Polyline(
-          polylineId: const PolylineId("route"),
-          color: Consonants.primaryColor,
-          width: 4,
-          points: routePoints,
-        ),
-      },
-    );
-  }
-}
+// The active-trip map is now the shared LiveTrackingMap (real-time car /
+// person markers); the old static _RouteMap / _RouteMarker were removed.

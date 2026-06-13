@@ -1,18 +1,25 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_map_cancellable_tile_provider/flutter_map_cancellable_tile_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:ride_sharing/model/appRoutes.dart';
 import 'package:ride_sharing/model/rideModels.dart';
+import 'package:ride_sharing/provider/directionsProvider.dart';
 import 'package:ride_sharing/provider/mapProvider.dart';
+import 'package:ride_sharing/provider/messagingProvider.dart';
+import 'package:ride_sharing/provider/myRidesProvider.dart';
+import 'package:ride_sharing/provider/notificationProvider.dart';
+import 'package:ride_sharing/provider/profileProvider.dart';
 import 'package:ride_sharing/provider/rideCreationProvider.dart';
 import 'package:ride_sharing/provider/rideRequestProvider.dart';
+import 'package:ride_sharing/services/maps/mapTilesService.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/consonants/errorHandler.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
 import 'package:ride_sharing/widgets/home/homeBookingSheet.dart';
-import 'package:ride_sharing/widgets/home/homePickupPin.dart';
 
 /// SafeRide home — real Google Map as background, fixed-center pickup pin,
 /// floating header (greeting + messages + notification icons) and a
@@ -87,13 +94,20 @@ class _HomepageState extends ConsumerState<Homepage> {
       body: Stack(
         children: [
           const _MapLayer(),
-          const HomePickupPin(),
           SafeArea(
             bottom: false,
             child: Padding(
               padding: EdgeInsets.fromLTRB(16.w, 8.h, 16.w, 0),
               child: const _HomeHeader(),
             ),
+          ),
+          // "Recenter to my GPS fix" — anchored just above the booking
+          // sheet's initial extent (0.42 of screen height). Replaces
+          // Google Maps' built-in myLocationButton.
+          Positioned(
+            right: 16.w,
+            bottom: MediaQuery.of(context).size.height * 0.42 + 14.h,
+            child: const _MyLocationFab(),
           ),
           HomeBookingSheet(
             isBooking: isBooking,
@@ -104,12 +118,11 @@ class _HomepageState extends ConsumerState<Homepage> {
     );
   }
 
-  Future<void> _onLocationResolved(LatLng location) async {
-    final completer = ref.read(mapControllerCompleterProvider);
-    final controller = await completer.future;
-    await controller.animateCamera(
-      CameraUpdate.newLatLngZoom(location, kDefaultZoom),
-    );
+  /// Recenters the map on the freshly-resolved GPS fix and seeds the
+  /// pickup pin. flutter_map's [MapController.move] is synchronous, so
+  /// no completer dance — a stark improvement over the GoogleMap setup.
+  void _onLocationResolved(LatLng location) {
+    ref.read(mapControllerProvider).move(location, kDefaultZoom);
     ref.read(pickupLocationProvider.notifier).update(location);
   }
 
@@ -133,6 +146,26 @@ class _HomepageState extends ConsumerState<Homepage> {
       return;
     }
 
+    // One-active-ride guard. Force a fresh fetch so a cancellation that
+    // happened on another tab is reflected — relying on cached data
+    // could block the user even after they've already cancelled. On
+    // network failure we let the request through; the backend still
+    // enforces the same rule (409 Conflict) as the ultimate authority.
+    ref.invalidate(myRidesProvider);
+    try {
+      final myActive = await ref.read(myRidesProvider.future);
+      if (myActive.isNotEmpty) {
+        if (!mounted) return;
+        ErrorHandler.show(
+          context,
+          "You already have an active ride. Cancel it from the Rides tab before publishing a new one.",
+        );
+        return;
+      }
+    } catch (_) {
+      // Fall through — backend will enforce.
+    }
+
     // Resolve pickup text — prefer the reverse-geocoded address, fall
     // back to coords so the backend always gets something human-readable.
     final pickupAddress = ref
@@ -154,7 +187,11 @@ class _HomepageState extends ConsumerState<Homepage> {
 
     try {
       await ref.read(rideCreationProvider.notifier).createRide(request);
-      // Navigation handled by ref.listen above.
+      // New ride means the host now has an active ride — wipe the
+      // myRides cache so the next visit to the Your Rides tab (and
+      // the next Book attempt's guard above) sees the freshly-created
+      // ride. Navigation itself is handled by ref.listen above.
+      ref.invalidate(myRidesProvider);
     } catch (_) {
       // Surfaced via state.error → ref.listen.
     }
@@ -177,27 +214,57 @@ class _HomeHeader extends StatelessWidget {
       children: [
         const Expanded(child: _GreetingPill()),
         SizedBox(width: 10.w),
-        _CircleIconButton(
-          icon: Icons.send_outlined,
-          badge: true,
-          onTap: () => context.push(Approutes.passengerMessages),
+        Consumer(
+          builder: (context, ref, _) {
+            final unread = ref.watch(unreadMessagesCountProvider).maybeWhen(
+                  data: (c) => c,
+                  orElse: () => 0,
+                );
+            return _CircleIconButton(
+              icon: Icons.send_outlined,
+              badge: unread > 0,
+              onTap: () => context.push(Approutes.passengerMessages),
+            );
+          },
         ),
         SizedBox(width: 8.w),
-        _CircleIconButton(
-          icon: Icons.notifications_none_rounded,
-          badge: true,
-          onTap: () => context.push(Approutes.passengerNotification),
+        Consumer(
+          builder: (context, ref, _) {
+            final unread = ref.watch(unreadCountProvider).maybeWhen(
+                  data: (c) => c,
+                  orElse: () => 0,
+                );
+            return _CircleIconButton(
+              icon: Icons.notifications_none_rounded,
+              badge: unread > 0,
+              onTap: () => context.push(Approutes.passengerNotification),
+            );
+          },
         ),
       ],
     );
   }
 }
 
-class _GreetingPill extends StatelessWidget {
+class _GreetingPill extends ConsumerWidget {
   const _GreetingPill();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Watch the cached passenger profile. Riverpod auto-fetches the
+    // first time this provider is read; while we wait, fall back to a
+    // generic "there" so the greeting still reads naturally instead of
+    // flashing a placeholder.
+    final profileAsync = ref.watch(passengerProfileProvider);
+    final fullName = profileAsync.maybeWhen(
+      data: (p) => p.fullName.trim(),
+      orElse: () => '',
+    );
+    final displayName = fullName.isEmpty ? 'there' : fullName;
+    final initial =
+        fullName.isEmpty ? '?' : fullName.characters.first.toUpperCase();
+    final greeting = _timeOfDayGreeting(DateTime.now().hour);
+
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 8.h),
       decoration: BoxDecoration(
@@ -233,7 +300,7 @@ class _GreetingPill extends StatelessWidget {
               ],
             ),
             child: Text(
-              "M",
+              initial,
               style: TextStyle(
                 fontFamily: Consonants.fontFamily,
                 fontSize: 15.sp,
@@ -251,7 +318,7 @@ class _GreetingPill extends StatelessWidget {
                 Row(
                   children: [
                     CustomWidgets.customText(
-                      "Good morning,",
+                      "$greeting,",
                       10.sp,
                       Consonants.greyColor,
                       FontWeight.w500,
@@ -267,7 +334,7 @@ class _GreetingPill extends StatelessWidget {
                 ),
                 SizedBox(height: 2.h),
                 CustomWidgets.customText(
-                  "Mohsin Karim",
+                  displayName,
                   13.sp,
                   Consonants.boldTextColor,
                   FontWeight.w800,
@@ -279,6 +346,14 @@ class _GreetingPill extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  /// "Good morning" / "afternoon" / "evening" based on the device clock.
+  /// Cheaper and more friendly than a static label.
+  String _timeOfDayGreeting(int hour) {
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    return 'Good evening';
   }
 }
 
@@ -340,10 +415,10 @@ class _CircleIconButton extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 // Map layer — isolated so camera events don't rebuild the sheet / top bar.
 //
-// The GoogleMap widget itself never rebuilds: all props are const, and state
-// flows outward via `ref.read` inside the callbacks. `onCameraMove` pushes the
-// center coordinate into [pickupLocationProvider] so the pickup row reflects
-// the pan in real time.
+// flutter_map (CartoDB Voyager raster tiles) replaces the previous GoogleMap.
+// `onPositionChanged` pushes the center coordinate into [pickupLocationProvider]
+// only when the user gestures, so programmatic recenter calls (from
+// [_HomepageState._onLocationResolved]) don't echo back through the provider.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _MapLayer extends ConsumerWidget {
@@ -351,28 +426,260 @@ class _MapLayer extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return GoogleMap(
-      initialCameraPosition: const CameraPosition(
-        target: kDefaultLatLng,
-        zoom: kDefaultZoom,
-      ),
-      style: kMinimalMapStyle,
-      myLocationEnabled: true,
-      myLocationButtonEnabled: true,
-      compassEnabled: true,
-      zoomControlsEnabled: false,
-      mapToolbarEnabled: false,
-      padding: EdgeInsets.only(
-        top: 80.h,
-        bottom: MediaQuery.of(context).size.height * 0.42,
-      ),
-      onMapCreated: (controller) {
-        final completer = ref.read(mapControllerCompleterProvider);
-        if (!completer.isCompleted) completer.complete(controller);
+    final controller = ref.watch(mapControllerProvider);
+    final currentLoc = ref.watch(currentLocationProvider).value;
+    final pickup = ref.watch(pickupLocationProvider);
+    final drop = ref.watch(rideRequestProvider.select((s) => s.dropLatLng));
+
+    // Only request the route once both endpoints are known. Riverpod
+    // caches per-DirectionsRequest, so panning to refine pickup hits
+    // Geoapify again with the new origin. .value (vs .when) means the
+    // polyline simply disappears during a re-route instead of flashing
+    // a loading widget into the map's children list.
+    final routePoints = (pickup != null && drop != null)
+        ? ref
+            .watch(directionsProvider(
+              DirectionsRequest(origin: pickup, destination: drop),
+            ))
+            .value
+            ?.points
+        : null;
+
+    // When a fresh destination lands, frame pickup→drop in the visible
+    // map area (above the booking sheet) so the user immediately sees
+    // both points and the route between them. Skips on null (cleared)
+    // and on pure pickup-side pans.
+    final mediaH = MediaQuery.of(context).size.height;
+    ref.listen<LatLng?>(
+      rideRequestProvider.select((s) => s.dropLatLng),
+      (prev, next) {
+        if (next == null || prev == next) return;
+        final pickupNow = ref.read(pickupLocationProvider);
+        if (pickupNow == null) return;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          ref.read(mapControllerProvider).fitCamera(
+                CameraFit.bounds(
+                  bounds: LatLngBounds(pickupNow, next),
+                  padding: EdgeInsets.fromLTRB(
+                    48.w,
+                    140.h,
+                    48.w,
+                    mediaH * 0.45,
+                  ),
+                ),
+              );
+        });
       },
-      onCameraMove: (position) {
-        ref.read(pickupLocationProvider.notifier).update(position.target);
-      },
+    );
+
+    return FlutterMap(
+      mapController: controller,
+      options: MapOptions(
+        initialCenter: kDefaultLatLng,
+        initialZoom: kDefaultZoom,
+        // Pinch-zoom + drag only — block tilt/rotate so the pickup pin
+        // never lies about the coordinate it's "above".
+        interactionOptions: const InteractionOptions(
+          flags: InteractiveFlag.pinchZoom |
+              InteractiveFlag.drag |
+              InteractiveFlag.doubleTapZoom |
+              InteractiveFlag.flingAnimation,
+        ),
+        onPositionChanged: (camera, hasGesture) {
+          if (!hasGesture) return;
+          ref.read(pickupLocationProvider.notifier).update(camera.center);
+        },
+      ),
+      children: [
+        TileLayer(
+          urlTemplate: MapTilesService.tileUrl,
+          subdomains: MapTilesService.subdomains,
+          userAgentPackageName: MapTilesService.userAgentPackageName,
+          // Cancellable provider drops in-flight tile requests when the
+          // user pans away — keeps the network from filling with stale
+          // images during fast pinch-zooms.
+          tileProvider: CancellableNetworkTileProvider(),
+        ),
+        // Active route polyline. Renders only when both endpoints are
+        // set and Geoapify has returned a path. Brief disappear while
+        // a re-route is in flight is intentional — signals to the user
+        // that the route is being recomputed.
+        if (routePoints != null)
+          PolylineLayer(
+            polylines: [
+              Polyline(
+                points: routePoints,
+                color: Consonants.primaryColor,
+                strokeWidth: 4,
+              ),
+            ],
+          ),
+        // Pickup + destination markers, same circle-badge style as the
+        // YourRide screens for visual consistency. Pickup tracks the
+        // map center on every gesture (via onPositionChanged ↑) so it
+        // visually stays anchored under the centre as the user pans.
+        MarkerLayer(
+          markers: [
+            if (pickup != null)
+              Marker(
+                point: pickup,
+                width: 32,
+                height: 32,
+                child: const _RouteMarker(
+                  color: Color(0xff2196F3), // azure — pickup
+                  icon: Icons.my_location_rounded,
+                ),
+              ),
+            if (drop != null)
+              Marker(
+                point: drop,
+                width: 32,
+                height: 32,
+                child: const _RouteMarker(
+                  color: Color(0xffEF4444), // red — drop
+                  icon: Icons.location_on_rounded,
+                ),
+              ),
+          ],
+        ),
+        if (currentLoc != null)
+          MarkerLayer(
+            markers: [
+              Marker(
+                point: currentLoc,
+                width: 22,
+                height: 22,
+                child: const _UserLocationDot(),
+              ),
+            ],
+          ),
+        const RichAttributionWidget(
+          alignment: AttributionAlignment.bottomLeft,
+          attributions: [
+            TextSourceAttribution('OpenStreetMap contributors'),
+            TextSourceAttribution('CARTO'),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// "You are here" dot — replicates Google Maps' built-in blue location
+/// marker so the user still has a visual anchor for their GPS fix.
+class _UserLocationDot extends StatelessWidget {
+  const _UserLocationDot();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Consonants.whiteColor,
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.20),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(3),
+      child: const DecoratedBox(
+        decoration: BoxDecoration(
+          color: Consonants.primaryColor,
+          shape: BoxShape.circle,
+        ),
+      ),
+    );
+  }
+}
+
+/// Colored circle marker with an icon in the centre — same visual
+/// language as the pickup/driver/drop pins on the YourRide screens.
+/// Two-tone shadow gives it a slight float against the map tiles.
+/// Caller-driven `color` + `icon` makes it reusable for start, drop,
+/// or any other route waypoint.
+class _RouteMarker extends StatelessWidget {
+  final Color color;
+  final IconData icon;
+  const _RouteMarker({required this.color, required this.icon});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white, width: 2.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.25),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Icon(icon, color: Colors.white, size: 16),
+    );
+  }
+}
+
+/// Floating action button that snaps the pickup pin to the user's GPS
+/// fix. Replaces Google Maps' built-in `myLocationButton`. Just kicks
+/// [CurrentLocationNotifier.refresh] — the homepage's `ref.listen` on
+/// [currentLocationProvider] already takes care of moving the map and
+/// seeding [pickupLocationProvider] when the new fix lands, plus
+/// surfacing any error via the snackbar.
+class _MyLocationFab extends ConsumerWidget {
+  const _MyLocationFab();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isResolving = ref.watch(
+      currentLocationProvider.select((s) => s.isLoading),
+    );
+
+    return GestureDetector(
+      onTap: isResolving
+          ? null
+          : () => ref.read(currentLocationProvider.notifier).refresh(),
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        width: 46.w,
+        height: 46.w,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: Consonants.whiteColor,
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.12),
+              blurRadius: 14,
+              offset: const Offset(0, 6),
+            ),
+            BoxShadow(
+              color: Consonants.primaryColor.withValues(alpha: 0.12),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: isResolving
+            ? SizedBox(
+                width: 18.w,
+                height: 18.w,
+                child: const CircularProgressIndicator(
+                  strokeWidth: 2.2,
+                  color: Consonants.primaryColor,
+                ),
+              )
+            : Icon(
+                Icons.my_location_rounded,
+                color: Consonants.primaryColor,
+                size: 22.sp,
+              ),
+      ),
     );
   }
 }

@@ -42,14 +42,14 @@ class Env {
   static String get apiBaseUrl =>
       _read('API_BASE_URL', fallback: 'http://localhost:8080/api/v1');
 
-  /// Google Maps key for the HTTP REST APIs (Directions / Geocoding /
-  /// Places). The native Maps SDK key in `AndroidManifest.xml` is
-  /// separate. Throws if missing — calling code shouldn't paper over
-  /// it because the request will just fail with a confusing 403.
-  static String get googleMapsKey => _require('GOOGLE_MAPS_KEY');
+  /// Geoapify API key — used by `GeocodingService` and `RoutingService`
+  /// for autocomplete, reverse geocoding, and routing. Throws if
+  /// missing so requests fail loud with a useful message instead of
+  /// hitting a confusing 401 from the API.
+  static String get geoapifyApiKey => _require('GEOAPIFY_API_KEY');
 
-  /// Same as [googleMapsKey] but returns an empty string instead of
-  /// throwing — use when the caller wants to render a friendly "not
-  /// configured" state rather than crash.
-  static String get googleMapsKeyOrEmpty => _read('GOOGLE_MAPS_KEY');
+  /// Same as [geoapifyApiKey] but returns an empty string instead of
+  /// throwing — use for early validity checks where you'd rather render
+  /// a "key not configured" placeholder than crash the widget.
+  static String get geoapifyApiKeyOrEmpty => _read('GEOAPIFY_API_KEY');
 }

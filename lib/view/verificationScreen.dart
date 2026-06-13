@@ -146,11 +146,14 @@ class _VerificationscreenState extends ConsumerState<Verificationscreen> {
   }
 }
 
-class VerificationContainer extends StatelessWidget {
+class VerificationContainer extends ConsumerWidget {
   const VerificationContainer({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isLoading = ref.watch(
+      authControllerProvider.select((s) => s.isloading),
+    );
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -163,11 +166,29 @@ class VerificationContainer extends StatelessWidget {
       child: Column(
         children: [
           SizedBox(height: 40.h),
-          CustomWidgets.customText(
-            'Resend Code',
-            10.sp,
-            Consonants.primaryColor,
-            FontWeight.w600,
+          GestureDetector(
+            onTap: isLoading
+                ? null
+                : () async {
+                    await ref
+                        .read(authControllerProvider.notifier)
+                        .resendVerification();
+                    if (!context.mounted) return;
+                    // Errors surface via the parent's ref.listen; only the
+                    // success path needs a confirmation here.
+                    if (ref.read(authControllerProvider).error == null) {
+                      ErrorHandler.success(
+                        context,
+                        "Verification email re-sent. Check your inbox.",
+                      );
+                    }
+                  },
+            child: CustomWidgets.customText(
+              isLoading ? 'Sending…' : 'Resend Code',
+              10.sp,
+              Consonants.primaryColor,
+              FontWeight.w600,
+            ),
           ),
           SizedBox(height: 20.h),
         ],

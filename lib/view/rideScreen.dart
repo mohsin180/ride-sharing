@@ -2,14 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:google_places_flutter/google_places_flutter.dart';
-import 'package:google_places_flutter/model/prediction.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:ride_sharing/model/appRoutes.dart';
+import 'package:ride_sharing/model/rideModels.dart';
+import 'package:ride_sharing/provider/availableRidesProvider.dart';
 import 'package:ride_sharing/provider/directionsProvider.dart';
+import 'package:ride_sharing/provider/myRidesProvider.dart';
+import 'package:ride_sharing/provider/providers.dart';
 import 'package:ride_sharing/provider/rideRequestProvider.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
+import 'package:ride_sharing/widgets/consonants/errorHandler.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
+import 'package:ride_sharing/widgets/maps/placeSearchField.dart';
 
 class Ridescreen extends ConsumerStatefulWidget {
   const Ridescreen({super.key});
@@ -18,120 +22,39 @@ class Ridescreen extends ConsumerStatefulWidget {
   ConsumerState<Ridescreen> createState() => _RidescreenState();
 }
 
-/// Distance filter — passenger-side. "Nearest" is a sort (all results,
-/// ranked by ascending distance); the others narrow the list.
-enum _DistanceFilter { all, nearest, under5, under10 }
-
-class _Ride {
-  final String name;
-  final String rating;
-  final String trips;
-  final int minutes;
-  final double distanceKm;
-  final String yourFare;
-  final String avgRating;
-  final String pickup;
-  final String drop;
-  final int seats;
-  final LatLng pickupLatLng;
-  final LatLng dropLatLng;
-
-  const _Ride({
-    required this.name,
-    required this.rating,
-    required this.trips,
-    required this.minutes,
-    required this.distanceKm,
-    required this.yourFare,
-    required this.avgRating,
-    required this.pickup,
-    required this.drop,
-    required this.seats,
-    required this.pickupLatLng,
-    required this.dropLatLng,
-  });
-}
+/// Hard radius cap for the available-rides search. Anything farther
+/// than this from the user's typed pickup is hidden, regardless of
+/// what the backend returns.
+const double _kRadiusKm = 5.0;
 
 class _RidescreenState extends ConsumerState<Ridescreen> {
   late final TextEditingController _pickupController;
   late final TextEditingController _dropController;
 
-  _DistanceFilter _filter = _DistanceFilter.all;
+  /// Which list the user is viewing: nearby rides to join (default),
+  /// or the rides they themselves created. Drives the toggle pill row
+  /// at the top of the screen and which provider/body we render.
+  bool _showMyRides = false;
 
-  // Demo data — real rides will come from the API. Distances are spread
-  // across buckets so each filter pill has a visible effect.
-  static const List<_Ride> _rides = [
-    _Ride(
-      name: "Sarah Ahmed",
-      rating: "4.9",
-      trips: "128",
-      minutes: 18,
-      distanceKm: 1.2,
-      yourFare: "Rs 80",
-      avgRating: "4.8",
-      pickup: "Hostel City, Block B",
-      drop: "Taramri Chowk",
-      seats: 3,
-      pickupLatLng: LatLng(33.6844, 73.1234),
-      dropLatLng: LatLng(33.6920, 73.1500),
-    ),
-    _Ride(
-      name: "Hina Malik",
-      rating: "4.7",
-      trips: "86",
-      minutes: 22,
-      distanceKm: 4.8,
-      yourFare: "Rs 180",
-      avgRating: "4.7",
-      pickup: "Bahria Phase 7",
-      drop: "Faizabad Metro",
-      seats: 2,
-      pickupLatLng: LatLng(33.5050, 73.1100),
-      dropLatLng: LatLng(33.6700, 73.0930),
-    ),
-    _Ride(
-      name: "Mariam Iqbal",
-      rating: "4.8",
-      trips: "204",
-      minutes: 28,
-      distanceKm: 7.6,
-      yourFare: "Rs 250",
-      avgRating: "4.9",
-      pickup: "F-10 Markaz",
-      drop: "Saddar",
-      seats: 1,
-      pickupLatLng: LatLng(33.6920, 73.0150),
-      dropLatLng: LatLng(33.5950, 73.0500),
-    ),
-    _Ride(
-      name: "Zara Iqbal",
-      rating: "4.6",
-      trips: "54",
-      minutes: 36,
-      distanceKm: 12.4,
-      yourFare: "Rs 320",
-      avgRating: "4.6",
-      pickup: "I-8 Sector",
-      drop: "Zero Point",
-      seats: 2,
-      pickupLatLng: LatLng(33.6680, 73.0700),
-      dropLatLng: LatLng(33.6900, 73.0810),
-    ),
-  ];
-
-  List<_Ride> get _filteredRides {
-    switch (_filter) {
-      case _DistanceFilter.all:
-        return _rides;
-      case _DistanceFilter.nearest:
-        final sorted = List.of(_rides)
-          ..sort((a, b) => a.distanceKm.compareTo(b.distanceKm));
-        return sorted;
-      case _DistanceFilter.under5:
-        return _rides.where((r) => r.distanceKm < 5).toList();
-      case _DistanceFilter.under10:
-        return _rides.where((r) => r.distanceKm < 10).toList();
-    }
+  /// Narrows the backend list to rides within [_kRadiusKm] of the
+  /// user's typed pickup AND with enough seats for their party.
+  /// - distance is computed by the backend from the lat/lng we send;
+  ///   missing distance ⇒ drop (we can't tell if it's nearby).
+  /// - sorted nearest-first so the most relevant ride is at the top.
+  List<AvailableRide> _filterByRadiusAndSeats(
+    List<AvailableRide> rides,
+    int neededSeats,
+  ) {
+    final filtered = rides.where((r) {
+      final d = r.distanceKm;
+      if (d == null || d > _kRadiusKm) return false;
+      if (r.seatsAvailable < neededSeats) return false;
+      return true;
+    }).toList();
+    filtered.sort((a, b) =>
+        (a.distanceKm ?? double.infinity)
+            .compareTo(b.distanceKm ?? double.infinity));
+    return filtered;
   }
 
   @override
@@ -151,11 +74,20 @@ class _RidescreenState extends ConsumerState<Ridescreen> {
     super.dispose();
   }
 
-  /// Save tap: persist the form to the provider and show feedback.
-  /// Does NOT navigate away.
+  /// Save tap: commits the search criteria and triggers the rides
+  /// refetch. Requires the user to have *picked* their pickup &
+  /// destination from the autocomplete dropdown — free-typed text
+  /// without coords can't drive a radius search.
+  ///
+  /// Coords are pulled from [rideRequestProvider] (set by the
+  /// [PlaceSearchField]s `onPicked` callbacks); previous bug was that
+  /// this method called `save()` without forwarding the LatLngs and
+  /// silently nuked them.
   void _onSaveTap() {
+    final state = ref.read(rideRequestProvider);
     final pickup = _pickupController.text.trim();
     final drop = _dropController.text.trim();
+
     if (pickup.isEmpty || drop.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         CustomWidgets.customErrorSnackBar(
@@ -164,115 +96,402 @@ class _RidescreenState extends ConsumerState<Ridescreen> {
       );
       return;
     }
+    if (state.pickupLatLng == null || state.dropLatLng == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        CustomWidgets.customErrorSnackBar(
+          "Please pick pickup & destination from the suggestions",
+        ),
+      );
+      return;
+    }
+
     ref.read(rideRequestProvider.notifier).save(
           pickup: pickup,
           drop: drop,
-          seats: ref.read(rideRequestProvider).seats,
+          seats: state.seats,
+          pickupLatLng: state.pickupLatLng,
+          dropLatLng: state.dropLatLng,
         );
+
+    // Trigger the rides refetch. The provider reads pickup lat/lng
+    // from rideRequestProvider, so this picks up the new criteria.
+    ref.invalidate(availableRidesProvider);
+
     ScaffoldMessenger.of(context).showSnackBar(
-      CustomWidgets.customSuccessSnackBar("Saved"),
+      CustomWidgets.customSuccessSnackBar(
+        "Showing rides within ${_kRadiusKm.round()} km",
+      ),
     );
   }
 
-  /// View Request tap (on the ride card): persist current form values,
-  /// then navigate using the saved Riverpod state.
-  void _onViewRequestTap() {
-    final pickup = _pickupController.text.trim();
-    final drop = _dropController.text.trim();
-    if (pickup.isEmpty || drop.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        CustomWidgets.customErrorSnackBar(
-          "Please enter pickup and destination",
-        ),
-      );
-      return;
-    }
-    final state0 = ref.read(rideRequestProvider);
-    final notifier = ref.read(rideRequestProvider.notifier);
-    notifier.save(
-      pickup: pickup,
-      drop: drop,
-      seats: state0.seats,
-      pickupLatLng: state0.pickupLatLng,
-      dropLatLng: state0.dropLatLng,
-    );
-    final state = ref.read(rideRequestProvider);
+  /// View-Request tap on a real ride card. Routes the user to the
+  /// viewRequest screen pre-filled with THAT ride's coords/labels so
+  /// the next screen can show route, ETA, etc. Seats default to the
+  /// user's selected seats (from the search form), capped at what
+  /// the ride actually has available.
+  ///
+  /// We deliberately DON'T overwrite [rideRequestProvider] here —
+  /// the searcher's own pickup/destination/seats are their search
+  /// criteria, and viewRequest uses them to render the searcher-side
+  /// "Your Route" section (so they can compare their intent against
+  /// the ride they're joining).
+  void _onJoinRide(AvailableRide ride) {
+    final desiredSeats = ref.read(rideRequestProvider).seats;
+    final seats = desiredSeats > ride.seatsAvailable
+        ? ride.seatsAvailable
+        : desiredSeats;
+
+    final pickupLatLng = LatLng(ride.pickupLat, ride.pickupLng);
+    final dropLatLng = LatLng(ride.dropLat, ride.dropLng);
+
     // push (not go) so the back arrow on viewRequest can pop back here.
     context.push(
       Approutes.viewRequest,
       extra: <String, dynamic>{
-        'pickup': state.pickup,
-        'drop': state.drop,
-        'seats': state.seats,
-        'pickupLatLng': state.pickupLatLng,
-        'dropLatLng': state.dropLatLng,
+        'rideId': ride.id,
+        'pickup': ride.pickup,
+        'drop': ride.drop,
+        'seats': seats,
+        'pickupLatLng': pickupLatLng,
+        'dropLatLng': dropLatLng,
       },
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final filtered = _filteredRides;
+    final async = ref.watch(availableRidesProvider);
+    final rides = async.value ?? const <AvailableRide>[];
+    // True the moment the user has actually committed pickup/drop via
+    // Save — until then we show a prompt instead of a (necessarily
+    // empty) results list.
+    final hasSearch =
+        ref.watch(rideRequestProvider.select((s) => s.pickupLatLng)) !=
+            null;
+    final neededSeats =
+        ref.watch(rideRequestProvider.select((s) => s.seats));
+    final filtered = _filterByRadiusAndSeats(rides, neededSeats);
+
+    // Your-Rides side is fetched lazily — we still watch the provider
+    // unconditionally so switching tabs is instant for cached results.
+    final myRidesAsync = ref.watch(myRidesProvider);
+    final myRides = myRidesAsync.value ?? const <AvailableRide>[];
+
     return SafeArea(
-      child: SingleChildScrollView(
-        physics: const BouncingScrollPhysics(),
-        padding: EdgeInsets.only(bottom: 24.h),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _ScreenHeader(matchCount: filtered.length),
-            SizedBox(height: 8.h),
-            _searchForm(),
-            SizedBox(height: 14.h),
-            _FilterPills(
-              selected: _filter,
-              counts: _filterCounts,
-              onSelect: (v) => setState(() => _filter = v),
-            ),
-            SizedBox(height: 14.h),
-            if (filtered.isEmpty)
-              _EmptyState(filter: _filter)
-            else
-              for (int i = 0; i < filtered.length; i++) ...[
-                _FeaturedRideCard(
-                  name: filtered[i].name,
-                  rating: filtered[i].rating,
-                  trips: filtered[i].trips,
-                  minutes: filtered[i].minutes,
-                  distance: filtered[i].distanceKm.toStringAsFixed(1),
-                  yourFare: filtered[i].yourFare,
-                  avgRating: filtered[i].avgRating,
-                  pickup: filtered[i].pickup,
-                  drop: filtered[i].drop,
-                  seats: filtered[i].seats,
-                  pickupLatLng: filtered[i].pickupLatLng,
-                  dropLatLng: filtered[i].dropLatLng,
-                  onViewRequest: _onViewRequestTap,
-                  onDecline: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      CustomWidgets.customErrorSnackBar("Ride declined"),
-                    );
-                  },
+      child: RefreshIndicator(
+        color: Consonants.primaryColor,
+        onRefresh: () async {
+          if (_showMyRides) {
+            ref.invalidate(myRidesProvider);
+            await ref.read(myRidesProvider.future);
+          } else {
+            ref.invalidate(availableRidesProvider);
+            // Wait for the refetch to settle so the spinner reflects
+            // the real network roundtrip instead of vanishing instantly.
+            await ref.read(availableRidesProvider.future);
+          }
+        },
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(
+            parent: BouncingScrollPhysics(),
+          ),
+          padding: EdgeInsets.only(bottom: 24.h),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _ScreenHeader(
+                hasSearch: hasSearch,
+                matchCount: _showMyRides ? myRides.length : filtered.length,
+                isMyRidesTab: _showMyRides,
+              ),
+              SizedBox(height: 10.h),
+              _TabToggle(
+                showMyRides: _showMyRides,
+                onSelect: (v) => setState(() => _showMyRides = v),
+              ),
+              SizedBox(height: 14.h),
+              if (!_showMyRides) ...[
+                _searchForm(),
+                if (hasSearch) ...[
+                  SizedBox(height: 12.h),
+                  _radiusCaption(),
+                ],
+                SizedBox(height: 14.h),
+                _buildBody(
+                  async,
+                  rides,
+                  filtered,
+                  hasSearch,
+                  myRides.isNotEmpty,
                 ),
-                if (i != filtered.length - 1) SizedBox(height: 14.h),
-              ],
-            SizedBox(height: 14.h),
-          ],
+              ] else
+                _buildMyRidesBody(myRidesAsync, myRides),
+              SizedBox(height: 14.h),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  /// Pre-computed counts for each filter pill so the badges stay
-  /// stable regardless of which filter is currently selected.
-  Map<_DistanceFilter, int> get _filterCounts => {
-        _DistanceFilter.all: _rides.length,
-        _DistanceFilter.nearest: _rides.length,
-        _DistanceFilter.under5:
-            _rides.where((r) => r.distanceKm < 5).length,
-        _DistanceFilter.under10:
-            _rides.where((r) => r.distanceKm < 10).length,
-      };
+  /// "Your Rides" body — loading on first fetch, error card on
+  /// failure, friendly empty state when the host hasn't created any
+  /// active rides, otherwise the list rendered as [_MyRideCard]s.
+  Widget _buildMyRidesBody(
+    AsyncValue<List<AvailableRide>> async,
+    List<AvailableRide> rides,
+  ) {
+    if (async.isLoading && rides.isEmpty) return const _LoadingState();
+    if (async.hasError && rides.isEmpty) {
+      return _ErrorState(
+        message: ErrorHandler.message(async.error),
+        onRetry: () => ref.invalidate(myRidesProvider),
+      );
+    }
+    if (rides.isEmpty) return const _NoMyRidesState();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (int i = 0; i < rides.length; i++) ...[
+          _FeaturedRideCard(
+            ride: rides[i],
+            isMyRide: true,
+            onViewRequest: () => _onViewMyRide(rides[i]),
+            onDecline: () => _onDeclineMyRide(rides[i]),
+          ),
+          if (i != rides.length - 1) SizedBox(height: 14.h),
+        ],
+      ],
+    );
+  }
+
+  /// Decline-tap on a "Your Rides" card. Rides you host are cancelled;
+  /// rides you joined as a co-passenger are left.
+  Future<void> _onDeclineMyRide(AvailableRide ride) async {
+    if (ride.youAreHost) {
+      await _onCancelMyRide(ride);
+    } else {
+      await _onLeaveMyRide(ride);
+    }
+  }
+
+  /// Leave a ride you joined as a co-passenger. Frees your slot and clears
+  /// your "one ride at a time" commitment, so you can find/join/create again.
+  Future<void> _onLeaveMyRide(AvailableRide ride) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogCtx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20.r),
+        ),
+        title: CustomWidgets.customText(
+          "Leave this ride?",
+          15.sp,
+          Consonants.boldTextColor,
+          FontWeight.w800,
+        ),
+        content: CustomWidgets.customText(
+          "You'll be removed from this trip and can find another ride afterward.",
+          12.sp,
+          Consonants.greyColor,
+          FontWeight.w500,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(false),
+            child: CustomWidgets.customText(
+              "Keep",
+              12.sp,
+              Consonants.boldTextColor,
+              FontWeight.w700,
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(true),
+            child: CustomWidgets.customText(
+              "Leave ride",
+              12.sp,
+              const Color(0xffEF4444),
+              FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await ref.read(rideServiceProvider).leaveRide(ride.id);
+      if (!mounted) return;
+      ref.invalidate(myRidesProvider);
+      ScaffoldMessenger.of(context).showSnackBar(
+        CustomWidgets.customSuccessSnackBar("You left the ride"),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ErrorHandler.show(context, e);
+    }
+  }
+
+  /// Cancel-tap on a "Your Rides" card. Pops a confirmation dialog
+  /// (irreversible action) then hits `cancelRide` on the backend. On
+  /// success, invalidates [myRidesProvider] so the card disappears
+  /// from the list. The new-ride guard on the homepage Book button
+  /// also reads this provider, so a fresh cancel unblocks creation.
+  Future<void> _onCancelMyRide(AvailableRide ride) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogCtx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20.r),
+        ),
+        title: CustomWidgets.customText(
+          "Cancel this ride?",
+          15.sp,
+          Consonants.boldTextColor,
+          FontWeight.w800,
+        ),
+        content: CustomWidgets.customText(
+          "Any passengers who've joined will be notified. You can publish a new ride afterward.",
+          12.sp,
+          Consonants.greyColor,
+          FontWeight.w500,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(false),
+            child: CustomWidgets.customText(
+              "Keep",
+              12.sp,
+              Consonants.boldTextColor,
+              FontWeight.w700,
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(true),
+            child: CustomWidgets.customText(
+              "Cancel ride",
+              12.sp,
+              const Color(0xffEF4444),
+              FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+    if (!mounted) return;
+
+    try {
+      await ref.read(rideServiceProvider).cancelRide(ride.id);
+      if (!mounted) return;
+      ref.invalidate(myRidesProvider);
+      ScaffoldMessenger.of(context).showSnackBar(
+        CustomWidgets.customSuccessSnackBar("Ride cancelled"),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ErrorHandler.show(context, e);
+    }
+  }
+
+  /// Tap on a "Your Rides" card — just navigates to viewRequest with
+  /// the ride id; the host-vs-searcher detection on that screen takes
+  /// care of swapping labels/copy for the host view.
+  void _onViewMyRide(AvailableRide ride) {
+    final pickupLatLng = LatLng(ride.pickupLat, ride.pickupLng);
+    final dropLatLng = LatLng(ride.dropLat, ride.dropLng);
+    context.push(
+      Approutes.viewRequest,
+      extra: <String, dynamic>{
+        'rideId': ride.id,
+        'pickup': ride.pickup,
+        'drop': ride.drop,
+        'seats': ride.seatsAvailable,
+        'pickupLatLng': pickupLatLng,
+        'dropLatLng': dropLatLng,
+      },
+    );
+  }
+
+  /// Subtle "Within 5 km of your pickup" caption shown under the
+  /// search form once the user has saved a search. Anchors the radius
+  /// rule visually so an empty result set doesn't feel like a bug.
+  Widget _radiusCaption() {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 22.w),
+      child: Row(
+        children: [
+          Icon(
+            Icons.adjust_rounded,
+            size: 12.sp,
+            color: Consonants.primaryColor,
+          ),
+          SizedBox(width: 6.w),
+          CustomWidgets.customText(
+            "Within ${_kRadiusKm.round()} km of your pickup",
+            10.sp,
+            Consonants.greyColor,
+            FontWeight.w600,
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// State-aware "what to show under the search form" — prompt when
+  /// no search has been saved, loading on first fetch, error card on
+  /// failure, friendly empty state when nothing matches within the
+  /// radius, otherwise the actual ride list. During a *refresh* (we
+  /// have stale data already) we keep showing the list and let the
+  /// RefreshIndicator spinner cover the loading signal.
+  Widget _buildBody(
+    AsyncValue<List<AvailableRide>> async,
+    List<AvailableRide> rides,
+    List<AvailableRide> filtered,
+    bool hasSearch,
+    bool committed,
+  ) {
+    // One ride at a time: if you already host or joined a ride, there's
+    // nothing to find — say so explicitly instead of an empty "no rides".
+    if (committed) {
+      return _CommittedState(
+        onViewMyRides: () => setState(() => _showMyRides = true),
+      );
+    }
+    if (!hasSearch) return const _SearchPrompt();
+    if (async.isLoading && rides.isEmpty) return const _LoadingState();
+    if (async.hasError && rides.isEmpty) {
+      return _ErrorState(
+        message: ErrorHandler.message(async.error),
+        onRetry: () => ref.invalidate(availableRidesProvider),
+      );
+    }
+    if (filtered.isEmpty) return const _NoNearbyState();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (int i = 0; i < filtered.length; i++) ...[
+          _FeaturedRideCard(
+            ride: filtered[i],
+            onViewRequest: () => _onJoinRide(filtered[i]),
+            onDecline: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                CustomWidgets.customErrorSnackBar("Ride declined"),
+              );
+            },
+          ),
+          if (i != filtered.length - 1) SizedBox(height: 14.h),
+        ],
+      ],
+    );
+  }
 
   // ─────────────────────── SEARCH FORM ───────────────────────
   Widget _searchForm() {
@@ -429,21 +648,18 @@ class _RidescreenState extends ConsumerState<Ridescreen> {
     );
   }
 
-  /// Places-autocomplete-backed field. As the user types, suggestions
-  /// appear in a dropdown; tapping one hydrates the controller and
-  /// fires [onPicked] with the resolved coordinate (null when Place
-  /// Details didn't return one).
+  /// Geoapify-backed places autocomplete. As the user types, suggestions
+  /// appear in a floating dropdown; tapping one hydrates the controller
+  /// and fires [onPicked] with the formatted address + resolved coords.
+  /// Replaces the previous `GooglePlaceAutoCompleteTextField` wrapper.
   Widget _placesField({
     required TextEditingController controller,
     required String hint,
-    required void Function(String description, LatLng? latLng) onPicked,
+    required void Function(String description, LatLng latLng) onPicked,
   }) {
-    return GooglePlaceAutoCompleteTextField(
-      textEditingController: controller,
-      googleAPIKey: kGoogleMapsKey,
-      debounceTime: 400,
-      isLatLngRequired: true,
-      countries: const ["pk"],
+    return PlaceSearchField(
+      controller: controller,
+      hint: hint,
       inputDecoration: InputDecoration(
         hintText: hint,
         hintStyle: TextStyle(
@@ -462,31 +678,7 @@ class _RidescreenState extends ConsumerState<Ridescreen> {
         fontWeight: FontWeight.w700,
         fontFamily: Consonants.fontFamily,
       ),
-      boxDecoration: BoxDecoration(
-        color: Consonants.whiteColor,
-        borderRadius: BorderRadius.circular(14.r),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      itemClick: (Prediction p) {
-        controller.text = p.description ?? '';
-        controller.selection = TextSelection.fromPosition(
-          TextPosition(offset: controller.text.length),
-        );
-      },
-      getPlaceDetailWithLatLng: (Prediction p) {
-        final lat = double.tryParse(p.lat ?? '');
-        final lng = double.tryParse(p.lng ?? '');
-        onPicked(
-          p.description ?? '',
-          (lat != null && lng != null) ? LatLng(lat, lng) : null,
-        );
-      },
+      onPicked: (s) => onPicked(s.formatted, s.coords),
     );
   }
 
@@ -559,23 +751,44 @@ class _RidescreenState extends ConsumerState<Ridescreen> {
 
 /// ───────────────────────── HEADER ─────────────────────────
 class _ScreenHeader extends StatelessWidget {
+  final bool hasSearch;
   final int matchCount;
-  const _ScreenHeader({required this.matchCount});
+  final bool isMyRidesTab;
+
+  const _ScreenHeader({
+    required this.hasSearch,
+    required this.matchCount,
+    required this.isMyRidesTab,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final subtitle = matchCount == 0
-        ? "No rides match your filter"
-        : matchCount == 1
-            ? "1 ride matches your filter"
-            : "$matchCount rides match your filter";
+    // Subtitle is context-aware on three axes:
+    //   1. which tab is active (find rides vs your rides)
+    //   2. for find rides: whether the user has saved a search
+    //   3. for either: zero / one / many results
+    final subtitle = isMyRidesTab
+        ? (matchCount == 0
+            ? "You haven't created any active rides"
+            : matchCount == 1
+                ? "1 active ride you're hosting"
+                : "$matchCount active rides you're hosting")
+        : (!hasSearch
+            ? "Set pickup & destination to find nearby rides"
+            : matchCount == 0
+                ? "No nearby rides match your search"
+                : matchCount == 1
+                    ? "1 nearby ride matches your search"
+                    : "$matchCount nearby rides match your search");
+    final title = isMyRidesTab ? "Your Rides" : "Available Rides";
+
     return Padding(
       padding: EdgeInsets.fromLTRB(20.w, 14.h, 20.w, 10.h),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           CustomWidgets.customText(
-            "Available Rides",
+            title,
             18.sp,
             Consonants.boldTextColor,
             FontWeight.w700,
@@ -594,55 +807,39 @@ class _ScreenHeader extends StatelessWidget {
   }
 }
 
-// ─────────────────────── FILTER PILLS ───────────────────────
-// Distance pills: All / Nearest / < 5 km / < 10 km. Selected pill
-// gets the project's signature gradient + glowing shadow; unselected
-// pills are white with a soft drop shadow. Matches the design used by
-// the driver-rides gender filter and the chat-list status filter.
+/// Two-pill toggle: "Find Rides" (search for someone else's) vs
+/// "Your Rides" (manage the ones you created). Selected pill gets the
+/// brand gradient + glow; unselected sits flat with a subtle shadow.
+/// Same visual language as the old distance-filter pills so the
+/// transition reads as familiar.
+class _TabToggle extends StatelessWidget {
+  final bool showMyRides;
+  final ValueChanged<bool> onSelect;
 
-class _FilterPills extends StatelessWidget {
-  final _DistanceFilter selected;
-  final Map<_DistanceFilter, int> counts;
-  final ValueChanged<_DistanceFilter> onSelect;
-
-  const _FilterPills({
-    required this.selected,
-    required this.counts,
-    required this.onSelect,
-  });
+  const _TabToggle({required this.showMyRides, required this.onSelect});
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 38.h,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
-        padding: EdgeInsets.symmetric(horizontal: 16.w),
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 20.w),
+      child: Row(
         children: [
-          _pill(
-            label: "All",
-            count: counts[_DistanceFilter.all] ?? 0,
-            value: _DistanceFilter.all,
+          Expanded(
+            child: _pill(
+              label: "Find Rides",
+              icon: Icons.search_rounded,
+              isSelected: !showMyRides,
+              onTap: () => onSelect(false),
+            ),
           ),
-          SizedBox(width: 8.w),
-          _pill(
-            label: "Nearest",
-            count: counts[_DistanceFilter.nearest] ?? 0,
-            value: _DistanceFilter.nearest,
-            icon: Icons.near_me_rounded,
-          ),
-          SizedBox(width: 8.w),
-          _pill(
-            label: "< 5 km",
-            count: counts[_DistanceFilter.under5] ?? 0,
-            value: _DistanceFilter.under5,
-          ),
-          SizedBox(width: 8.w),
-          _pill(
-            label: "< 10 km",
-            count: counts[_DistanceFilter.under10] ?? 0,
-            value: _DistanceFilter.under10,
+          SizedBox(width: 10.w),
+          Expanded(
+            child: _pill(
+              label: "Your Rides",
+              icon: Icons.workspace_premium_rounded,
+              isSelected: showMyRides,
+              onTap: () => onSelect(true),
+            ),
           ),
         ],
       ),
@@ -651,16 +848,15 @@ class _FilterPills extends StatelessWidget {
 
   Widget _pill({
     required String label,
-    required int count,
-    required _DistanceFilter value,
-    IconData? icon,
+    required IconData icon,
+    required bool isSelected,
+    required VoidCallback onTap,
   }) {
-    final isSelected = selected == value;
     return GestureDetector(
-      onTap: () => onSelect(value),
+      onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
-        padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 8.h),
+        padding: EdgeInsets.symmetric(vertical: 12.h, horizontal: 14.w),
         decoration: BoxDecoration(
           gradient: isSelected
               ? const LinearGradient(
@@ -668,57 +864,42 @@ class _FilterPills extends StatelessWidget {
                 )
               : null,
           color: isSelected ? null : Consonants.whiteColor,
-          borderRadius: BorderRadius.circular(20.r),
+          borderRadius: BorderRadius.circular(14.r),
           boxShadow: isSelected
               ? [
                   BoxShadow(
-                    color: Consonants.primaryColor.withValues(alpha: 0.30),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
+                    color:
+                        Consonants.primaryColor.withValues(alpha: 0.30),
+                    blurRadius: 12,
+                    offset: const Offset(0, 6),
                   ),
                 ]
               : [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.04),
+                    color: Colors.black.withValues(alpha: 0.05),
                     blurRadius: 8,
                     offset: const Offset(0, 2),
                   ),
                 ],
         ),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            if (icon != null) ...[
-              Icon(
-                icon,
-                size: 13.sp,
-                color: isSelected
-                    ? Consonants.whiteColor
-                    : Consonants.primaryColor,
-              ),
-              SizedBox(width: 5.w),
-            ],
-            CustomWidgets.customText(
-              label,
-              11.sp,
-              isSelected ? Consonants.whiteColor : Consonants.boldTextColor,
-              FontWeight.w700,
+            Icon(
+              icon,
+              size: 15.sp,
+              color: isSelected
+                  ? Consonants.whiteColor
+                  : Consonants.primaryColor,
             ),
             SizedBox(width: 6.w),
-            Container(
-              padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 1.h),
-              decoration: BoxDecoration(
-                color: isSelected
-                    ? Colors.white.withValues(alpha: 0.30)
-                    : Consonants.lightBlueColor,
-                borderRadius: BorderRadius.circular(20.r),
-              ),
-              child: CustomWidgets.customText(
-                "$count",
-                9.sp,
-                isSelected ? Consonants.whiteColor : Consonants.primaryColor,
-                FontWeight.w800,
-              ),
+            CustomWidgets.customText(
+              label,
+              12.sp,
+              isSelected
+                  ? Consonants.whiteColor
+                  : Consonants.boldTextColor,
+              FontWeight.w700,
             ),
           ],
         ),
@@ -727,57 +908,45 @@ class _FilterPills extends StatelessWidget {
   }
 }
 
-// ─────────────────────── EMPTY STATE ────────────────────────
+// ─────────────────── PROMPT / LOADING / ERROR / EMPTY STATES ───────
 
-class _EmptyState extends StatelessWidget {
-  final _DistanceFilter filter;
-  const _EmptyState({required this.filter});
+/// Shown on the very first fetch — once stale data exists in the
+/// Riverpod cache we keep rendering it and let RefreshIndicator's
+/// spinner cover the loading signal instead. Same card chrome as
+/// [_EmptyState] so the screen height stays consistent across states.
+class _LoadingState extends StatelessWidget {
+  const _LoadingState();
 
   @override
   Widget build(BuildContext context) {
-    final label = switch (filter) {
-      _DistanceFilter.under5 => "No rides within 5 km right now",
-      _DistanceFilter.under10 => "No rides within 10 km right now",
-      _DistanceFilter.nearest => "No rides nearby right now",
-      _DistanceFilter.all => "No rides available right now",
-    };
     return Container(
       margin: EdgeInsets.symmetric(horizontal: 20.w),
-      padding: EdgeInsets.symmetric(vertical: 32.h, horizontal: 20.w),
+      padding: EdgeInsets.symmetric(vertical: 40.h, horizontal: 20.w),
       decoration: BoxDecoration(
         color: Consonants.whiteColor,
         borderRadius: BorderRadius.circular(20.r),
-        border: Border.all(
-          color: Consonants.lightGreyColor,
-          width: 1.2,
-        ),
+        border: Border.all(color: Consonants.lightGreyColor, width: 1.2),
       ),
       child: Column(
         children: [
-          Container(
-            width: 64.w,
-            height: 64.w,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: Consonants.lightBlueColor,
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              Icons.tune_rounded,
-              size: 28.sp,
+          SizedBox(
+            width: 28.w,
+            height: 28.w,
+            child: const CircularProgressIndicator(
+              strokeWidth: 2.5,
               color: Consonants.primaryColor,
             ),
           ),
-          SizedBox(height: 12.h),
+          SizedBox(height: 14.h),
           CustomWidgets.customText(
-            label,
+            "Finding rides near you…",
             13.sp,
             Consonants.boldTextColor,
             FontWeight.w700,
           ),
           SizedBox(height: 4.h),
           CustomWidgets.customText(
-            "Try a wider distance to see more rides",
+            "Just a moment",
             11.sp,
             Consonants.greyColor,
             FontWeight.w500,
@@ -786,6 +955,250 @@ class _EmptyState extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Shown when the backend fetch fails AND we don't have any cached
+/// rides to show instead. Friendly message + retry button.
+class _ErrorState extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+
+  const _ErrorState({required this.message, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: 20.w),
+      padding: EdgeInsets.symmetric(vertical: 32.h, horizontal: 20.w),
+      decoration: BoxDecoration(
+        color: Consonants.whiteColor,
+        borderRadius: BorderRadius.circular(20.r),
+        border: Border.all(color: Consonants.lightGreyColor, width: 1.2),
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: 64.w,
+            height: 64.w,
+            alignment: Alignment.center,
+            decoration: const BoxDecoration(
+              color: Color(0xffFEE2E2),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.cloud_off_rounded,
+              size: 28.sp,
+              color: const Color(0xffEF4444),
+            ),
+          ),
+          SizedBox(height: 12.h),
+          CustomWidgets.customText(
+            "Couldn't load rides",
+            13.sp,
+            Consonants.boldTextColor,
+            FontWeight.w700,
+          ),
+          SizedBox(height: 4.h),
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 10.w),
+            child: CustomWidgets.customText(
+              message,
+              11.sp,
+              Consonants.greyColor,
+              FontWeight.w500,
+              textAlign: TextAlign.center,
+              maxLines: 3,
+            ),
+          ),
+          SizedBox(height: 16.h),
+          GestureDetector(
+            onTap: onRetry,
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 10.h),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Consonants.primaryColor, Color(0xff5AC8FA)],
+                ),
+                borderRadius: BorderRadius.circular(40.r),
+                boxShadow: [
+                  BoxShadow(
+                    color: Consonants.primaryColor.withValues(alpha: 0.30),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.refresh_rounded,
+                      size: 13.sp, color: Consonants.whiteColor),
+                  SizedBox(width: 6.w),
+                  CustomWidgets.customText(
+                    "Try again",
+                    11.sp,
+                    Consonants.whiteColor,
+                    FontWeight.w700,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────── PROMPT / NO-NEARBY STATES ────────────
+
+/// Shown before the user has saved any search criteria. Replaces the
+/// previous "All rides" default — the screen used to show every
+/// available ride from anywhere, which scaled poorly and ignored the
+/// user's actual location intent.
+class _SearchPrompt extends StatelessWidget {
+  const _SearchPrompt();
+
+  @override
+  Widget build(BuildContext context) {
+    return _emptyStateShell(
+      icon: Icons.travel_explore_rounded,
+      title: "Tell us where you're going",
+      subtitle:
+          "Pick your pickup and destination above, then tap Save to see rides within ${_kRadiusKm.round()} km.",
+    );
+  }
+}
+
+/// Shown when a search HAS been saved but the backend returned nothing
+/// (or nothing made it through the radius + seats filter). Different
+/// copy from [_SearchPrompt] so the user knows the search actually ran.
+class _NoNearbyState extends StatelessWidget {
+  const _NoNearbyState();
+
+  @override
+  Widget build(BuildContext context) {
+    return _emptyStateShell(
+      icon: Icons.location_off_rounded,
+      title:
+          "No rides within ${_kRadiusKm.round()} km of your pickup",
+      subtitle:
+          "Try a different pickup, or pull down to refresh in a moment.",
+    );
+  }
+}
+
+/// Shown on the Available Rides tab when the user already has an active
+/// ride (created OR joined). You can only be in one ride at a time, so
+/// there's nothing to find until you leave/cancel — without this the
+/// empty list looked like "no rides nearby" even when rides exist.
+class _CommittedState extends StatelessWidget {
+  final VoidCallback onViewMyRides;
+  const _CommittedState({required this.onViewMyRides});
+
+  @override
+  Widget build(BuildContext context) {
+    return _emptyStateShell(
+      icon: Icons.directions_car_rounded,
+      title: "You're already in a ride",
+      subtitle:
+          "You can only be in one ride at a time. Leave or cancel your current ride to find others.",
+      action: GestureDetector(
+        onTap: onViewMyRides,
+        child: Container(
+          padding: EdgeInsets.symmetric(horizontal: 22.w, vertical: 11.h),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Consonants.primaryColor, Color(0xff5AC8FA)],
+            ),
+            borderRadius: BorderRadius.circular(40.r),
+          ),
+          child: CustomWidgets.customText(
+            "View your ride",
+            12.sp,
+            Consonants.whiteColor,
+            FontWeight.w800,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Shown on the "Your Rides" tab when the host hasn't created any
+/// active rides yet. Points them at the homepage's Book flow which
+/// is where new rides get created.
+class _NoMyRidesState extends StatelessWidget {
+  const _NoMyRidesState();
+
+  @override
+  Widget build(BuildContext context) {
+    return _emptyStateShell(
+      icon: Icons.workspace_premium_rounded,
+      title: "You haven't created any rides yet",
+      subtitle:
+          "Head back to the home tab and tap Book to publish a ride others can join.",
+    );
+  }
+}
+
+/// Shared chrome for empty-style states. Same card shape across
+/// prompt / no-nearby / loading / error so the screen height doesn't
+/// jump when transitioning between them.
+Widget _emptyStateShell({
+  required IconData icon,
+  required String title,
+  required String subtitle,
+  Widget? action,
+}) {
+  return Container(
+    margin: EdgeInsets.symmetric(horizontal: 20.w),
+    padding: EdgeInsets.symmetric(vertical: 32.h, horizontal: 20.w),
+    decoration: BoxDecoration(
+      color: Consonants.whiteColor,
+      borderRadius: BorderRadius.circular(20.r),
+      border: Border.all(color: Consonants.lightGreyColor, width: 1.2),
+    ),
+    child: Column(
+      children: [
+        Container(
+          width: 64.w,
+          height: 64.w,
+          alignment: Alignment.center,
+          decoration: const BoxDecoration(
+            color: Consonants.lightBlueColor,
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, size: 28.sp, color: Consonants.primaryColor),
+        ),
+        SizedBox(height: 12.h),
+        CustomWidgets.customText(
+          title,
+          13.sp,
+          Consonants.boldTextColor,
+          FontWeight.w700,
+          textAlign: TextAlign.center,
+          maxLines: 2,
+        ),
+        SizedBox(height: 4.h),
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: 10.w),
+          child: CustomWidgets.customText(
+            subtitle,
+            11.sp,
+            Consonants.greyColor,
+            FontWeight.w500,
+            textAlign: TextAlign.center,
+            maxLines: 3,
+          ),
+        ),
+        if (action != null) ...[
+          SizedBox(height: 16.h),
+          action,
+        ],
+      ],
+    ),
+  );
 }
 
 /// ─────────────────── FEATURED RIDE CARD ───────────────────
@@ -798,37 +1211,42 @@ class _EmptyState extends StatelessWidget {
 /// total fare, since the driver sees aggregate while the passenger
 /// sees only what they'll personally pay.
 class _FeaturedRideCard extends StatelessWidget {
-  final String name;
-  final String rating;
-  final String trips;
-  final int minutes;
-  final String distance;
-  final String yourFare;
-  final String avgRating;
-  final String pickup;
-  final String drop;
-  final int seats;
-  final LatLng? pickupLatLng;
-  final LatLng? dropLatLng;
+  final AvailableRide ride;
   final VoidCallback onViewRequest;
   final VoidCallback onDecline;
 
+  /// True when this card belongs to the authenticated host themselves
+  /// (rendered on the "Your Rides" tab). Only changes the action-button
+  /// labels: "Decline" / "View Request" → "Cancel" / "Manage Ride".
+  /// The rest of the card chrome stays identical so the two tabs feel
+  /// visually unified.
+  final bool isMyRide;
+
   const _FeaturedRideCard({
-    required this.name,
-    required this.rating,
-    required this.trips,
-    required this.minutes,
-    required this.distance,
-    required this.yourFare,
-    required this.avgRating,
-    required this.pickup,
-    required this.drop,
-    required this.seats,
-    this.pickupLatLng,
-    this.dropLatLng,
+    required this.ride,
     required this.onViewRequest,
     required this.onDecline,
+    this.isMyRide = false,
   });
+
+  // ── Display adapters. Pulled out as getters so the helper widgets
+  //    (`_hostStrip`, `_statsPills`, `_routeTimeline`) keep their
+  //    short, readable names — the underlying source is the immutable
+  //    [AvailableRide] passed in.
+  String get name => ride.hostName;
+  String get rating => ride.hostRating?.toStringAsFixed(1) ?? '—';
+  String get trips => ride.hostTrips.toString();
+  int get minutes => ride.etaMinutes ?? 0;
+  String get distance => ride.distanceKm?.toStringAsFixed(1) ?? '—';
+  String get yourFare =>
+      ride.fareForRider != null ? 'Rs ${ride.fareForRider!.round()}' : '—';
+  String get avgRating => ride.hostRating?.toStringAsFixed(1) ?? '—';
+  String get pickup => ride.pickup;
+  String get drop => ride.drop;
+  int get seats => ride.seatsAvailable;
+  LatLng? get pickupLatLng => LatLng(ride.pickupLat, ride.pickupLng);
+  LatLng? get dropLatLng => LatLng(ride.dropLat, ride.dropLng);
+  String? get hostGender => ride.hostGender;
 
   @override
   Widget build(BuildContext context) {
@@ -975,27 +1393,35 @@ class _FeaturedRideCard extends StatelessWidget {
               ],
             ),
           ),
-          Container(
-            padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
-            decoration: BoxDecoration(
-              color: Consonants.whiteColor,
-              borderRadius: BorderRadius.circular(20.r),
+          if (hostGender == 'FEMALE' || hostGender == 'MALE')
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
+              decoration: BoxDecoration(
+                color: Consonants.whiteColor,
+                borderRadius: BorderRadius.circular(20.r),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    hostGender == 'FEMALE'
+                        ? Icons.female_rounded
+                        : Icons.male_rounded,
+                    size: 11.sp,
+                    color: hostGender == 'FEMALE'
+                        ? const Color(0xffEC4899)
+                        : Consonants.primaryColor,
+                  ),
+                  SizedBox(width: 3.w),
+                  CustomWidgets.customText(
+                    hostGender == 'FEMALE' ? 'Female' : 'Male',
+                    9.sp,
+                    Consonants.boldTextColor,
+                    FontWeight.w700,
+                  ),
+                ],
+              ),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.female_rounded,
-                    size: 11.sp, color: const Color(0xffEC4899)),
-                SizedBox(width: 3.w),
-                CustomWidgets.customText(
-                  "Female",
-                  9.sp,
-                  Consonants.boldTextColor,
-                  FontWeight.w700,
-                ),
-              ],
-            ),
-          ),
         ],
       ),
     );
@@ -1189,9 +1615,11 @@ class _FeaturedRideCard extends StatelessWidget {
                 ),
               ),
               child: CustomWidgets.customText(
-                "Decline",
+                isMyRide ? (ride.youAreHost ? "Cancel" : "Leave") : "Decline",
                 12.sp,
-                Consonants.boldTextColor,
+                isMyRide
+                    ? const Color(0xffEF4444)
+                    : Consonants.boldTextColor,
                 FontWeight.w700,
               ),
             ),

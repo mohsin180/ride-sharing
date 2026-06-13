@@ -1,39 +1,38 @@
-import 'dart:convert';
-
-import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:http/http.dart' as http;
-import 'package:ride_sharing/widgets/consonants/env.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:ride_sharing/model/routeModels.dart';
+import 'package:ride_sharing/services/maps/routingService.dart';
 
-/// Google Maps API key — sourced from `.env` (which is gitignored). The
-/// native Maps SDK key in `AndroidManifest.xml` covers map rendering;
-/// this is for the HTTP REST APIs (Directions, Geocoding, Places).
-String get kGoogleMapsKey => Env.googleMapsKeyOrEmpty;
-
-/// One end-to-end route between two coords.
+/// One end-to-end route between two coords. Same shape callers used
+/// pre-migration — `distanceKm` and `durationMinutes` getters preserved
+/// so [_LiveDistanceStrip] and friends don't need rewiring.
+///
+/// Internally backed by [RouteResult] from [RoutingService] (Geoapify),
+/// not the Google Directions API. The encoded-polyline field that used
+/// to live here is gone: Geoapify returns GeoJSON directly so there's
+/// no encoded string to decode.
 class DirectionsResult {
-  /// Trip distance in metres.
-  final int distanceMeters;
+  /// Trip distance in metres. Now a double (was an int) — Geoapify
+  /// returns sub-metre precision; we don't round here so consumers can
+  /// format however they want.
+  final double distanceMeters;
 
   /// Trip duration in seconds.
   final int durationSeconds;
 
-  /// The Directions-API "encoded polyline" string — handy if we ever
-  /// want to ship it to a backend or cache it as text.
-  final String encodedPolyline;
-
-  /// Decoded route points, ready to drop straight into [Polyline.points].
+  /// Decoded route points, ready for `flutter_map`'s `PolylineLayer`.
+  /// Type is now `latlong2.LatLng` (was `google_maps_flutter.LatLng`).
+  /// Screens still on GoogleMap convert at the call site until they
+  /// migrate in the final cleanup stage.
   final List<LatLng> points;
 
-  /// LatLng bounds that enclose the whole route — pass to
-  /// `CameraUpdate.newLatLngBounds` to fit pickup → drop in view.
-  final LatLngBounds bounds;
+  /// Bounding box that encloses the whole route — useful for
+  /// "fit-the-route" camera moves on flutter_map.
+  final LatLngBoundsLite? bounds;
 
   const DirectionsResult({
     required this.distanceMeters,
     required this.durationSeconds,
-    required this.encodedPolyline,
     required this.points,
     required this.bounds,
   });
@@ -42,8 +41,12 @@ class DirectionsResult {
   int get durationMinutes => (durationSeconds / 60).round();
 }
 
-/// Args for [directionsProvider]. Equality matters because Riverpod uses
-/// it to cache results — same origin/destination = same future.
+/// Args for [directionsProvider]. Equality matters because Riverpod
+/// uses it to cache results — same origin/destination = same future.
+/// LatLng now resolves to `latlong2.LatLng` post-migration; legacy
+/// callers that still hold `google_maps_flutter.LatLng` instances
+/// rebuild a latlong2 LatLng inline (they share the same `.latitude`
+/// / `.longitude` getters so the conversion is one line).
 class DirectionsRequest {
   final LatLng origin;
   final LatLng destination;
@@ -68,84 +71,27 @@ class DirectionsRequest {
       );
 }
 
-/// Calls Google Directions API for a driving route between two points.
-/// Throws if the key isn't set, the network errors out, or the API
-/// returns a non-OK status; the consumer renders that via
-/// `AsyncValue.when(error: …)`.
-final directionsProvider =
-    FutureProvider.family<DirectionsResult, DirectionsRequest>((ref, req) async {
-  if (kGoogleMapsKey.isEmpty) {
-    throw StateError(
-      'GOOGLE_MAPS_KEY missing. Set it in .env at the project root '
-      '(see .env.example).',
-    );
-  }
-
-  final uri = Uri.https(
-    'maps.googleapis.com',
-    '/maps/api/directions/json',
-    {
-      'origin': '${req.origin.latitude},${req.origin.longitude}',
-      'destination':
-          '${req.destination.latitude},${req.destination.longitude}',
-      'mode': 'driving',
-      'key': kGoogleMapsKey,
-    },
-  );
-
-  final response = await http.get(uri);
-  if (response.statusCode != 200) {
-    throw HttpException(
-      'Directions HTTP ${response.statusCode}: ${response.body}',
-    );
-  }
-
-  final body = json.decode(response.body) as Map<String, dynamic>;
-  final status = body['status'] as String?;
-  if (status != 'OK') {
-    throw HttpException('Directions API status: $status');
-  }
-
-  final routes = body['routes'] as List<dynamic>;
-  if (routes.isEmpty) {
-    throw const HttpException('Directions API returned no routes');
-  }
-
-  final route = routes.first as Map<String, dynamic>;
-  final leg = (route['legs'] as List).first as Map<String, dynamic>;
-  final overview = route['overview_polyline'] as Map<String, dynamic>;
-  final encoded = overview['points'] as String;
-
-  final decoded = PolylinePoints()
-      .decodePolyline(encoded)
-      .map((p) => LatLng(p.latitude, p.longitude))
-      .toList();
-
-  final boundsRaw = route['bounds'] as Map<String, dynamic>;
-  final ne = boundsRaw['northeast'] as Map<String, dynamic>;
-  final sw = boundsRaw['southwest'] as Map<String, dynamic>;
-
-  return DirectionsResult(
-    distanceMeters: (leg['distance']['value'] as num).toInt(),
-    durationSeconds: (leg['duration']['value'] as num).toInt(),
-    encodedPolyline: encoded,
-    points: decoded,
-    bounds: LatLngBounds(
-      southwest: LatLng(
-        (sw['lat'] as num).toDouble(),
-        (sw['lng'] as num).toDouble(),
-      ),
-      northeast: LatLng(
-        (ne['lat'] as num).toDouble(),
-        (ne['lng'] as num).toDouble(),
-      ),
-    ),
-  );
+/// Singleton [RoutingService]. One HTTP client lives for the app's
+/// lifetime; closed automatically on container dispose.
+final routingServiceProvider = Provider<RoutingService>((ref) {
+  final service = RoutingService();
+  ref.onDispose(service.dispose);
+  return service;
 });
 
-class HttpException implements Exception {
-  final String message;
-  const HttpException(this.message);
-  @override
-  String toString() => message;
-}
+/// Computes a driving route between two points via Geoapify. Throws if
+/// the key isn't set, the network errors out, or the API returns
+/// 4xx/5xx; consumers render the error via `AsyncValue.when(error: …)`.
+final directionsProvider =
+    FutureProvider.family<DirectionsResult, DirectionsRequest>(
+  (ref, req) async {
+    final service = ref.read(routingServiceProvider);
+    final route = await service.route(from: req.origin, to: req.destination);
+    return DirectionsResult(
+      distanceMeters: route.distanceMeters,
+      durationSeconds: route.durationSeconds,
+      points: route.points,
+      bounds: route.bounds,
+    );
+  },
+);

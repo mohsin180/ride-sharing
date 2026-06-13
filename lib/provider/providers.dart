@@ -1,6 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ride_sharing/controller/apiClient.dart';
 import 'package:ride_sharing/controller/authService.dart';
+import 'package:ride_sharing/controller/messagingService.dart';
+import 'package:ride_sharing/controller/notificationService.dart';
 import 'package:ride_sharing/controller/profileService.dart';
 import 'package:ride_sharing/controller/rideService.dart';
 
@@ -16,4 +18,12 @@ final profileServiceProvider = Provider<Profileservice>((ref) {
 final rideServiceProvider = Provider<Rideservice>((ref) {
   final apiClient = ref.read(apiClientProvider);
   return Rideservice(apiclient: apiClient);
+});
+final notificationServiceProvider = Provider<Notificationservice>((ref) {
+  final apiClient = ref.read(apiClientProvider);
+  return Notificationservice(apiclient: apiClient);
+});
+final messagingServiceProvider = Provider<Messagingservice>((ref) {
+  final apiClient = ref.read(apiClientProvider);
+  return Messagingservice(apiclient: apiClient);
 });

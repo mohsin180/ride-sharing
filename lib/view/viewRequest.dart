@@ -2,12 +2,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_map_cancellable_tile_provider/flutter_map_cancellable_tile_provider.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:ride_sharing/model/appRoutes.dart';
+import 'package:ride_sharing/model/rideModels.dart';
+import 'package:ride_sharing/provider/authProvider.dart';
+import 'package:ride_sharing/provider/availableRidesProvider.dart';
 import 'package:ride_sharing/provider/directionsProvider.dart';
 import 'package:ride_sharing/provider/mapProvider.dart';
+import 'package:ride_sharing/provider/providers.dart';
+import 'package:ride_sharing/provider/rideDetailsProvider.dart';
+import 'package:ride_sharing/provider/rideRequestProvider.dart';
+import 'package:ride_sharing/services/maps/mapTilesService.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
+import 'package:ride_sharing/widgets/consonants/errorHandler.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
+import 'package:ride_sharing/widgets/custom/ratingSheet.dart';
 
 /// Pop the screen if there's something to go back to; otherwise fall
 /// back to the bottom navbar so the back button is never a dead-end
@@ -20,7 +31,14 @@ void _backOrHome(BuildContext context) {
   }
 }
 
-class Viewrequest extends StatelessWidget {
+class Viewrequest extends ConsumerWidget {
+  /// Backend id of the ride being viewed. When provided we fetch the
+  /// real ride details (host, co-passengers, fare); when null we fall
+  /// back to whatever the navigator passed in via the other params —
+  /// the "preview a freshly-composed ride" path from the homepage that
+  /// hasn't been wired through the create endpoint yet.
+  final String? rideId;
+
   final String pickup;
   final String drop;
   final int seats;
@@ -34,6 +52,7 @@ class Viewrequest extends StatelessWidget {
 
   const Viewrequest({
     super.key,
+    this.rideId,
     this.pickup = "Hostel City, Block B",
     this.drop = "Taramri Chowk",
     this.seats = 1,
@@ -42,7 +61,60 @@ class Viewrequest extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Optimistic load — render the navigator-passed fallback values
+    // immediately, swap in backend data the moment `rideDetailsProvider`
+    // resolves. Errors leave `details` null so the screen still draws.
+    final detailsAsync =
+        rideId != null ? ref.watch(rideDetailsProvider(rideId!)) : null;
+    final details = detailsAsync?.value;
+
+    // Host vs searcher detection — same userId = this is the user's own
+    // ride, otherwise they're viewing someone else's ride to join.
+    final currentUserId =
+        ref.watch(authControllerProvider.select((s) => s.userId));
+    final isHost = currentUserId != null &&
+        details != null &&
+        details.host.id == currentUserId;
+
+    // The searcher's own pickup/destination — what THEY typed into the
+    // Available Rides search form. Drives the "Your Route" section for
+    // non-hosts so they see their intent alongside the ride they're
+    // considering. Hosts fall back to the ride's own pickup/drop.
+    final searcherRequest = ref.watch(rideRequestProvider);
+
+    // Effective values — backend wins where available, navigator fallback
+    // covers everything else. Computed once so the helpers below stay
+    // simple and don't repeat the same null checks.
+    final effPickup =
+        (details?.pickup.isNotEmpty ?? false) ? details!.pickup : pickup;
+    final effDrop =
+        (details?.drop.isNotEmpty ?? false) ? details!.drop : drop;
+    final effSeats = details?.seatsTotal ?? seats;
+    final effPickupLatLng = (details?.pickupLat != null &&
+            details?.pickupLng != null)
+        ? LatLng(details!.pickupLat!, details.pickupLng!)
+        : pickupLatLng;
+    final effDropLatLng =
+        (details?.dropLat != null && details?.dropLng != null)
+            ? LatLng(details!.dropLat!, details.dropLng!)
+            : dropLatLng;
+
+    // "Your Route" labels: host sees the ride's pickup/drop (it IS
+    // their ride); searcher sees what they entered in the search form.
+    // If the searcher hasn't filled the form yet, fall back to the
+    // ride's pickup/drop so the section never renders empty.
+    final yourRoutePickup = isHost
+        ? effPickup
+        : (searcherRequest.pickup.isNotEmpty
+            ? searcherRequest.pickup
+            : effPickup);
+    final yourRouteDrop = isHost
+        ? effDrop
+        : (searcherRequest.drop.isNotEmpty
+            ? searcherRequest.drop
+            : effDrop);
+
     return Scaffold(
       backgroundColor: Consonants.scaffoldBackgroundColor,
       body: Stack(
@@ -52,35 +124,58 @@ class Viewrequest extends StatelessWidget {
             children: [
               _mapHeader(
                 context,
-                pickupLatLng: pickupLatLng,
-                dropLatLng: dropLatLng,
+                pickupLatLng: effPickupLatLng,
+                dropLatLng: effDropLatLng,
               ),
               Expanded(
-                child: SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  padding: EdgeInsets.fromLTRB(16.w, 18.h, 16.w, 110.h),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _tripHostCard(),
-                      SizedBox(height: 12.h),
-                      _selectedRideCard(),
-                      SizedBox(height: 12.h),
-                      _routeCard(pickup: pickup, drop: drop),
-                      SizedBox(height: 12.h),
-                      _statsRow(
-                        seats: seats,
-                        pickupLatLng: pickupLatLng,
-                        dropLatLng: dropLatLng,
-                      ),
-                      SizedBox(height: 12.h),
-                      GestureDetector(
-                        onTap: () => _showCoPassengersSheet(context),
-                        child: _coPassengersCard(),
-                      ),
-                      SizedBox(height: 12.h),
-                      _fareCard(),
-                    ],
+                child: RefreshIndicator(
+                  color: Consonants.primaryColor,
+                  onRefresh: () async {
+                    if (rideId == null) return;
+                    ref.invalidate(rideDetailsProvider(rideId!));
+                    await ref.read(rideDetailsProvider(rideId!).future);
+                  },
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(
+                      parent: BouncingScrollPhysics(),
+                    ),
+                    padding: EdgeInsets.fromLTRB(16.w, 18.h, 16.w, 110.h),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _tripHostCard(details?.host, details?.createdAt),
+                        SizedBox(height: 12.h),
+                        _selectedRideCard(details?.rideType),
+                        SizedBox(height: 12.h),
+                        _routeCard(
+                          pickup: yourRoutePickup,
+                          drop: yourRouteDrop,
+                          isHost: isHost,
+                        ),
+                        SizedBox(height: 12.h),
+                        _statsRow(
+                          seats: effSeats,
+                          pickupLatLng: effPickupLatLng,
+                          dropLatLng: effDropLatLng,
+                        ),
+                        SizedBox(height: 12.h),
+                        GestureDetector(
+                          onTap: () => _showCoPassengersSheet(
+                            context,
+                            details?.coPassengers ?? const [],
+                            isHost: isHost,
+                            hasJoined: details?.youHaveJoined ?? false,
+                          ),
+                          child: _coPassengersCard(
+                            details?.coPassengers ?? const [],
+                            isHost: isHost,
+                            hasJoined: details?.youHaveJoined ?? false,
+                          ),
+                        ),
+                        SizedBox(height: 12.h),
+                        _fareCard(details?.fare),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -110,12 +205,20 @@ class Viewrequest extends StatelessWidget {
           ),
 
           // ─── Sticky bottom CTA bar ───
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: _bottomBar(context),
-          ),
+          // Only shown when we actually have a ride id to act on —
+          // deep-link / preview entries without a rideId can't join.
+          if (rideId != null)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: _BottomBar(
+                rideId: rideId!,
+                fare: details?.fare,
+                isHost: isHost,
+                hasJoined: details?.youHaveJoined ?? false,
+              ),
+            ),
         ],
       ),
     );
@@ -140,18 +243,33 @@ Widget _mapHeader(
       child: Stack(
         children: [
           Container(color: const Color(0xffE5E7EB)),
-          const GoogleMap(
-            initialCameraPosition: CameraPosition(
-              target: kDefaultLatLng,
-              zoom: 13.5,
+          FlutterMap(
+            options: const MapOptions(
+              initialCenter: kDefaultLatLng,
+              initialZoom: 13.5,
+              // Decorative header map — no rotate/tilt; pinch-zoom and
+              // drag still feel right for a quick orientation glance.
+              interactionOptions: InteractionOptions(
+                flags: InteractiveFlag.pinchZoom |
+                    InteractiveFlag.drag |
+                    InteractiveFlag.doubleTapZoom,
+              ),
             ),
-            style: kMinimalMapStyle,
-            myLocationButtonEnabled: false,
-            zoomControlsEnabled: false,
-            compassEnabled: false,
-            mapToolbarEnabled: false,
-            rotateGesturesEnabled: false,
-            tiltGesturesEnabled: false,
+            children: [
+              TileLayer(
+                urlTemplate: MapTilesService.tileUrl,
+                subdomains: MapTilesService.subdomains,
+                userAgentPackageName: MapTilesService.userAgentPackageName,
+                tileProvider: CancellableNetworkTileProvider(),
+              ),
+              const RichAttributionWidget(
+                alignment: AttributionAlignment.bottomLeft,
+                attributions: [
+                  TextSourceAttribution('OpenStreetMap contributors'),
+                  TextSourceAttribution('CARTO'),
+                ],
+              ),
+            ],
           ),
           Positioned(
             left: 0,
@@ -250,7 +368,17 @@ Widget _circleIconButton(IconData icon, {required VoidCallback onTap}) {
 /// ───────────────────── TRIP HOST CARD ─────────────────────
 /// The passenger who created / published this ride. Displayed above
 /// the vehicle tier card so viewers know who's behind the trip.
-Widget _tripHostCard() {
+/// Renders sensible placeholders when [host] is null (still loading
+/// or no rideId was supplied) so the screen never flashes empty.
+Widget _tripHostCard(RideHost? host, DateTime? createdAt) {
+  final name = (host?.name.isNotEmpty ?? false) ? host!.name : 'Loading…';
+  final initial = (host?.name.isNotEmpty ?? false)
+      ? host!.name.trim()[0].toUpperCase()
+      : '?';
+  final ratingLabel = host?.ratingLabel ?? '—';
+  final ridesLabel = host == null ? '—' : '${host.trips} rides';
+  final createdLabel = createdAt != null ? _relativeTime(createdAt) : '';
+
   return Container(
     padding: EdgeInsets.all(14.w),
     decoration: BoxDecoration(
@@ -276,15 +404,17 @@ Widget _tripHostCard() {
               FontWeight.w600,
             ),
             const Spacer(),
-            Icon(Icons.access_time_rounded,
-                size: 11.sp, color: Consonants.greyColor),
-            SizedBox(width: 3.w),
-            CustomWidgets.customText(
-              "Created 12m ago",
-              10.sp,
-              Consonants.greyColor,
-              FontWeight.w500,
-            ),
+            if (createdLabel.isNotEmpty) ...[
+              Icon(Icons.access_time_rounded,
+                  size: 11.sp, color: Consonants.greyColor),
+              SizedBox(width: 3.w),
+              CustomWidgets.customText(
+                "Created $createdLabel",
+                10.sp,
+                Consonants.greyColor,
+                FontWeight.w500,
+              ),
+            ],
           ],
         ),
         SizedBox(height: 12.h),
@@ -303,7 +433,7 @@ Widget _tripHostCard() {
                 ),
               ),
               child: Text(
-                "S",
+                initial,
                 style: TextStyle(
                   color: Consonants.primaryColor,
                   fontSize: 20.sp,
@@ -321,7 +451,7 @@ Widget _tripHostCard() {
                     children: [
                       Flexible(
                         child: CustomWidgets.customText(
-                          "Sarah Ahmed",
+                          name,
                           14.sp,
                           Consonants.boldTextColor,
                           FontWeight.w800,
@@ -341,7 +471,7 @@ Widget _tripHostCard() {
                           color: const Color(0xffF5B800)),
                       SizedBox(width: 3.w),
                       CustomWidgets.customText(
-                        "4.9",
+                        ratingLabel,
                         11.sp,
                         Consonants.boldTextColor,
                         FontWeight.w700,
@@ -357,7 +487,7 @@ Widget _tripHostCard() {
                       ),
                       SizedBox(width: 8.w),
                       CustomWidgets.customText(
-                        "128 rides",
+                        ridesLabel,
                         11.sp,
                         Consonants.greyColor,
                         FontWeight.w500,
@@ -367,29 +497,40 @@ Widget _tripHostCard() {
                 ],
               ),
             ),
-            Container(
-              padding:
-                  EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
-              decoration: BoxDecoration(
-                color: const Color(0xffFCE7F3),
-                borderRadius: BorderRadius.circular(20.r),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.female_rounded,
+            if (host?.gender == 'FEMALE' || host?.gender == 'MALE')
+              Container(
+                padding:
+                    EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
+                decoration: BoxDecoration(
+                  color: host!.gender == 'FEMALE'
+                      ? const Color(0xffFCE7F3)
+                      : Consonants.lightBlueColor,
+                  borderRadius: BorderRadius.circular(20.r),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      host.gender == 'FEMALE'
+                          ? Icons.female_rounded
+                          : Icons.male_rounded,
                       size: 11.sp,
-                      color: const Color(0xffEC4899)),
-                  SizedBox(width: 3.w),
-                  CustomWidgets.customText(
-                    "Female",
-                    9.sp,
-                    const Color(0xffEC4899),
-                    FontWeight.w700,
-                  ),
-                ],
+                      color: host.gender == 'FEMALE'
+                          ? const Color(0xffEC4899)
+                          : Consonants.primaryColor,
+                    ),
+                    SizedBox(width: 3.w),
+                    CustomWidgets.customText(
+                      host.gender == 'FEMALE' ? 'Female' : 'Male',
+                      9.sp,
+                      host.gender == 'FEMALE'
+                          ? const Color(0xffEC4899)
+                          : Consonants.primaryColor,
+                      FontWeight.w700,
+                    ),
+                  ],
+                ),
               ),
-            ),
           ],
         ),
       ],
@@ -397,10 +538,54 @@ Widget _tripHostCard() {
   );
 }
 
+/// "12m ago" / "2h ago" / "3d ago" style age label for [_tripHostCard].
+/// Capped at days; for older rides the label simply rolls forward.
+String _relativeTime(DateTime when) {
+  final diff = DateTime.now().difference(when);
+  if (diff.inMinutes < 1) return 'just now';
+  if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+  if (diff.inHours < 24) return '${diff.inHours}h ago';
+  return '${diff.inDays}d ago';
+}
+
+/// Display bundle for one ride tier. Kept as a tiny value type so the
+/// `switch` in [_selectedRideCard] reads cleanly and adding tiers
+/// later is one extra arm.
+class _RideTier {
+  final String name;
+  final String subtitle;
+  final IconData icon;
+  const _RideTier({
+    required this.name,
+    required this.subtitle,
+    required this.icon,
+  });
+}
+
 /// ───────────────────── SELECTED RIDE / VEHICLE CARD ─────────────────────
 /// Shows the vehicle tier the passenger picked when creating the ride
-/// (e.g. Premium / Comfort / Economy) along with key features.
-Widget _selectedRideCard() {
+/// (e.g. Premium / Economy) along with key features. Tier label and
+/// subtitle adapt to the backend `rideType` enum; falls back to a
+/// neutral placeholder while loading.
+Widget _selectedRideCard(String? rideType) {
+  final tier = switch (rideType) {
+    'PREMIUM' => _RideTier(
+        name: 'Premium',
+        subtitle: 'Spacious & comfortable',
+        icon: Icons.directions_car_filled_rounded,
+      ),
+    'ECONOMY' => _RideTier(
+        name: 'Economy',
+        subtitle: 'Affordable & efficient',
+        icon: Icons.directions_car_filled_rounded,
+      ),
+    _ => const _RideTier(
+        name: '—',
+        subtitle: 'Loading ride type…',
+        icon: Icons.directions_car_filled_rounded,
+      ),
+  };
+
   return Container(
     padding: EdgeInsets.all(14.w),
     decoration: BoxDecoration(
@@ -431,7 +616,7 @@ Widget _selectedRideCard() {
                 borderRadius: BorderRadius.circular(14.r),
               ),
               child: Icon(
-                Icons.directions_car_filled_rounded,
+                tier.icon,
                 size: 28.sp,
                 color: Consonants.whiteColor,
               ),
@@ -444,7 +629,7 @@ Widget _selectedRideCard() {
                   Row(
                     children: [
                       CustomWidgets.customText(
-                        "Premium",
+                        tier.name,
                         16.sp,
                         Consonants.whiteColor,
                         FontWeight.w800,
@@ -478,7 +663,7 @@ Widget _selectedRideCard() {
                   ),
                   SizedBox(height: 3.h),
                   CustomWidgets.customText(
-                    "Spacious & comfortable",
+                    tier.subtitle,
                     10.sp,
                     Consonants.whiteColor.withValues(alpha: 0.90),
                     FontWeight.w500,
@@ -527,7 +712,18 @@ Widget _featureChip(IconData icon, String text) {
 }
 
 /// ───────────────────── ROUTE CARD ─────────────────────
-Widget _routeCard({required String pickup, required String drop}) {
+/// [isHost] flips two pieces of copy: the section title ("Your Route"
+/// for searchers, "Ride Route" for hosts) and the right-side badge
+/// ("Your search" → "Your ride"). The pickup/drop strings themselves
+/// are resolved by the caller (searcher's own search vs. ride's own
+/// addresses).
+Widget _routeCard({
+  required String pickup,
+  required String drop,
+  required bool isHost,
+}) {
+  final title = isHost ? "Ride Route" : "Your Route";
+  final badge = isHost ? "Your ride" : "Your search";
   return Container(
     decoration: BoxDecoration(
       color: Consonants.whiteColor,
@@ -547,7 +743,7 @@ Widget _routeCard({required String pickup, required String drop}) {
         Row(
           children: [
             CustomWidgets.customText(
-              "Your Route",
+              title,
               13.sp,
               Consonants.boldTextColor,
               FontWeight.w700,
@@ -561,7 +757,7 @@ Widget _routeCard({required String pickup, required String drop}) {
                 borderRadius: BorderRadius.circular(20.r),
               ),
               child: CustomWidgets.customText(
-                "Shared ride",
+                badge,
                 9.sp,
                 const Color(0xff16A34A),
                 FontWeight.w700,
@@ -753,7 +949,47 @@ Widget _statTile(IconData icon, String value, String label) {
 }
 
 /// ───────────────────── CO-PASSENGERS CARD ─────────────────────
-Widget _coPassengersCard() {
+/// Compact roll-up of everyone (besides the host and the viewer) who
+/// has joined this ride. Tapping it opens the full bottom sheet.
+///
+/// Copy flips on three axes:
+///   - [isHost]:    host views — "passengers have joined" framing
+///   - [hasJoined]: searcher who already joined — "You and N others"
+///                  framing (without this, the card incorrectly says
+///                  "Be the first to join" because coPassengers
+///                  excludes the viewer themselves, so count = 0)
+///   - otherwise:   prospective joiner — encouraging copy
+Widget _coPassengersCard(
+  List<RideCoPassenger> coPassengers, {
+  required bool isHost,
+  required bool hasJoined,
+}) {
+  final count = coPassengers.length;
+  final headline = isHost
+      ? switch (count) {
+          0 => "No one has joined yet",
+          1 => "1 passenger has joined",
+          _ => "$count passengers have joined",
+        }
+      : hasJoined
+          ? switch (count) {
+              0 => "You've joined this ride",
+              1 => "You and 1 other are sharing",
+              _ => "You and $count others are sharing",
+            }
+          : switch (count) {
+              0 => "Be the first to join this ride",
+              1 => "You'll share with 1 other",
+              _ => "You'll share with $count others",
+            };
+  final subtitle = coPassengers.isEmpty
+      ? (isHost
+          ? "Waiting for passengers"
+          : hasJoined
+              ? "You're the only rider so far"
+              : "Tap to see ride details")
+      : _coPassengersSubtitle(coPassengers);
+
   return Container(
     decoration: BoxDecoration(
       color: Consonants.whiteColor,
@@ -769,24 +1005,25 @@ Widget _coPassengersCard() {
     padding: EdgeInsets.all(14.w),
     child: Row(
       children: [
-        _stackedPassengerAvatars(2),
+        _stackedPassengerAvatars(coPassengers),
         SizedBox(width: 14.w),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               CustomWidgets.customText(
-                "You'll share with 2 others",
+                headline,
                 12.sp,
                 Consonants.boldTextColor,
                 FontWeight.w700,
               ),
               SizedBox(height: 2.h),
               CustomWidgets.customText(
-                "Ayesha · Hina · all verified female",
+                subtitle,
                 10.sp,
                 Consonants.greyColor,
                 FontWeight.w500,
+                maxLines: 1,
               ),
             ],
           ),
@@ -798,17 +1035,52 @@ Widget _coPassengersCard() {
   );
 }
 
-Widget _stackedPassengerAvatars(int count) {
+/// "Ayesha · Hina · all verified female" style line. Shows up to two
+/// names; remaining count rolls into a "+N more" suffix.
+String _coPassengersSubtitle(List<RideCoPassenger> coPassengers) {
+  final firstNames = coPassengers
+      .map((p) => p.name.split(' ').first)
+      .where((n) => n.isNotEmpty)
+      .toList();
+  final shown = firstNames.take(2).join(' · ');
+  final extra = firstNames.length - 2;
+  final allFemale =
+      coPassengers.every((p) => p.gender == 'FEMALE');
+  final suffix = allFemale ? ' · all verified female' : '';
+  if (extra > 0) return '$shown · +$extra more$suffix';
+  return '$shown$suffix';
+}
+
+/// Stacked overlapping avatar circles — one per co-passenger, capped
+/// at 3 visible. Each shows the passenger's initial; colour rotates
+/// through a small palette for variety. When the list is empty, a
+/// single neutral "+" placeholder hints at the join affordance.
+Widget _stackedPassengerAvatars(List<RideCoPassenger> coPassengers) {
   const colors = [
     Color(0xffF472B6),
     Color(0xffFBBF24),
     Color(0xff60A5FA),
   ];
+  if (coPassengers.isEmpty) {
+    return Container(
+      width: 32.w,
+      height: 32.w,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: Consonants.lightBlueColor,
+        shape: BoxShape.circle,
+        border: Border.all(color: Consonants.whiteColor, width: 2.5),
+      ),
+      child: Icon(Icons.add_rounded,
+          size: 16.sp, color: Consonants.primaryColor),
+    );
+  }
+  final shown = coPassengers.take(3).toList(growable: false);
   return SizedBox(
-    width: 36.w + (count - 1) * 18.w,
+    width: 32.w + (shown.length - 1) * 18.w,
     height: 32.w,
     child: Stack(
-      children: List.generate(count, (i) {
+      children: List.generate(shown.length, (i) {
         return Positioned(
           left: (i * 18).w,
           child: Container(
@@ -823,8 +1095,15 @@ Widget _stackedPassengerAvatars(int count) {
                 width: 2.5,
               ),
             ),
-            child: Icon(Icons.person_rounded,
-                size: 16.sp, color: Consonants.whiteColor),
+            child: Text(
+              shown[i].initial,
+              style: TextStyle(
+                color: Consonants.whiteColor,
+                fontSize: 13.sp,
+                fontWeight: FontWeight.w800,
+                fontFamily: Consonants.fontFamily,
+              ),
+            ),
           ),
         );
       }),
@@ -833,7 +1112,16 @@ Widget _stackedPassengerAvatars(int count) {
 }
 
 /// ───────────────────── FARE CARD ─────────────────────
-Widget _fareCard() {
+/// Renders the fare breakdown coming from the backend. Falls back to
+/// "—" placeholders while loading so the card always has the same
+/// height and layout.
+Widget _fareCard(RideFareBreakdown? fare) {
+  final baseLabel = fare != null ? fare.format(fare.baseFare) : '—';
+  final discountLabel = fare != null
+      ? '-${fare.format(fare.sharedDiscount)}'
+      : '—';
+  final totalLabel = fare != null ? fare.format(fare.perRider) : '—';
+
   return Container(
     padding: EdgeInsets.all(16.w),
     decoration: BoxDecoration(
@@ -857,12 +1145,13 @@ Widget _fareCard() {
           ],
         ),
         SizedBox(height: 14.h),
-        _fareRow("Base fare", "Rs 250", Consonants.boldTextColor),
-        SizedBox(height: 8.h),
-        _fareRow("Shared discount", "-Rs 50", const Color(0xff16A34A)),
-        SizedBox(height: 8.h),
-       
-       
+        _fareRow("Base fare", baseLabel, Consonants.boldTextColor),
+        if (fare != null && fare.sharedDiscount > 0) ...[
+          SizedBox(height: 8.h),
+          _fareRow("Shared discount", discountLabel,
+              const Color(0xff16A34A)),
+        ],
+        SizedBox(height: 12.h),
         Container(
           height: 1,
           color: Consonants.primaryColor.withValues(alpha: 0.15),
@@ -878,7 +1167,7 @@ Widget _fareCard() {
             ),
             const Spacer(),
             CustomWidgets.customText(
-              "Rs 200",
+              totalLabel,
               22.sp,
               Consonants.primaryColor,
               FontWeight.w800,
@@ -925,107 +1214,368 @@ Widget _fareRow(String label, String value, Color valueColor) {
 }
 
 /// ───────────────────── BOTTOM CTA BAR ─────────────────────
-Widget _bottomBar(BuildContext context) {
-  return Container(
-    decoration: BoxDecoration(
-      color: Consonants.whiteColor,
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withValues(alpha: 0.06),
-          blurRadius: 16,
-          offset: const Offset(0, -4),
-        ),
-      ],
-    ),
-    child: SafeArea(
-      top: false,
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 12.h),
-        child: GestureDetector(
-          onTap: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              CustomWidgets.customSuccessSnackBar(
-                "Ride confirmed · Searching for driver",
-              ),
-            );
-          },
-          child: Container(
-            height: 54.h,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14.r),
-              gradient: const LinearGradient(
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
-                colors: [
-                  Consonants.primaryColor,
-                  Color(0xff5AC8FA),
-                ],
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color:
-                      Consonants.primaryColor.withValues(alpha: 0.35),
-                  blurRadius: 14,
-                  offset: const Offset(0, 8),
-                ),
-              ],
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                CustomWidgets.customText(
-                  "Confirm Ride · Rs 200",
-                  14.sp,
-                  Consonants.whiteColor,
-                  FontWeight.w800,
-                ),
-                SizedBox(width: 8.w),
-                Icon(Icons.arrow_forward_rounded,
-                    size: 16.sp, color: Consonants.whiteColor),
-              ],
-            ),
+/// Three-state action bar at the bottom of viewRequest:
+///   - **Host**:        disabled chip "You're hosting this ride"
+///   - **Has joined**:  outlined red "Leave Ride"
+///   - **Not joined**:  gradient "Confirm Ride · Rs N"
+///
+/// Owns its own `_busy` flag so the button shows a spinner during the
+/// join/leave HTTP without forcing the parent to track per-action
+/// loading state. On success, invalidates [rideDetailsProvider] (so
+/// seats + co-passengers + youHaveJoined refresh) and
+/// [availableRidesProvider] (so the search list reflects the new
+/// seat count).
+class _BottomBar extends ConsumerStatefulWidget {
+  final String rideId;
+  final RideFareBreakdown? fare;
+  final bool isHost;
+  final bool hasJoined;
+
+  const _BottomBar({
+    required this.rideId,
+    required this.fare,
+    required this.isHost,
+    required this.hasJoined,
+  });
+
+  @override
+  ConsumerState<_BottomBar> createState() => _BottomBarState();
+}
+
+class _BottomBarState extends ConsumerState<_BottomBar> {
+  bool _busy = false;
+
+  /// True once a join request has been sent (awaiting the host's response),
+  /// so the CTA shows "Request sent" instead of letting them request again.
+  bool _requestSent = false;
+
+  Future<void> _onPrimaryTap() async {
+    if (widget.isHost || _busy) return;
+    setState(() => _busy = true);
+    try {
+      final service = ref.read(rideServiceProvider);
+      if (widget.hasJoined) {
+        // Snapshot who we rode with BEFORE leaving (the co-passenger list
+        // refreshes without us afterwards) so we can rate them.
+        final details = ref
+            .read(rideDetailsProvider(widget.rideId))
+            .maybeWhen(data: (d) => d, orElse: () => null);
+        await service.leaveRide(widget.rideId);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          CustomWidgets.customSuccessSnackBar("You left the ride"),
+        );
+        ref.invalidate(rideDetailsProvider(widget.rideId));
+        ref.invalidate(availableRidesProvider);
+        // Bidirectional leave-time rating: rate the co-passengers + driver
+        // you rode with. (Remaining members are prompted to rate you via a
+        // notification.)
+        if (details != null && mounted) {
+          await _promptLeaverRatings(details);
+        }
+        return;
+      } else {
+        // Send a join REQUEST (not an immediate join) carrying our own route
+        // so the host can decide. The host accepts/declines via a notification.
+        final req = ref.read(rideRequestProvider);
+        await service.requestToJoin(
+          widget.rideId,
+          pickup: req.pickup.isNotEmpty ? req.pickup : null,
+          pickupLat: req.pickupLatLng?.latitude,
+          pickupLng: req.pickupLatLng?.longitude,
+          drop: req.drop.isNotEmpty ? req.drop : null,
+          dropLat: req.dropLatLng?.latitude,
+          dropLng: req.dropLatLng?.longitude,
+        );
+        if (!mounted) return;
+        setState(() => _requestSent = true);
+        ScaffoldMessenger.of(context).showSnackBar(
+          CustomWidgets.customSuccessSnackBar(
+            "Request sent — waiting for the host to accept",
           ),
+        );
+        return;
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ErrorHandler.show(context, e);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Walks the passenger who's leaving through rating each person they rode
+  /// with: the host + co-passengers (co-passenger ratings), then the driver.
+  /// Per-rating failures are skipped so one error doesn't abort the rest.
+  Future<void> _promptLeaverRatings(RideDetails details) async {
+    final people = <({String id, String name})>[
+      (id: details.host.id, name: details.host.name),
+      for (final c in details.coPassengers) (id: c.id, name: c.name),
+    ];
+    for (final p in people) {
+      if (!mounted || p.id.isEmpty) continue;
+      final name = p.name.trim().isEmpty ? 'co-passenger' : p.name.trim();
+      final stars = await showRatingSheet(
+        context: context,
+        title: 'Rate $name',
+        subtitle: 'How was riding with them?',
+        avatarInitial: name[0].toUpperCase(),
+      );
+      if (stars != null) {
+        try {
+          await ref
+              .read(rideServiceProvider)
+              .rateCoPassenger(widget.rideId, p.id, stars);
+        } catch (_) {
+          // Skip a failed rating and keep going.
+        }
+      }
+    }
+
+    // Rate the driver too, if one was assigned (active/completed ride).
+    if (!mounted) return;
+    final hasDriver = details.status == RideStatus.accepted ||
+        details.status == RideStatus.started ||
+        details.status == RideStatus.completed;
+    if (hasDriver) {
+      final stars = await showRatingSheet(
+        context: context,
+        title: 'Rate your driver',
+        subtitle: 'How was your trip?',
+      );
+      if (stars != null) {
+        try {
+          await ref.read(rideServiceProvider).rateDriver(widget.rideId, stars);
+        } catch (_) {}
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Consonants.whiteColor,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 16,
+            offset: const Offset(0, -4),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 12.h),
+          child: _buildButton(),
         ),
       ),
-    ),
-  );
+    );
+  }
+
+  Widget _buildButton() {
+    if (widget.isHost) return _hostingChip();
+    if (widget.hasJoined) return _leaveButton();
+    if (_requestSent) return _requestSentChip();
+    return _confirmButton();
+  }
+
+  /// Shown after a join request is sent — the host hasn't responded yet.
+  Widget _requestSentChip() {
+    return Container(
+      height: 54.h,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14.r),
+        color: Consonants.lightBlueColor,
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.hourglass_top_rounded,
+            size: 16.sp,
+            color: Consonants.primaryColor,
+          ),
+          SizedBox(width: 8.w),
+          CustomWidgets.customText(
+            "Request sent · waiting for host",
+            13.sp,
+            Consonants.primaryColor,
+            FontWeight.w800,
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Host view — informational, not actionable. Cancellation lives in
+  /// the Your Rides tab so the action surface stays scoped to its
+  /// own list-level affordance.
+  Widget _hostingChip() {
+    return Container(
+      height: 54.h,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14.r),
+        color: Consonants.lightBlueColor,
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.workspace_premium_rounded,
+            size: 16.sp,
+            color: Consonants.primaryColor,
+          ),
+          SizedBox(width: 8.w),
+          CustomWidgets.customText(
+            "You're hosting this ride",
+            13.sp,
+            Consonants.primaryColor,
+            FontWeight.w800,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _leaveButton() {
+    return GestureDetector(
+      onTap: _busy ? null : _onPrimaryTap,
+      child: Container(
+        height: 54.h,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14.r),
+          color: Consonants.whiteColor,
+          border: Border.all(
+            color: const Color(0xffFEE2E2),
+            width: 1.5,
+          ),
+        ),
+        child: _busy
+            ? _spinner(const Color(0xffEF4444))
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.logout_rounded,
+                      size: 16.sp, color: const Color(0xffEF4444)),
+                  SizedBox(width: 8.w),
+                  CustomWidgets.customText(
+                    "Leave Ride",
+                    14.sp,
+                    const Color(0xffEF4444),
+                    FontWeight.w800,
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+
+  Widget _confirmButton() {
+    final fare = widget.fare;
+    final label = fare != null
+        ? "Confirm Ride · ${fare.format(fare.perRider)}"
+        : "Confirm Ride";
+    return GestureDetector(
+      onTap: _busy ? null : _onPrimaryTap,
+      child: Container(
+        height: 54.h,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14.r),
+          gradient: const LinearGradient(
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+            colors: [
+              Consonants.primaryColor,
+              Color(0xff5AC8FA),
+            ],
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Consonants.primaryColor.withValues(alpha: 0.35),
+              blurRadius: 14,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: _busy
+            ? _spinner(Consonants.whiteColor)
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CustomWidgets.customText(
+                    label,
+                    14.sp,
+                    Consonants.whiteColor,
+                    FontWeight.w800,
+                  ),
+                  SizedBox(width: 8.w),
+                  Icon(Icons.arrow_forward_rounded,
+                      size: 16.sp, color: Consonants.whiteColor),
+                ],
+              ),
+      ),
+    );
+  }
+
+  Widget _spinner(Color color) {
+    return SizedBox(
+      width: 22.h,
+      height: 22.h,
+      child: CircularProgressIndicator(
+        strokeWidth: 2.5,
+        color: color,
+      ),
+    );
+  }
 }
 
 /// ───────────────────── CO-PASSENGERS BOTTOM SHEET ─────────────────────
 /// Shows full profile of every other passenger sharing the ride —
-/// name, rating, rides, pickup and destination. The current user is
-/// excluded from this list.
-void _showCoPassengersSheet(BuildContext context) {
+/// name, rating, rides. The current user and the host are excluded
+/// from the backend-supplied list.
+///
+/// Copy adapts on viewer role:
+///   - [isHost]:    "Passengers" framing — observing who joined
+///   - [hasJoined]: "Your ride-mates" framing — they're already in
+///   - otherwise:   "Co-passengers sharing your route" — prospective
+void _showCoPassengersSheet(
+  BuildContext context,
+  List<RideCoPassenger> coPassengers, {
+  required bool isHost,
+  required bool hasJoined,
+}) {
   showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     barrierColor: Colors.black.withValues(alpha: 0.45),
-    builder: (_) => _coPassengersSheetContent(context),
+    builder: (_) => _coPassengersSheetContent(
+      context,
+      coPassengers,
+      isHost: isHost,
+      hasJoined: hasJoined,
+    ),
   );
 }
 
-Widget _coPassengersSheetContent(BuildContext context) {
-  final passengers = <_CoPassenger>[
-    const _CoPassenger(
-      initial: "A",
-      color: Color(0xffF472B6),
-      name: "Ayesha Khan",
-      rating: "4.7",
-      rides: "86",
-      pickup: "Hostel City, Block A",
-      drop: "Faizabad Metro",
-    ),
-    const _CoPassenger(
-      initial: "H",
-      color: Color(0xffFBBF24),
-      name: "Hina Malik",
-      rating: "4.9",
-      rides: "142",
-      pickup: "Bahria Phase 7",
-      drop: "Taramri Chowk",
-    ),
+Widget _coPassengersSheetContent(
+  BuildContext context,
+  List<RideCoPassenger> passengers, {
+  required bool isHost,
+  required bool hasJoined,
+}) {
+  // Stable per-list-position colour for each avatar; rotates through
+  // a small palette so two rows next to each other never collide.
+  const colors = [
+    Color(0xffF472B6),
+    Color(0xffFBBF24),
+    Color(0xff60A5FA),
   ];
 
   return Container(
@@ -1062,14 +1612,26 @@ Widget _coPassengersSheetContent(BuildContext context) {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       CustomWidgets.customText(
-                        "Co-passengers",
+                        isHost
+                            ? "Passengers"
+                            : hasJoined
+                                ? "Your ride-mates"
+                                : "Co-passengers",
                         17.sp,
                         Consonants.boldTextColor,
                         FontWeight.w800,
                       ),
                       SizedBox(height: 3.h),
                       CustomWidgets.customText(
-                        "${passengers.length} verified female · sharing your route",
+                        isHost
+                            ? (passengers.isEmpty
+                                ? "Waiting for passengers to join"
+                                : "${passengers.length} joined your ride")
+                            : hasJoined
+                                ? (passengers.isEmpty
+                                    ? "You're the only rider so far"
+                                    : "You and ${passengers.length} others are sharing this ride")
+                                : "${passengers.length} verified female · sharing your route",
                         11.sp,
                         Consonants.greyColor,
                         FontWeight.w500,
@@ -1095,16 +1657,35 @@ Widget _coPassengersSheetContent(BuildContext context) {
               ],
             ),
             SizedBox(height: 18.h),
-            Flexible(
-              child: ListView.separated(
-                shrinkWrap: true,
-                physics: const BouncingScrollPhysics(),
-                itemCount: passengers.length,
-                separatorBuilder: (_, __) => SizedBox(height: 12.h),
-                itemBuilder: (_, i) =>
-                    _coPassengerDetailCard(passengers[i]),
+            if (passengers.isEmpty)
+              Padding(
+                padding: EdgeInsets.symmetric(vertical: 40.h),
+                child: Center(
+                  child: CustomWidgets.customText(
+                    isHost
+                        ? "No one has joined yet."
+                        : hasJoined
+                            ? "You're the only rider so far."
+                            : "Nobody has joined yet — be the first.",
+                    12.sp,
+                    Consonants.greyColor,
+                    FontWeight.w500,
+                  ),
+                ),
+              )
+            else
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: passengers.length,
+                  separatorBuilder: (_, __) => SizedBox(height: 12.h),
+                  itemBuilder: (_, i) => _coPassengerDetailCard(
+                    passengers[i],
+                    colors[i % colors.length],
+                  ),
+                ),
               ),
-            ),
           ],
         ),
       ),
@@ -1112,27 +1693,12 @@ Widget _coPassengersSheetContent(BuildContext context) {
   );
 }
 
-class _CoPassenger {
-  final String initial;
-  final Color color;
-  final String name;
-  final String rating;
-  final String rides;
-  final String pickup;
-  final String drop;
-
-  const _CoPassenger({
-    required this.initial,
-    required this.color,
-    required this.name,
-    required this.rating,
-    required this.rides,
-    required this.pickup,
-    required this.drop,
-  });
-}
-
-Widget _coPassengerDetailCard(_CoPassenger p) {
+/// One row in the co-passengers sheet — avatar with initial, name,
+/// rating + trip count, and a small gender chip. All co-passengers
+/// share the same ride, so per-passenger pickup/drop rows were
+/// dropped intentionally (they'd just repeat the host's route).
+Widget _coPassengerDetailCard(RideCoPassenger p, Color color) {
+  final ratingLabel = p.ratingLabel;
   return Container(
     padding: EdgeInsets.all(14.w),
     decoration: BoxDecoration(
@@ -1146,196 +1712,128 @@ Widget _coPassengerDetailCard(_CoPassenger p) {
         ),
       ],
     ),
-    child: Column(
+    child: Row(
       children: [
-        Row(
-          children: [
-            Container(
-              width: 48.w,
-              height: 48.w,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: p.color,
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: Consonants.whiteColor,
-                  width: 2.5,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: p.color.withValues(alpha: 0.30),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
+        Container(
+          width: 48.w,
+          height: 48.w,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: Consonants.whiteColor,
+              width: 2.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: color.withValues(alpha: 0.30),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Text(
+            p.initial,
+            style: TextStyle(
+              color: Consonants.whiteColor,
+              fontSize: 18.sp,
+              fontWeight: FontWeight.w800,
+              fontFamily: Consonants.fontFamily,
+            ),
+          ),
+        ),
+        SizedBox(width: 12.w),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Flexible(
+                    child: CustomWidgets.customText(
+                      p.name,
+                      14.sp,
+                      Consonants.boldTextColor,
+                      FontWeight.w800,
+                    ),
                   ),
+                  SizedBox(width: 5.w),
+                  Icon(Icons.verified_rounded,
+                      size: 13.sp,
+                      color: Consonants.primaryColor),
                 ],
               ),
-              child: Text(
-                p.initial,
-                style: TextStyle(
-                  color: Consonants.whiteColor,
-                  fontSize: 18.sp,
-                  fontWeight: FontWeight.w800,
-                  fontFamily: Consonants.fontFamily,
-                ),
-              ),
-            ),
-            SizedBox(width: 12.w),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              SizedBox(height: 3.h),
+              Row(
                 children: [
-                  Row(
-                    children: [
-                      Flexible(
-                        child: CustomWidgets.customText(
-                          p.name,
-                          14.sp,
-                          Consonants.boldTextColor,
-                          FontWeight.w800,
-                        ),
-                      ),
-                      SizedBox(width: 5.w),
-                      Icon(Icons.verified_rounded,
-                          size: 13.sp,
-                          color: Consonants.primaryColor),
-                    ],
-                  ),
-                  SizedBox(height: 3.h),
-                  Row(
-                    children: [
-                      Icon(Icons.star_rounded,
-                          size: 12.sp,
-                          color: const Color(0xffF5B800)),
-                      SizedBox(width: 3.w),
-                      CustomWidgets.customText(
-                        p.rating,
-                        11.sp,
-                        Consonants.boldTextColor,
-                        FontWeight.w700,
-                      ),
-                      SizedBox(width: 8.w),
-                      Container(
-                        width: 3.w,
-                        height: 3.w,
-                        decoration: const BoxDecoration(
-                          color: Consonants.greyColor,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      SizedBox(width: 8.w),
-                      CustomWidgets.customText(
-                        "${p.rides} rides",
-                        11.sp,
-                        Consonants.greyColor,
-                        FontWeight.w500,
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            Container(
-              padding:
-                  EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
-              decoration: BoxDecoration(
-                color: const Color(0xffFCE7F3),
-                borderRadius: BorderRadius.circular(20.r),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.female_rounded,
-                      size: 11.sp,
-                      color: const Color(0xffEC4899)),
+                  Icon(Icons.star_rounded,
+                      size: 12.sp,
+                      color: const Color(0xffF5B800)),
                   SizedBox(width: 3.w),
                   CustomWidgets.customText(
-                    "Female",
-                    9.sp,
-                    const Color(0xffEC4899),
+                    ratingLabel,
+                    11.sp,
+                    Consonants.boldTextColor,
                     FontWeight.w700,
+                  ),
+                  SizedBox(width: 8.w),
+                  Container(
+                    width: 3.w,
+                    height: 3.w,
+                    decoration: const BoxDecoration(
+                      color: Consonants.greyColor,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  SizedBox(width: 8.w),
+                  CustomWidgets.customText(
+                    "${p.trips} rides",
+                    11.sp,
+                    Consonants.greyColor,
+                    FontWeight.w500,
                   ),
                 ],
               ),
+            ],
+          ),
+        ),
+        if (p.gender == 'FEMALE' || p.gender == 'MALE')
+          Container(
+            padding:
+                EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
+            decoration: BoxDecoration(
+              color: p.gender == 'FEMALE'
+                  ? const Color(0xffFCE7F3)
+                  : Consonants.lightBlueColor,
+              borderRadius: BorderRadius.circular(20.r),
             ),
-          ],
-        ),
-        SizedBox(height: 14.h),
-        Container(
-          height: 1,
-          color: Consonants.lightGreyColor,
-        ),
-        SizedBox(height: 12.h),
-        _sheetRouteRow(
-          dotColor: Consonants.primaryColor,
-          label: "Pickup",
-          place: p.pickup,
-          showLine: true,
-        ),
-        SizedBox(height: 8.h),
-        _sheetRouteRow(
-          dotColor: const Color(0xffEF4444),
-          label: "Destination",
-          place: p.drop,
-          showLine: false,
-        ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  p.gender == 'FEMALE'
+                      ? Icons.female_rounded
+                      : Icons.male_rounded,
+                  size: 11.sp,
+                  color: p.gender == 'FEMALE'
+                      ? const Color(0xffEC4899)
+                      : Consonants.primaryColor,
+                ),
+                SizedBox(width: 3.w),
+                CustomWidgets.customText(
+                  p.gender == 'FEMALE' ? 'Female' : 'Male',
+                  9.sp,
+                  p.gender == 'FEMALE'
+                      ? const Color(0xffEC4899)
+                      : Consonants.primaryColor,
+                  FontWeight.w700,
+                ),
+              ],
+            ),
+          ),
       ],
     ),
   );
 }
 
-Widget _sheetRouteRow({
-  required Color dotColor,
-  required String label,
-  required String place,
-  required bool showLine,
-}) {
-  return Row(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Column(
-        children: [
-          Container(
-            width: 12.w,
-            height: 12.w,
-            decoration: BoxDecoration(
-              color: Consonants.whiteColor,
-              shape: BoxShape.circle,
-              border: Border.all(color: dotColor, width: 2.5),
-            ),
-          ),
-          if (showLine)
-            Container(
-              width: 2.w,
-              height: 18.h,
-              margin: EdgeInsets.symmetric(vertical: 2.h),
-              color: Consonants.lightGreyColor,
-            ),
-        ],
-      ),
-      SizedBox(width: 10.w),
-      Expanded(
-        child: Padding(
-          padding: EdgeInsets.only(top: 1.h),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              CustomWidgets.customText(
-                label,
-                9.sp,
-                Consonants.greyColor,
-                FontWeight.w600,
-              ),
-              SizedBox(height: 1.h),
-              CustomWidgets.customText(
-                place,
-                12.sp,
-                Consonants.boldTextColor,
-                FontWeight.w700,
-              ),
-            ],
-          ),
-        ),
-      ),
-    ],
-  );
-}

@@ -26,6 +26,13 @@ class Authservice {
     await apiclient.get("${Apiconsonants.verifyEmailEndpoint}?token=$token");
   }
 
+  Future<void> resendVerification(String email) async {
+    await apiclient.post(
+      Apiconsonants.resendVerificationEndpoint,
+      {"email": email},
+    );
+  }
+
   Future<bool> isEmailVerified(String userId) async {
     final result = await apiclient.get(
       Apiconsonants.isEmailVerifiedEndpoint(userId),
