@@ -211,8 +211,8 @@ class _DriverVehicleDetailsState extends ConsumerState<DriverVehicleDetails> {
               return 'Numbers only';
             }
             final seats = int.parse(value);
-            if (seats < 1 || seats > 10) {
-              return 'Invalid seat count';
+            if (seats < 1 || seats > 4) {
+              return 'Max 4 seats';
             }
             return null;
           },

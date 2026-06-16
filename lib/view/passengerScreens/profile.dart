@@ -420,7 +420,8 @@ class _DriverProfileBody extends ConsumerWidget {
               label: "Ride History",
               onTap: () => Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => const DriverRideHistory()),
+                MaterialPageRoute(
+                    builder: (_) => const DriverRideHistoryScreen()),
               ),
             ),
             ProfileActionItem(
@@ -544,9 +545,6 @@ class ProfileWidgets {
                   FontWeight.w800,
                 ),
               ),
-              SizedBox(width: 6.w),
-              Icon(Icons.verified_rounded,
-                  size: 16.sp, color: Consonants.whiteColor),
             ],
           ),
           SizedBox(height: 8.h),

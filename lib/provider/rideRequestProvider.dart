@@ -70,7 +70,7 @@ class RideRequestNotifier extends Notifier<RideRequestState> {
   }
 
   void setSeats(int value) {
-    final clamped = value < 1 ? 1 : (value > 6 ? 6 : value);
+    final clamped = value < 1 ? 1 : (value > 4 ? 4 : value);
     state = state.copyWith(seats: clamped);
   }
 
@@ -85,7 +85,7 @@ class RideRequestNotifier extends Notifier<RideRequestState> {
     state = RideRequestState(
       pickup: pickup.trim(),
       drop: drop.trim(),
-      seats: seats < 1 ? 1 : (seats > 6 ? 6 : seats),
+      seats: seats < 1 ? 1 : (seats > 4 ? 4 : seats),
       pickupLatLng: pickupLatLng,
       dropLatLng: dropLatLng,
     );

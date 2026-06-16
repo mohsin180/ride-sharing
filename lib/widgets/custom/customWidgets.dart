@@ -65,35 +65,6 @@ class CustomWidgets {
     );
   }
 
-  static Widget customContinueWithGoogle() {
-    return Container(
-      height: 56.h,
-      width: 300.w,
-      decoration: BoxDecoration(
-        border: Border.all(
-          color: Consonants.scaffoldBackgroundColor,
-          width: 2.w,
-        ),
-        borderRadius: BorderRadius.circular(40.r),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          SizedBox(width: 10.w),
-          Image.asset('assets/google.png', height: 30.h, width: 30.w),
-          SizedBox(width: 10.w),
-          CustomWidgets.customText(
-            'Continue with Google',
-            14.sp,
-            Consonants.boldTextColor,
-            FontWeight.w600,
-          ),
-          SizedBox(width: 10.w),
-        ],
-      ),
-    );
-  }
-
   static SnackBar customErrorSnackBar(String message) {
     return _statusSnackBar(
       message: message,
@@ -293,6 +264,48 @@ class AuthFields extends StatelessWidget {
   }
 }
 
+/// Password variant of [AuthFields] with a working show/hide toggle.
+///
+/// Owns a single `bool _obscure` (default true). Tapping the trailing
+/// eye flips obscuring and swaps the icon between
+/// [Icons.visibility]/[Icons.visibility_off] so the icon always reflects
+/// the current state. Used by Login, Register, and New/Reset Password.
+class PasswordField extends StatefulWidget {
+  final String text;
+  final String? Function(String?)? validator;
+  final TextEditingController controller;
+
+  const PasswordField({
+    super.key,
+    required this.text,
+    this.validator,
+    required this.controller,
+  });
+
+  @override
+  State<PasswordField> createState() => _PasswordFieldState();
+}
+
+class _PasswordFieldState extends State<PasswordField> {
+  bool _obscure = true;
+
+  @override
+  Widget build(BuildContext context) {
+    return AuthFields(
+      text: widget.text,
+      controller: widget.controller,
+      obscure: _obscure,
+      validator: widget.validator,
+      suffixIcon: GestureDetector(
+        onTap: () => setState(() => _obscure = !_obscure),
+        child: Icon(
+          _obscure ? Icons.visibility : Icons.visibility_off,
+        ),
+      ),
+    );
+  }
+}
+
 class AuthContainer extends StatelessWidget {
   final String buttonText;
   final String accountText;
@@ -329,34 +342,6 @@ class AuthContainer extends StatelessWidget {
             isLoading: isLoading,
           ),
           SizedBox(height: 20.h),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              SizedBox(
-                width: 80.w,
-                child: Divider(
-                  thickness: 2,
-                  color: Consonants.scaffoldBackgroundColor,
-                ),
-              ),
-              CustomWidgets.customText(
-                '  or  ',
-                10.sp,
-                Consonants.boldTextColor,
-                FontWeight.w400,
-              ),
-              SizedBox(
-                width: 80.w,
-                child: Divider(
-                  thickness: 2,
-                  color: Consonants.scaffoldBackgroundColor,
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 10.h),
-          CustomWidgets.customContinueWithGoogle(),
-
           Row(
             children: [
               Spacer(),

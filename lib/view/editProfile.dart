@@ -333,8 +333,8 @@ class _EditprofileState extends ConsumerState<Editprofile> {
                               return "Numbers only";
                             }
                             final seats = int.parse(v);
-                            if (seats < 1 || seats > 10) {
-                              return "Invalid";
+                            if (seats < 1 || seats > 4) {
+                              return "Max 4 seats";
                             }
                             return null;
                           },
@@ -438,81 +438,37 @@ class _EditprofileState extends ConsumerState<Editprofile> {
         : "?";
     return Column(
       children: [
-        Stack(
-          clipBehavior: Clip.none,
-          alignment: Alignment.bottomRight,
-          children: [
-            Container(
-              width: 96.w,
-              height: 96.w,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [Consonants.primaryColor, Color(0xff5AC8FA)],
-                ),
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: Consonants.primaryColor.withValues(alpha: 0.30),
-                    blurRadius: 14,
-                    offset: const Offset(0, 6),
-                  ),
-                ],
-              ),
-              child: Text(
-                initial,
-                style: TextStyle(
-                  color: Consonants.whiteColor,
-                  fontSize: 36.sp,
-                  fontWeight: FontWeight.w800,
-                  fontFamily: Consonants.fontFamily,
-                ),
-              ),
+        Container(
+          width: 96.w,
+          height: 96.w,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Consonants.primaryColor, Color(0xff5AC8FA)],
             ),
-            Positioned(
-              right: -2.w,
-              bottom: -2.h,
-              child: GestureDetector(
-                onTap: _photoPlaceholder,
-                child: Container(
-                  width: 32.w,
-                  height: 32.w,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: Consonants.whiteColor,
-                    shape: BoxShape.circle,
-                    border:
-                        Border.all(color: Consonants.primaryColor, width: 2),
-                  ),
-                  child: Icon(Icons.camera_alt_rounded,
-                      size: 14.sp, color: Consonants.primaryColor),
-                ),
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: Consonants.primaryColor.withValues(alpha: 0.30),
+                blurRadius: 14,
+                offset: const Offset(0, 6),
               ),
+            ],
+          ),
+          child: Text(
+            initial,
+            style: TextStyle(
+              color: Consonants.whiteColor,
+              fontSize: 36.sp,
+              fontWeight: FontWeight.w800,
+              fontFamily: Consonants.fontFamily,
             ),
-          ],
-        ),
-        SizedBox(height: 12.h),
-        GestureDetector(
-          onTap: _photoPlaceholder,
-          child: CustomWidgets.customText(
-            "Change Photo",
-            12.sp,
-            Consonants.primaryColor,
-            FontWeight.w700,
           ),
         ),
       ],
     );
-  }
-
-  void _photoPlaceholder() {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        CustomWidgets.customSuccessSnackBar("Photo picker coming soon"),
-      );
   }
 
   // ─── Section label ───────────────────────────────────────

@@ -96,10 +96,8 @@ class _RegisterscreenState extends ConsumerState<Registerscreen> {
           },
         ),
         SizedBox(height: 10.h),
-        AuthFields(
+        PasswordField(
           text: 'Password',
-          obscure: true,
-          suffixIcon: Icon(Icons.remove_red_eye_rounded),
           controller: passwordController,
           validator: (value) {
             if (value == null || value.isEmpty) {

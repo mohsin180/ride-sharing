@@ -3,16 +3,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:ride_sharing/model/rideModels.dart';
+import 'package:ride_sharing/provider/directionsProvider.dart';
 import 'package:ride_sharing/provider/driverActiveRideProvider.dart';
 import 'package:ride_sharing/provider/driverFeedProvider.dart';
 import 'package:ride_sharing/provider/providers.dart';
 import 'package:ride_sharing/widgets/custom/liveTrackingMap.dart';
 import 'package:ride_sharing/view/bottomNavbar.dart' show bottomNavIndexProvider;
+import 'package:ride_sharing/view/driverScreens/driverChatDetail.dart';
 import 'package:ride_sharing/view/driverScreens/driverViewDetails.dart';
 import 'package:ride_sharing/widgets/consonants/apiException.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
 import 'package:ride_sharing/widgets/custom/ratingSheet.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// Index of the "Your Ride" tab inside [bottomNavIndexProvider]. Used to
 /// lazily mount the [GoogleMap] only after the user has visited this tab
@@ -540,7 +543,7 @@ class _DriveryourrideState extends ConsumerState<Driveryourride>
                       SizedBox(height: 12.h),
                       _focusCard(),
                       SizedBox(height: 12.h),
-                      _tripStrip(),
+                      _tripStrip(pickupLL, dropLL),
                       if (remaining.isNotEmpty) ...[
                         SizedBox(height: 18.h),
                         _remainingHeader(remaining.length),
@@ -609,15 +612,7 @@ class _DriveryourrideState extends ConsumerState<Driveryourride>
                   _circleIconButton(
                     icon: Icons.shield_rounded,
                     iconColor: const Color(0xffEF4444),
-                    onTap: () {
-                      ScaffoldMessenger.of(context)
-                        ..hideCurrentSnackBar()
-                        ..showSnackBar(
-                          CustomWidgets.customErrorSnackBar(
-                            "Emergency support coming soon",
-                          ),
-                        );
-                    },
+                    onTap: _launchEmergency,
                   ),
                 ],
               ),
@@ -848,21 +843,16 @@ class _DriveryourrideState extends ConsumerState<Driveryourride>
             ],
           ),
           SizedBox(height: 14.h),
+          // Call was removed: the driver would be calling a passenger, but
+          // passenger phone numbers aren't in the active-ride response, so
+          // there's nothing to dial. Message + Navigate take the full row.
           Row(
             children: [
               Expanded(
                 child: _quickAction(
-                  icon: Icons.phone_rounded,
-                  label: "Call",
-                  onTap: () => _quickActionSnack("Calling ${_focus.name}…"),
-                ),
-              ),
-              SizedBox(width: 8.w),
-              Expanded(
-                child: _quickAction(
                   icon: Icons.chat_bubble_outline_rounded,
                   label: "Message",
-                  onTap: () => _quickActionSnack("Messages coming soon"),
+                  onTap: _openChat,
                 ),
               ),
               SizedBox(width: 8.w),
@@ -870,7 +860,7 @@ class _DriveryourrideState extends ConsumerState<Driveryourride>
                 child: _quickAction(
                   icon: Icons.navigation_rounded,
                   label: "Navigate",
-                  onTap: () => _quickActionSnack("Opening directions…"),
+                  onTap: _openNavigation,
                   primary: true,
                 ),
               ),
@@ -979,53 +969,155 @@ class _DriveryourrideState extends ConsumerState<Driveryourride>
       ..showSnackBar(CustomWidgets.customSuccessSnackBar(message));
   }
 
-  Widget _tripStrip() {
+  void _actionError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(CustomWidgets.customErrorSnackBar(message));
+  }
+
+  /// Guarded external launch — checks `canLaunchUrl` first and falls back
+  /// to a SnackBar so a missing maps/dialer app never crashes the cockpit.
+  Future<void> _launch(Uri uri, {required String onFail}) async {
+    try {
+      if (await canLaunchUrl(uri)) {
+        final ok = await launchUrl(
+          uri,
+          mode: LaunchMode.externalApplication,
+        );
+        if (!ok) _actionError(onFail);
+      } else {
+        _actionError(onFail);
+      }
+    } catch (_) {
+      _actionError(onFail);
+    }
+  }
+
+  /// Message → open the group chat for this ride (driver + passengers),
+  /// reusing the same DriverChatDetail screen the messages tab opens.
+  void _openChat() {
+    final ride = _ride;
+    if (ride == null) return;
+    const palette = [
+      Color(0xff60A5FA),
+      Color(0xffF472B6),
+      Color(0xffFBBF24),
+      Color(0xff34D399),
+      Color(0xffA78BFA),
+    ];
+    final members = <ChatMember>[];
+    for (int i = 0; i < _passengers.length; i++) {
+      members.add(ChatMember(
+        initial: _passengers[i].initial,
+        color: palette[i % palette.length],
+      ));
+    }
+    final title = _passengers.isNotEmpty
+        ? "${_passengers.first.name}${_passengers.length > 1 ? ' +${_passengers.length - 1}' : ''}"
+        : "Ride chat";
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => DriverChatDetail(
+          rideId: ride.id,
+          title: title,
+          members: members,
+          isActive: true,
+        ),
+      ),
+    );
+  }
+
+  /// Navigate → open the device maps app routed to the active ride's drop
+  /// coordinates. Uses the Google Maps universal directions URL, which
+  /// resolves to the platform's default maps app via externalApplication.
+  Future<void> _openNavigation() async {
+    final ride = _ride;
+    final lat = ride?.dropLat;
+    final lng = ride?.dropLng;
+    if (lat == null || lng == null) {
+      _actionError("No destination coordinates for this ride");
+      return;
+    }
+    final uri = Uri.parse(
+      "https://www.google.com/maps/dir/?api=1&destination=$lat,$lng",
+    );
+    await _launch(uri, onFail: "Couldn't open maps");
+  }
+
+  /// Emergency / SOS → dial Pakistan's 1122 emergency line.
+  Future<void> _launchEmergency() async {
+    await _launch(
+      Uri(scheme: 'tel', path: '1122'),
+      onFail: "Couldn't open the dialer",
+    );
+  }
+
+  Widget _tripStrip(LatLng pickup, LatLng drop) {
     final totalFare = _passengers.fold<int>(0, (sum, p) {
       final digits = p.fare.replaceAll(RegExp(r'[^0-9]'), '');
       return sum + (int.tryParse(digits) ?? 0);
     });
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 12.h),
-      decoration: BoxDecoration(
-        color: Consonants.scaffoldBackgroundColor,
-        borderRadius: BorderRadius.circular(14.r),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: _stripItem(
-              icon: Icons.straighten_rounded,
-              value: "12.4 km",
-              label: "Total",
-            ),
+    // Real km + min from the routing provider, falling back to the static
+    // demo numbers while the request is loading or if it errors (mirrors
+    // _LiveDistanceStrip in rideScreen.dart).
+    return Consumer(
+      builder: (context, ref, _) {
+        String distanceValue = "12.4 km";
+        String durationValue = "32 min";
+
+        final async = ref.watch(directionsProvider(
+          DirectionsRequest(origin: pickup, destination: drop),
+        ));
+        async.whenData((r) {
+          distanceValue = "${r.distanceKm.toStringAsFixed(1)} km";
+          durationValue = "${r.durationMinutes} min";
+        });
+
+        return Container(
+          padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 12.h),
+          decoration: BoxDecoration(
+            color: Consonants.scaffoldBackgroundColor,
+            borderRadius: BorderRadius.circular(14.r),
           ),
-          Container(
-            width: 1,
-            height: 26.h,
-            color: Consonants.lightGreyColor,
+          child: Row(
+            children: [
+              Expanded(
+                child: _stripItem(
+                  icon: Icons.straighten_rounded,
+                  value: distanceValue,
+                  label: "Total",
+                ),
+              ),
+              Container(
+                width: 1,
+                height: 26.h,
+                color: Consonants.lightGreyColor,
+              ),
+              Expanded(
+                child: _stripItem(
+                  icon: Icons.access_time_rounded,
+                  value: durationValue,
+                  label: "Duration",
+                ),
+              ),
+              Container(
+                width: 1,
+                height: 26.h,
+                color: Consonants.lightGreyColor,
+              ),
+              Expanded(
+                child: _stripItem(
+                  icon: Icons.payments_rounded,
+                  value: "Rs $totalFare",
+                  label: "Total fare",
+                  accent: Consonants.primaryColor,
+                ),
+              ),
+            ],
           ),
-          Expanded(
-            child: _stripItem(
-              icon: Icons.access_time_rounded,
-              value: "32 min",
-              label: "Duration",
-            ),
-          ),
-          Container(
-            width: 1,
-            height: 26.h,
-            color: Consonants.lightGreyColor,
-          ),
-          Expanded(
-            child: _stripItem(
-              icon: Icons.payments_rounded,
-              value: "Rs $totalFare",
-              label: "Total fare",
-              accent: Consonants.primaryColor,
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 

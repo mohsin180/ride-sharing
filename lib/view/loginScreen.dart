@@ -178,10 +178,8 @@ class _LoginscreenState extends ConsumerState<Loginscreen> {
           },
         ),
         SizedBox(height: 20.h),
-        AuthFields(
+        PasswordField(
           text: 'Password',
-          obscure: true,
-          suffixIcon: Icon(Icons.remove_red_eye),
           controller: passwordController,
           validator: (value) {
             if (value == null || value.isEmpty) {

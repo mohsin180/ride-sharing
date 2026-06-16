@@ -31,30 +31,14 @@ class _RidescreenState extends ConsumerState<Ridescreen> {
   late final TextEditingController _pickupController;
   late final TextEditingController _dropController;
 
-  /// Which list the user is viewing: nearby rides to join (default),
-  /// or the rides they themselves created. Drives the toggle pill row
-  /// at the top of the screen and which provider/body we render.
-  bool _showMyRides = false;
-
-  /// Narrows the backend list to rides within [_kRadiusKm] of the
-  /// user's typed pickup AND with enough seats for their party.
-  /// - distance is computed by the backend from the lat/lng we send;
-  ///   missing distance ⇒ drop (we can't tell if it's nearby).
-  /// - sorted nearest-first so the most relevant ride is at the top.
-  List<AvailableRide> _filterByRadiusAndSeats(
+  /// Keeps only rides with enough seats for the party. The backend (PostGIS)
+  /// already bounded the list to within [_kRadiusKm] of the user's pickup and
+  /// returned it nearest-first, so we no longer filter by radius or re-sort.
+  List<AvailableRide> _filterBySeats(
     List<AvailableRide> rides,
     int neededSeats,
   ) {
-    final filtered = rides.where((r) {
-      final d = r.distanceKm;
-      if (d == null || d > _kRadiusKm) return false;
-      if (r.seatsAvailable < neededSeats) return false;
-      return true;
-    }).toList();
-    filtered.sort((a, b) =>
-        (a.distanceKm ?? double.infinity)
-            .compareTo(b.distanceKm ?? double.infinity));
-    return filtered;
+    return rides.where((r) => r.seatsAvailable >= neededSeats).toList();
   }
 
   @override
@@ -170,26 +154,27 @@ class _RidescreenState extends ConsumerState<Ridescreen> {
             null;
     final neededSeats =
         ref.watch(rideRequestProvider.select((s) => s.seats));
-    final filtered = _filterByRadiusAndSeats(rides, neededSeats);
+    final filtered = _filterBySeats(rides, neededSeats);
 
-    // Your-Rides side is fetched lazily — we still watch the provider
-    // unconditionally so switching tabs is instant for cached results.
+    // Whether the passenger is already in a ride drives the whole screen,
+    // so we watch myRides unconditionally and use it to pick the view.
     final myRidesAsync = ref.watch(myRidesProvider);
     final myRides = myRidesAsync.value ?? const <AvailableRide>[];
+    // "Committed" = hosting OR having joined an active (PENDING/ACCEPTED)
+    // ride. Committed → manage "Your Rides"; otherwise → "Find Rides".
+    // The instant they leave/cancel/complete, this flips and Find returns.
+    final committed = myRides.isNotEmpty;
 
     return SafeArea(
       child: RefreshIndicator(
         color: Consonants.primaryColor,
         onRefresh: () async {
-          if (_showMyRides) {
-            ref.invalidate(myRidesProvider);
-            await ref.read(myRidesProvider.future);
-          } else {
-            ref.invalidate(availableRidesProvider);
-            // Wait for the refetch to settle so the spinner reflects
-            // the real network roundtrip instead of vanishing instantly.
-            await ref.read(availableRidesProvider.future);
-          }
+          // Refresh both: myRides decides which view shows, availableRides
+          // is the find list. Await myRides so the spinner reflects the
+          // commitment check that picks the view.
+          ref.invalidate(myRidesProvider);
+          ref.invalidate(availableRidesProvider);
+          await ref.read(myRidesProvider.future);
         },
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(
@@ -201,31 +186,28 @@ class _RidescreenState extends ConsumerState<Ridescreen> {
             children: [
               _ScreenHeader(
                 hasSearch: hasSearch,
-                matchCount: _showMyRides ? myRides.length : filtered.length,
-                isMyRidesTab: _showMyRides,
-              ),
-              SizedBox(height: 10.h),
-              _TabToggle(
-                showMyRides: _showMyRides,
-                onSelect: (v) => setState(() => _showMyRides = v),
+                matchCount: committed ? myRides.length : filtered.length,
+                isMyRidesTab: committed,
               ),
               SizedBox(height: 14.h),
-              if (!_showMyRides) ...[
+              // No manual tab toggle: the view is decided by whether the
+              // passenger is already in a ride. Committed (host OR
+              // co-passenger) → "Your Rides" only; otherwise → "Find Rides".
+              // While we don't yet know (first load), show a spinner so the
+              // screen doesn't flash Find Rides before snapping to Your Rides.
+              if (myRidesAsync.isLoading && myRides.isEmpty)
+                const _LoadingState()
+              else if (committed)
+                _buildMyRidesBody(myRidesAsync, myRides)
+              else ...[
                 _searchForm(),
                 if (hasSearch) ...[
                   SizedBox(height: 12.h),
                   _radiusCaption(),
                 ],
                 SizedBox(height: 14.h),
-                _buildBody(
-                  async,
-                  rides,
-                  filtered,
-                  hasSearch,
-                  myRides.isNotEmpty,
-                ),
-              ] else
-                _buildMyRidesBody(myRidesAsync, myRides),
+                _buildBody(async, rides, filtered, hasSearch),
+              ],
               SizedBox(height: 14.h),
             ],
           ),
@@ -455,15 +437,7 @@ class _RidescreenState extends ConsumerState<Ridescreen> {
     List<AvailableRide> rides,
     List<AvailableRide> filtered,
     bool hasSearch,
-    bool committed,
   ) {
-    // One ride at a time: if you already host or joined a ride, there's
-    // nothing to find — say so explicitly instead of an empty "no rides".
-    if (committed) {
-      return _CommittedState(
-        onViewMyRides: () => setState(() => _showMyRides = true),
-      );
-    }
     if (!hasSearch) return const _SearchPrompt();
     if (async.isLoading && rides.isEmpty) return const _LoadingState();
     if (async.hasError && rides.isEmpty) {
@@ -714,7 +688,7 @@ class _RidescreenState extends ConsumerState<Ridescreen> {
           SizedBox(width: 12.w),
           _seatButton(
             Icons.add_rounded,
-            enabled: seats < 6,
+            enabled: seats < 4,
             onTap: () => notifier.setSeats(seats + 1),
           ),
         ],
@@ -769,10 +743,8 @@ class _ScreenHeader extends StatelessWidget {
     //   3. for either: zero / one / many results
     final subtitle = isMyRidesTab
         ? (matchCount == 0
-            ? "You haven't created any active rides"
-            : matchCount == 1
-                ? "1 active ride you're hosting"
-                : "$matchCount active rides you're hosting")
+            ? "You're not in a ride right now"
+            : "Your active ride — manage it below")
         : (!hasSearch
             ? "Set pickup & destination to find nearby rides"
             : matchCount == 0
@@ -802,107 +774,6 @@ class _ScreenHeader extends StatelessWidget {
             maxLines: 1,
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// Two-pill toggle: "Find Rides" (search for someone else's) vs
-/// "Your Rides" (manage the ones you created). Selected pill gets the
-/// brand gradient + glow; unselected sits flat with a subtle shadow.
-/// Same visual language as the old distance-filter pills so the
-/// transition reads as familiar.
-class _TabToggle extends StatelessWidget {
-  final bool showMyRides;
-  final ValueChanged<bool> onSelect;
-
-  const _TabToggle({required this.showMyRides, required this.onSelect});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 20.w),
-      child: Row(
-        children: [
-          Expanded(
-            child: _pill(
-              label: "Find Rides",
-              icon: Icons.search_rounded,
-              isSelected: !showMyRides,
-              onTap: () => onSelect(false),
-            ),
-          ),
-          SizedBox(width: 10.w),
-          Expanded(
-            child: _pill(
-              label: "Your Rides",
-              icon: Icons.workspace_premium_rounded,
-              isSelected: showMyRides,
-              onTap: () => onSelect(true),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _pill({
-    required String label,
-    required IconData icon,
-    required bool isSelected,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: EdgeInsets.symmetric(vertical: 12.h, horizontal: 14.w),
-        decoration: BoxDecoration(
-          gradient: isSelected
-              ? const LinearGradient(
-                  colors: [Consonants.primaryColor, Color(0xff5AC8FA)],
-                )
-              : null,
-          color: isSelected ? null : Consonants.whiteColor,
-          borderRadius: BorderRadius.circular(14.r),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color:
-                        Consonants.primaryColor.withValues(alpha: 0.30),
-                    blurRadius: 12,
-                    offset: const Offset(0, 6),
-                  ),
-                ]
-              : [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icon,
-              size: 15.sp,
-              color: isSelected
-                  ? Consonants.whiteColor
-                  : Consonants.primaryColor,
-            ),
-            SizedBox(width: 6.w),
-            CustomWidgets.customText(
-              label,
-              12.sp,
-              isSelected
-                  ? Consonants.whiteColor
-                  : Consonants.boldTextColor,
-              FontWeight.w700,
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -1084,43 +955,6 @@ class _NoNearbyState extends StatelessWidget {
           "No rides within ${_kRadiusKm.round()} km of your pickup",
       subtitle:
           "Try a different pickup, or pull down to refresh in a moment.",
-    );
-  }
-}
-
-/// Shown on the Available Rides tab when the user already has an active
-/// ride (created OR joined). You can only be in one ride at a time, so
-/// there's nothing to find until you leave/cancel — without this the
-/// empty list looked like "no rides nearby" even when rides exist.
-class _CommittedState extends StatelessWidget {
-  final VoidCallback onViewMyRides;
-  const _CommittedState({required this.onViewMyRides});
-
-  @override
-  Widget build(BuildContext context) {
-    return _emptyStateShell(
-      icon: Icons.directions_car_rounded,
-      title: "You're already in a ride",
-      subtitle:
-          "You can only be in one ride at a time. Leave or cancel your current ride to find others.",
-      action: GestureDetector(
-        onTap: onViewMyRides,
-        child: Container(
-          padding: EdgeInsets.symmetric(horizontal: 22.w, vertical: 11.h),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Consonants.primaryColor, Color(0xff5AC8FA)],
-            ),
-            borderRadius: BorderRadius.circular(40.r),
-          ),
-          child: CustomWidgets.customText(
-            "View your ride",
-            12.sp,
-            Consonants.whiteColor,
-            FontWeight.w800,
-          ),
-        ),
-      ),
     );
   }
 }

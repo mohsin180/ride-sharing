@@ -118,10 +118,14 @@ class Apiconsonants {
   // ── driver ride-lifecycle endpoints ────────────────────────────
 
   /// `GET` the fresh ride requests a driver can claim (status PENDING,
-  /// seats left). Same JSON shape as [availableRidesEndpoint] —
-  /// contract documented on [AvailableRide] — but distanceKm/etaMinutes
-  /// come back null (no rider location to measure from).
-  static String get driverFeedEndpoint => "$rideServicebaseUrl/driver/feed";
+  /// seats left). Same JSON shape as [availableRidesEndpoint] — contract
+  /// documented on [AvailableRide]. Optional `lat`/`lng` (the driver's
+  /// current location) let the backend bound the feed to nearby rides and
+  /// stamp each with a distance; omitted ⇒ the full pending feed, distance "—".
+  static String driverFeedEndpoint({double? lat, double? lng}) {
+    if (lat == null || lng == null) return "$rideServicebaseUrl/driver/feed";
+    return "$rideServicebaseUrl/driver/feed?lat=$lat&lng=$lng";
+  }
 
   /// `POST` to claim a PENDING ride as its driver. Backend sets the
   /// driverId + moves status → ACCEPTED. Rejects (409) the driver's own
@@ -151,6 +155,16 @@ class Apiconsonants {
   /// cockpit.
   static String get driverActiveRidesEndpoint =>
       "$rideServicebaseUrl/driver/active";
+
+  /// `GET` the authenticated driver's completed + cancelled rides for the
+  /// driver ride-history screen. Contract: see [DriverRideHistory].
+  static String get driverHistoryEndpoint =>
+      "$rideServicebaseUrl/driver/history";
+
+  /// `GET` the authenticated driver's earnings summary (today + lifetime)
+  /// for the home dashboard. Contract: see [DriverEarnings].
+  static String get driverEarningsEndpoint =>
+      "$rideServicebaseUrl/driver/earnings";
 
   // ── ratings (post-trip, on a COMPLETED ride) ───────────────────
 

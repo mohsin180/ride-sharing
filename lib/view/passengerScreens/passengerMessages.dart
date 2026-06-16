@@ -17,14 +17,11 @@ import 'package:ride_sharing/widgets/custom/customWidgets.dart';
 ///
 /// UX behaviors:
 ///   • Search        — live-filters by group name and last message.
-///   • Filter pills  — All / Unread / Active rides, with live counts.
-///   • Pinned        — pinned chats float to the top in a labeled section.
+///   • Filter pills  — All / Unread, with live counts.
 ///   • Tap chat      — opens the chat-detail screen (currently shared
 ///                     with the driver flow).
-///   • Long-press    — bottom-sheet menu: pin, mute, mark unread, delete.
-///   • Swipe left    — archive; snackbar offers undo.
-///   • Pull to refresh — simulates fetching new messages.
-///   • Compose icon  — placeholder for "start a new group" flow.
+///   • Long-press    — bottom-sheet menu: mark read/unread.
+///   • Pull to refresh — refetches chats.
 class Passengermessages extends ConsumerStatefulWidget {
   const Passengermessages({super.key});
 
@@ -32,7 +29,7 @@ class Passengermessages extends ConsumerStatefulWidget {
   ConsumerState<Passengermessages> createState() => _PassengermessagesState();
 }
 
-enum _ChatFilter { all, unread, active }
+enum _ChatFilter { all, unread }
 
 class _ChatMember {
   final String initial;
@@ -48,12 +45,6 @@ class _ChatGroup {
   final String lastMessage;
   final String timeAgo;
   final int unread;
-  final bool fromYou;
-  final bool readByOthers;
-  final bool isActive;
-  final bool typing;
-  final bool muted;
-  final bool pinned;
 
   const _ChatGroup({
     required this.id,
@@ -63,18 +54,10 @@ class _ChatGroup {
     required this.lastMessage,
     required this.timeAgo,
     required this.unread,
-    required this.fromYou,
-    required this.readByOthers,
-    required this.isActive,
-    required this.typing,
-    required this.muted,
-    required this.pinned,
   });
 
   _ChatGroup copyWith({
     int? unread,
-    bool? muted,
-    bool? pinned,
   }) =>
       _ChatGroup(
         id: id,
@@ -84,12 +67,6 @@ class _ChatGroup {
         lastMessage: lastMessage,
         timeAgo: timeAgo,
         unread: unread ?? this.unread,
-        fromYou: fromYou,
-        readByOthers: readByOthers,
-        isActive: isActive,
-        typing: typing,
-        muted: muted ?? this.muted,
-        pinned: pinned ?? this.pinned,
       );
 }
 
@@ -155,12 +132,6 @@ class _PassengermessagesState extends ConsumerState<Passengermessages> {
       lastMessage: c.lastMessage ?? "No messages yet",
       timeAgo: _relativeTime(c.lastSentAt),
       unread: c.unread,
-      fromYou: false,
-      readByOthers: false,
-      isActive: false,
-      typing: false,
-      muted: false,
-      pinned: false,
     );
   }
 
@@ -209,7 +180,6 @@ class _PassengermessagesState extends ConsumerState<Passengermessages> {
             builder: (_) => DriverChatDetail(
               rideId: chat.id,
               title: chat.name,
-              isActive: chat.isActive,
               members: chat.members
                   .map((m) => ChatMember(initial: m.initial, color: m.color))
                   .toList(),
@@ -332,8 +302,6 @@ class _PassengermessagesState extends ConsumerState<Passengermessages> {
   @override
   Widget build(BuildContext context) {
     final filtered = _applyAll(_chats);
-    final pinned = filtered.where((c) => c.pinned).toList();
-    final recent = filtered.where((c) => !c.pinned).toList();
 
     return Scaffold(
       backgroundColor: Consonants.scaffoldBackgroundColor,
@@ -367,25 +335,11 @@ class _PassengermessagesState extends ConsumerState<Passengermessages> {
                         ),
                         padding: EdgeInsets.only(bottom: 24.h, top: 6.h),
                         children: [
-                          if (pinned.isNotEmpty) ...[
-                            _sectionLabel("Pinned"),
-                            SizedBox(height: 8.h),
-                            for (int i = 0; i < pinned.length; i++) ...[
-                              _chatRow(pinned[i]),
-                              if (i != pinned.length - 1)
-                                _rowDivider(),
-                            ],
-                            SizedBox(height: 18.h),
-                          ],
-                          if (recent.isNotEmpty) ...[
-                            _sectionLabel(
-                              pinned.isEmpty ? "Conversations" : "Recent",
-                            ),
-                            SizedBox(height: 8.h),
-                            for (int i = 0; i < recent.length; i++) ...[
-                              _chatRow(recent[i]),
-                              if (i != recent.length - 1) _rowDivider(),
-                            ],
+                          _sectionLabel("Conversations"),
+                          SizedBox(height: 8.h),
+                          for (int i = 0; i < filtered.length; i++) ...[
+                            _chatRow(filtered[i]),
+                            if (i != filtered.length - 1) _rowDivider(),
                           ],
                         ],
                       ),
@@ -436,7 +390,7 @@ class _PassengermessagesState extends ConsumerState<Passengermessages> {
     );
   }
 
-  // Combines search + filter pill + pinned ordering.
+  // Combines search + filter pill.
   List<_ChatGroup> _applyAll(List<_ChatGroup> all) {
     var list = all;
     final q = _query.trim().toLowerCase();
@@ -453,9 +407,6 @@ class _PassengermessagesState extends ConsumerState<Passengermessages> {
       case _ChatFilter.unread:
         list = list.where((c) => c.unread > 0).toList();
         break;
-      case _ChatFilter.active:
-        list = list.where((c) => c.isActive).toList();
-        break;
     }
     return list;
   }
@@ -463,7 +414,6 @@ class _PassengermessagesState extends ConsumerState<Passengermessages> {
   // ─── Top bar ─────────────────────────────────────────────
 
   Widget _topBar() {
-    final activeCount = _chats.where((c) => c.isActive).length;
     return Padding(
       padding: EdgeInsets.fromLTRB(14.w, 10.h, 16.w, 0),
       child: Row(
@@ -502,45 +452,12 @@ class _PassengermessagesState extends ConsumerState<Passengermessages> {
                 ),
                 SizedBox(height: 2.h),
                 CustomWidgets.customText(
-                  activeCount > 0
-                      ? "$activeCount active conversation${activeCount == 1 ? '' : 's'}"
-                      : "${_chats.length} group chats",
+                  "${_chats.length} group chats",
                   10.sp,
                   Consonants.greyColor,
                   FontWeight.w500,
                 ),
               ],
-            ),
-          ),
-          GestureDetector(
-            onTap: () {
-              ScaffoldMessenger.of(context)
-                ..hideCurrentSnackBar()
-                ..showSnackBar(
-                  CustomWidgets.customSuccessSnackBar(
-                    "New group coming soon",
-                  ),
-                );
-            },
-            child: Container(
-              width: 40.w,
-              height: 40.w,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Consonants.primaryColor, Color(0xff5AC8FA)],
-                ),
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: Consonants.primaryColor.withValues(alpha: 0.30),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Icon(Icons.edit_rounded,
-                  size: 16.sp, color: Consonants.whiteColor),
             ),
           ),
         ],
@@ -617,7 +534,6 @@ class _PassengermessagesState extends ConsumerState<Passengermessages> {
 
   Widget _filterPills() {
     final unreadCount = _chats.where((c) => c.unread > 0).length;
-    final activeCount = _chats.where((c) => c.isActive).length;
     return SizedBox(
       height: 36.h,
       child: ListView(
@@ -628,8 +544,6 @@ class _PassengermessagesState extends ConsumerState<Passengermessages> {
           _pill("All", _ChatFilter.all, count: _chats.length),
           SizedBox(width: 8.w),
           _pill("Unread", _ChatFilter.unread, count: unreadCount),
-          SizedBox(width: 8.w),
-          _pill("Active", _ChatFilter.active, count: activeCount),
         ],
       ),
     );
@@ -707,11 +621,6 @@ class _PassengermessagesState extends ConsumerState<Passengermessages> {
       padding: EdgeInsets.fromLTRB(24.w, 8.h, 24.w, 0),
       child: Row(
         children: [
-          if (text == "Pinned") ...[
-            Icon(Icons.push_pin_rounded,
-                size: 11.sp, color: Consonants.greyColor),
-            SizedBox(width: 4.w),
-          ],
           CustomWidgets.customText(
             text.toUpperCase(),
             10.sp,
@@ -753,99 +662,22 @@ class _PassengermessagesState extends ConsumerState<Passengermessages> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    _StackedAvatars(members: chat.members, size: 50.w),
-                    if (chat.isActive)
-                      Positioned(
-                        right: -2.w,
-                        bottom: -2.h,
-                        child: Container(
-                          width: 14.w,
-                          height: 14.w,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: Consonants.primaryColor,
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: Consonants.whiteColor,
-                              width: 2,
-                            ),
-                          ),
-                          child: Icon(
-                            Icons.directions_car_rounded,
-                            size: 7.sp,
-                            color: Consonants.whiteColor,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
+                _StackedAvatars(members: chat.members, size: 50.w),
                 SizedBox(width: 12.w),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              chat.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontFamily: Consonants.fontFamily,
-                                fontSize: 13.sp,
-                                fontWeight: FontWeight.w800,
-                                color: Consonants.boldTextColor,
-                              ),
-                            ),
-                          ),
-                          if (chat.pinned) ...[
-                            SizedBox(width: 4.w),
-                            Icon(Icons.push_pin_rounded,
-                                size: 11.sp,
-                                color: Consonants.greyColor),
-                          ],
-                          if (chat.muted) ...[
-                            SizedBox(width: 4.w),
-                            Icon(Icons.notifications_off_rounded,
-                                size: 11.sp,
-                                color: Consonants.greyColor),
-                          ],
-                          if (chat.isActive) ...[
-                            SizedBox(width: 6.w),
-                            Container(
-                              padding: EdgeInsets.symmetric(
-                                  horizontal: 5.w, vertical: 1.5.h),
-                              decoration: BoxDecoration(
-                                color: Consonants.lightBlueColor,
-                                borderRadius: BorderRadius.circular(20.r),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Container(
-                                    width: 4.w,
-                                    height: 4.w,
-                                    decoration: const BoxDecoration(
-                                      color: Consonants.primaryColor,
-                                      shape: BoxShape.circle,
-                                    ),
-                                  ),
-                                  SizedBox(width: 3.w),
-                                  CustomWidgets.customText(
-                                    "Live",
-                                    8.sp,
-                                    Consonants.primaryColor,
-                                    FontWeight.w800,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ],
+                      Text(
+                        chat.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontFamily: Consonants.fontFamily,
+                          fontSize: 13.sp,
+                          fontWeight: FontWeight.w800,
+                          color: Consonants.boldTextColor,
+                        ),
                       ),
                       SizedBox(height: 3.h),
                       _lastMessageRow(chat),
@@ -884,16 +716,6 @@ class _PassengermessagesState extends ConsumerState<Passengermessages> {
                           Consonants.whiteColor,
                           FontWeight.w800,
                         ),
-                      )
-                    else if (chat.fromYou)
-                      Icon(
-                        chat.readByOthers
-                            ? Icons.done_all_rounded
-                            : Icons.done_rounded,
-                        size: 14.sp,
-                        color: chat.readByOthers
-                            ? Consonants.primaryColor
-                            : Consonants.greyColor,
                       ),
                   ],
                 ),
@@ -905,26 +727,7 @@ class _PassengermessagesState extends ConsumerState<Passengermessages> {
   }
 
   Widget _lastMessageRow(_ChatGroup chat) {
-    if (chat.typing) {
-      return Row(
-        children: [
-          CustomWidgets.customText(
-            "${chat.lastSender} is typing",
-            11.sp,
-            Consonants.primaryColor,
-            FontWeight.w700,
-          ),
-          SizedBox(width: 4.w),
-          _typingDot(0),
-          SizedBox(width: 2.w),
-          _typingDot(1),
-          SizedBox(width: 2.w),
-          _typingDot(2),
-        ],
-      );
-    }
-
-    final senderLabel = chat.fromYou ? "You" : chat.lastSender;
+    final senderLabel = chat.lastSender;
     return Row(
       children: [
         Flexible(
@@ -940,17 +743,18 @@ class _PassengermessagesState extends ConsumerState<Passengermessages> {
                 height: 1.4,
               ),
               children: [
-                TextSpan(
-                  text: "$senderLabel: ",
-                  style: TextStyle(
-                    fontWeight: chat.unread > 0
-                        ? FontWeight.w800
-                        : FontWeight.w700,
-                    color: chat.unread > 0
-                        ? Consonants.boldTextColor
-                        : Consonants.greyColor,
+                if (senderLabel.isNotEmpty)
+                  TextSpan(
+                    text: "$senderLabel: ",
+                    style: TextStyle(
+                      fontWeight: chat.unread > 0
+                          ? FontWeight.w800
+                          : FontWeight.w700,
+                      color: chat.unread > 0
+                          ? Consonants.boldTextColor
+                          : Consonants.greyColor,
+                    ),
                   ),
-                ),
                 TextSpan(
                   text: chat.lastMessage,
                   style: TextStyle(
@@ -975,24 +779,6 @@ class _PassengermessagesState extends ConsumerState<Passengermessages> {
             FontWeight.w500,
           ),
       ],
-    );
-  }
-
-  Widget _typingDot(int phase) {
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0.3, end: 1.0),
-      duration: Duration(milliseconds: 600 + (phase * 100)),
-      curve: Curves.easeInOut,
-      builder: (_, value, __) {
-        return Container(
-          width: 4.w,
-          height: 4.w,
-          decoration: BoxDecoration(
-            color: Consonants.primaryColor.withValues(alpha: value),
-            shape: BoxShape.circle,
-          ),
-        );
-      },
     );
   }
 
@@ -1063,11 +849,6 @@ class _PassengermessagesState extends ConsumerState<Passengermessages> {
         return (
           "All caught up",
           "No unread group messages right now",
-        );
-      case _ChatFilter.active:
-        return (
-          "No active rides",
-          "Group chats from your active rides will appear here",
         );
       case _ChatFilter.all:
         return (

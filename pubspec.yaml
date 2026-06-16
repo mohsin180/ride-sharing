@@ -48,6 +48,8 @@ dependencies:
   flutter_map_cancellable_tile_provider: ^3.0.2
   # Real-time chat (STOMP over WebSocket to messaging-service).
   stomp_dart_client: ^2.0.0
+  url_launcher: ^6.3.2
+  share_plus: ^13.1.0
 
 dev_dependencies:
   flutter_test:

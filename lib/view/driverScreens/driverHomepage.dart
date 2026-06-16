@@ -3,9 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
 import 'package:ride_sharing/model/appRoutes.dart';
+import 'package:ride_sharing/provider/driverEarningsProvider.dart';
 import 'package:ride_sharing/provider/driverStatusProvider.dart';
 import 'package:ride_sharing/provider/messagingProvider.dart';
 import 'package:ride_sharing/provider/notificationProvider.dart';
+import 'package:ride_sharing/provider/profileProvider.dart';
 import 'package:ride_sharing/provider/rideStatsProvider.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
@@ -73,8 +75,6 @@ class _DriverHomepageState extends State<DriverHomepage>
                   ),
                   SizedBox(height: 18.h),
                   _QuickStatsRow(),
-                  SizedBox(height: 22.h),
-                  _PerformanceCard(),
                 ],
               ),
             );
@@ -89,9 +89,22 @@ class _DriverHomepageState extends State<DriverHomepage>
 // HEADER  — greeting + avatar + notification bell
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _Header extends StatelessWidget {
+class _Header extends ConsumerWidget {
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Real driver identity from the cached profile (mirrors the passenger
+    // homepage greeting). While the profile loads, fall back to a generic
+    // greeting + "?" avatar so nothing flashes a hardcoded placeholder.
+    final profileAsync = ref.watch(driverProfileProvider);
+    final fullName = profileAsync.maybeWhen(
+      data: (p) => p.fullName.trim(),
+      orElse: () => '',
+    );
+    final displayName = fullName.isEmpty ? 'there' : fullName;
+    final initial =
+        fullName.isEmpty ? '?' : fullName.characters.first.toUpperCase();
+    final greeting = _timeOfDayGreeting(DateTime.now().hour);
+
     return Padding(
       padding: EdgeInsets.fromLTRB(20.w, 14.h, 20.w, 0),
       child: Row(
@@ -116,7 +129,7 @@ class _Header extends StatelessWidget {
               ],
             ),
             child: Text(
-              "A",
+              initial,
               style: TextStyle(
                 fontFamily: Consonants.fontFamily,
                 fontSize: 18.sp,
@@ -133,7 +146,7 @@ class _Header extends StatelessWidget {
                 Row(
                   children: [
                     CustomWidgets.customText(
-                      "Good morning,",
+                      "$greeting,",
                       11.sp,
                       Consonants.greyColor,
                       FontWeight.w500,
@@ -149,10 +162,11 @@ class _Header extends StatelessWidget {
                 ),
                 SizedBox(height: 2.h),
                 CustomWidgets.customText(
-                  "Ali Hamza",
+                  displayName,
                   16.sp,
                   Consonants.boldTextColor,
                   FontWeight.w800,
+                  maxLines: 1,
                 ),
               ],
             ),
@@ -234,19 +248,43 @@ class _Header extends StatelessWidget {
       ),
     );
   }
+
+  /// "Good morning" / "afternoon" / "evening" based on the device clock —
+  /// mirrors the passenger homepage greeting.
+  String _timeOfDayGreeting(int hour) {
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    return 'Good evening';
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // EARNINGS HERO  — gradient card with today's earnings + soft shimmer accents
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _EarningsHero extends StatelessWidget {
+class _EarningsHero extends ConsumerWidget {
   final AnimationController shimmer;
 
   const _EarningsHero({required this.shimmer});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Real earnings from GET /rides/driver/earnings. While loading we show
+    // a subtle "…" placeholder rather than a hardcoded number; on error the
+    // card degrades to dashes instead of blocking the dashboard.
+    final earningsAsync = ref.watch(driverEarningsProvider);
+    final earnings = earningsAsync.value;
+    final loading = earningsAsync.isLoading && earnings == null;
+
+    String fmt(double v) => _grouped(v.round());
+    final todayValue =
+        earnings != null ? fmt(earnings.todayEarnings) : (loading ? "…" : "—");
+    final todayTrips =
+        earnings != null ? "${earnings.todayTrips}" : (loading ? "…" : "—");
+    final lifetimeLine = earnings != null
+        ? "Lifetime · Rs ${fmt(earnings.totalEarnings)} · ${earnings.totalTrips} trips"
+        : (loading ? "Lifetime · …" : "Lifetime · —");
+
     return Container(
       margin: EdgeInsets.symmetric(horizontal: 20.w),
       decoration: BoxDecoration(
@@ -346,34 +384,6 @@ class _EarningsHero extends StatelessWidget {
                         Consonants.boldTextColor.withValues(alpha: 0.75),
                         FontWeight.w600,
                       ),
-                      const Spacer(),
-                      Container(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 8.w,
-                          vertical: 4.h,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.55),
-                          borderRadius: BorderRadius.circular(20.r),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.trending_up_rounded,
-                              size: 11.sp,
-                              color: Consonants.boldTextColor,
-                            ),
-                            SizedBox(width: 3.w),
-                            CustomWidgets.customText(
-                              "+18%",
-                              10.sp,
-                              Consonants.boldTextColor,
-                              FontWeight.w800,
-                            ),
-                          ],
-                        ),
-                      ),
                     ],
                   ),
                   SizedBox(height: 10.h),
@@ -388,55 +398,28 @@ class _EarningsHero extends StatelessWidget {
                       ),
                       SizedBox(width: 6.w),
                       CustomWidgets.customText(
-                        "1,240",
+                        todayValue,
                         32.sp,
                         Consonants.boldTextColor,
                         FontWeight.w800,
                       ),
-                      SizedBox(width: 6.w),
-                      Padding(
-                        padding: EdgeInsets.only(bottom: 6.h),
-                        child: CustomWidgets.customText(
-                          "/ Rs 2,000 goal",
-                          10.sp,
-                          Consonants.boldTextColor.withValues(alpha: 0.65),
-                          FontWeight.w500,
-                        ),
-                      ),
                     ],
                   ),
-                  SizedBox(height: 12.h),
-                  // Goal progress bar
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(20.r),
-                    child: Stack(
-                      children: [
-                        Container(
-                          height: 8.h,
-                          color: Colors.white.withValues(alpha: 0.45),
-                        ),
-                        FractionallySizedBox(
-                          widthFactor: 0.62,
-                          child: Container(
-                            height: 8.h,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(20.r),
-                              color: Consonants.primaryColor,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+                  SizedBox(height: 6.h),
+                  // Lifetime subline — keeps totalEarnings / totalTrips
+                  // visible without faking a daily goal target.
+                  CustomWidgets.customText(
+                    lifetimeLine,
+                    10.sp,
+                    Consonants.boldTextColor.withValues(alpha: 0.65),
+                    FontWeight.w600,
+                    maxLines: 1,
                   ),
                   SizedBox(height: 14.h),
                   Row(
                     children: [
-                      _heroStat(Icons.directions_car_filled_rounded, "8",
-                          "Trips"),
-                      SizedBox(width: 18.w),
-                      _heroStat(Icons.access_time_rounded, "5h 20m",
-                          "Online"),
-                      
+                      _heroStat(Icons.directions_car_filled_rounded,
+                          todayTrips, "Trips"),
                     ],
                   ),
                 ],
@@ -446,6 +429,17 @@ class _EarningsHero extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// Thousands-grouped integer ("1,240") without pulling in package:intl.
+  String _grouped(int value) {
+    final s = value.abs().toString();
+    final buf = StringBuffer();
+    for (int i = 0; i < s.length; i++) {
+      if (i > 0 && (s.length - i) % 3 == 0) buf.write(',');
+      buf.write(s[i]);
+    }
+    return value < 0 ? '-$buf' : buf.toString();
   }
 
   Widget _heroStat(IconData icon, String value, String label) {
@@ -692,8 +686,8 @@ class _QuickStatsRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // Rating + Trips come from the real backend stats (GET /rides/stats,
-    // role-aware). Acceptance has no backend source yet, so it stays a
-    // static placeholder.
+    // role-aware). The "Acceptance %" tile was removed — there's no backend
+    // source for it yet, so we don't fake it.
     final stats = ref.watch(rideStatsProvider);
     final rating = stats.maybeWhen(
       data: (s) => s.ratingLabel,
@@ -715,16 +709,6 @@ class _QuickStatsRow extends ConsumerWidget {
               label: "Rating",
               accent: const Color(0xffF59E0B),
               accentBg: const Color(0xffFEF3C7),
-            ),
-          ),
-          SizedBox(width: 10.w),
-          Expanded(
-            child: _statTile(
-              icon: Icons.check_circle_rounded,
-              value: "94%",
-              label: "Acceptance",
-              accent: Consonants.primaryColor,
-              accentBg: Consonants.lightBlueColor,
             ),
           ),
           SizedBox(width: 10.w),
@@ -792,167 +776,4 @@ class _QuickStatsRow extends ConsumerWidget {
       ),
     );
   }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// PERFORMANCE CARD  — weekly mini bar chart of earnings
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _PerformanceCard extends StatelessWidget {
-  static const _bars = <_BarData>[
-    _BarData("Mon", 0.55),
-    _BarData("Tue", 0.40),
-    _BarData("Wed", 0.72),
-    _BarData("Thu", 0.48),
-    _BarData("Fri", 0.86),
-    _BarData("Sat", 1.00),
-    _BarData("Sun", 0.62),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: EdgeInsets.symmetric(horizontal: 20.w),
-      padding: EdgeInsets.all(16.w),
-      decoration: BoxDecoration(
-        color: Consonants.whiteColor,
-        borderRadius: BorderRadius.circular(20.r),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              CustomWidgets.customText(
-                "This Week",
-                14.sp,
-                Consonants.boldTextColor,
-                FontWeight.w800,
-              ),
-              const Spacer(),
-              Container(
-                padding: EdgeInsets.symmetric(
-                    horizontal: 10.w, vertical: 5.h),
-                decoration: BoxDecoration(
-                  color: Consonants.primaryGreenColor,
-                  borderRadius: BorderRadius.circular(20.r),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.trending_up_rounded,
-                        size: 11.sp, color: const Color(0xff16A34A)),
-                    SizedBox(width: 3.w),
-                    CustomWidgets.customText(
-                      "+24%",
-                      10.sp,
-                      const Color(0xff16A34A),
-                      FontWeight.w800,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 4.h),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              CustomWidgets.customText(
-                "Rs 8,420",
-                22.sp,
-                Consonants.boldTextColor,
-                FontWeight.w800,
-              ),
-              SizedBox(width: 6.w),
-              Padding(
-                padding: EdgeInsets.only(bottom: 4.h),
-                child: CustomWidgets.customText(
-                  "earned",
-                  10.sp,
-                  Consonants.greyColor,
-                  FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 18.h),
-          SizedBox(
-            height: 100.h,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                for (int i = 0; i < _bars.length; i++) ...[
-                  Expanded(child: _bar(_bars[i], highlighted: i == 5)),
-                  if (i != _bars.length - 1) SizedBox(width: 8.w),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _bar(_BarData data, {required bool highlighted}) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: [
-        Expanded(
-          child: Align(
-            alignment: Alignment.bottomCenter,
-            child: FractionallySizedBox(
-              heightFactor: data.value,
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: highlighted
-                      ? const LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Consonants.primaryColor,
-                            Color(0xff5AC8FA),
-                          ],
-                        )
-                      : null,
-                  color: highlighted ? null : Consonants.lightBlueColor,
-                  borderRadius: BorderRadius.circular(8.r),
-                  boxShadow: highlighted
-                      ? [
-                          BoxShadow(
-                            color: Consonants.primaryColor
-                                .withValues(alpha: 0.30),
-                            blurRadius: 8,
-                            offset: const Offset(0, 4),
-                          ),
-                        ]
-                      : null,
-                ),
-              ),
-            ),
-          ),
-        ),
-        SizedBox(height: 6.h),
-        CustomWidgets.customText(
-          data.label,
-          9.sp,
-          highlighted ? Consonants.primaryColor : Consonants.greyColor,
-          highlighted ? FontWeight.w800 : FontWeight.w500,
-        ),
-      ],
-    );
-  }
-}
-
-class _BarData {
-  final String label;
-  final double value;
-
-  const _BarData(this.label, this.value);
 }

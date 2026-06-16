@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:ride_sharing/controller/chatSocket.dart';
@@ -17,9 +18,7 @@ import 'package:ride_sharing/widgets/custom/customWidgets.dart';
 ///   • Auto-scrolls to newest on open and on send.
 ///   • Composer expands up to 5 lines, send button activates only when text
 ///     is non-empty (mic icon shown otherwise as a hint for future voice).
-///   • Sending injects an optimistic message; a simulated reply lands ~1.4s
-///     later with a typing indicator so the UI feels alive even off-network.
-///   • Long-press a bubble for reply/copy/react placeholders.
+///   • Long-press a bubble to copy its text to the clipboard.
 ///   • Date separators ("Today", "Yesterday") group messages by day so the
 ///     thread stays readable when it grows.
 ///   • Active rides surface a coloured banner at the top with a pulsing dot.
@@ -93,10 +92,6 @@ class _DriverChatDetailState extends ConsumerState<DriverChatDetail> {
   String? _myUserId;
   bool _loading = true;
   String? _error;
-
-  // Reserved for a future real typing indicator; never set in this build.
-  final bool _otherTyping = false;
-  final String? _typingName = null;
 
   @override
   void initState() {
@@ -264,6 +259,7 @@ class _DriverChatDetailState extends ConsumerState<DriverChatDetail> {
                   label: "Copy text",
                   onTap: () {
                     Navigator.pop(sheetCtx);
+                    Clipboard.setData(ClipboardData(text: msg.text));
                     ScaffoldMessenger.of(context)
                       ..hideCurrentSnackBar()
                       ..showSnackBar(
@@ -386,60 +382,25 @@ class _DriverChatDetailState extends ConsumerState<DriverChatDetail> {
           _StackedAvatars(members: widget.members, size: 40.w),
           SizedBox(width: 10.w),
           Expanded(
-            child: GestureDetector(
-              onTap: () {
-                ScaffoldMessenger.of(context)
-                  ..hideCurrentSnackBar()
-                  ..showSnackBar(
-                    CustomWidgets.customSuccessSnackBar(
-                      "Group info coming soon",
-                    ),
-                  );
-              },
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  CustomWidgets.customText(
-                    widget.title,
-                    14.sp,
-                    Consonants.boldTextColor,
-                    FontWeight.w800,
-                    maxLines: 1,
-                  ),
-                  SizedBox(height: 2.h),
-                  CustomWidgets.customText(
-                    _otherTyping
-                        ? "${_typingName ?? 'Someone'} is typing…"
-                        : "${widget.members.length + 1} members",
-                    10.sp,
-                    _otherTyping
-                        ? Consonants.primaryColor
-                        : Consonants.greyColor,
-                    FontWeight.w600,
-                    maxLines: 1,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          GestureDetector(
-            onTap: () {
-              ScaffoldMessenger.of(context)
-                ..hideCurrentSnackBar()
-                ..showSnackBar(
-                  CustomWidgets.customSuccessSnackBar("More options"),
-                );
-            },
-            child: Container(
-              width: 38.w,
-              height: 38.w,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: Consonants.scaffoldBackgroundColor,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(Icons.more_vert_rounded,
-                  size: 18.sp, color: Consonants.boldTextColor),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                CustomWidgets.customText(
+                  widget.title,
+                  14.sp,
+                  Consonants.boldTextColor,
+                  FontWeight.w800,
+                  maxLines: 1,
+                ),
+                SizedBox(height: 2.h),
+                CustomWidgets.customText(
+                  "${widget.members.length + 1} members",
+                  10.sp,
+                  Consonants.greyColor,
+                  FontWeight.w600,
+                  maxLines: 1,
+                ),
+              ],
             ),
           ),
         ],
@@ -469,28 +430,6 @@ class _DriverChatDetailState extends ConsumerState<DriverChatDetail> {
               Consonants.whiteColor,
               FontWeight.w700,
               maxLines: 1,
-            ),
-          ),
-          GestureDetector(
-            onTap: () {
-              ScaffoldMessenger.of(context)
-                ..hideCurrentSnackBar()
-                ..showSnackBar(
-                  CustomWidgets.customSuccessSnackBar("Ride details"),
-                );
-            },
-            child: Row(
-              children: [
-                CustomWidgets.customText(
-                  "View",
-                  11.sp,
-                  Consonants.whiteColor,
-                  FontWeight.w800,
-                ),
-                SizedBox(width: 2.w),
-                Icon(Icons.chevron_right_rounded,
-                    size: 16.sp, color: Consonants.whiteColor),
-              ],
             ),
           ),
         ],
@@ -528,11 +467,8 @@ class _DriverChatDetailState extends ConsumerState<DriverChatDetail> {
     return ListView.builder(
       controller: _scroll,
       padding: EdgeInsets.fromLTRB(12.w, 12.h, 12.w, 12.h),
-      itemCount: items.length + (_otherTyping ? 1 : 0),
+      itemCount: items.length,
       itemBuilder: (context, index) {
-        if (_otherTyping && index == items.length) {
-          return _typingBubble();
-        }
         final item = items[index];
         if (item is _DateHeader) return _dateSeparator(item.label);
         final msg = item as _Message;
@@ -753,61 +689,6 @@ class _DriverChatDetailState extends ConsumerState<DriverChatDetail> {
     return "$h:$m";
   }
 
-  // ─── Typing bubble ───────────────────────────────────────
-
-  Widget _typingBubble() {
-    final color = widget.members.isNotEmpty
-        ? widget.members.first.color
-        : Consonants.primaryColor;
-    return Padding(
-      padding: EdgeInsets.only(bottom: 6.h),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Container(
-            width: 26.w,
-            height: 26.w,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
-              border: Border.all(color: Consonants.whiteColor, width: 2),
-            ),
-            child: CustomWidgets.customText(
-              widget.members.isNotEmpty ? widget.members.first.initial : "?",
-              10.sp,
-              Consonants.whiteColor,
-              FontWeight.w800,
-            ),
-          ),
-          SizedBox(width: 6.w),
-          Container(
-            padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
-            decoration: BoxDecoration(
-              color: Consonants.whiteColor,
-              borderRadius: BorderRadius.only(
-                topLeft: Radius.circular(4.r),
-                topRight: Radius.circular(18.r),
-                bottomLeft: Radius.circular(18.r),
-                bottomRight: Radius.circular(18.r),
-              ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _Dot(phase: 0),
-                SizedBox(width: 4.w),
-                _Dot(phase: 1),
-                SizedBox(width: 4.w),
-                _Dot(phase: 2),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   // ─── Composer ────────────────────────────────────────────
 
   Widget _composerBar() {
@@ -830,28 +711,6 @@ class _DriverChatDetailState extends ConsumerState<DriverChatDetail> {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              GestureDetector(
-                onTap: () {
-                  ScaffoldMessenger.of(context)
-                    ..hideCurrentSnackBar()
-                    ..showSnackBar(
-                      CustomWidgets.customSuccessSnackBar(
-                          "Attachments coming soon"),
-                    );
-                },
-                child: Container(
-                  width: 40.w,
-                  height: 40.w,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: Consonants.scaffoldBackgroundColor,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(Icons.add_rounded,
-                      size: 20.sp, color: Consonants.boldTextColor),
-                ),
-              ),
-              SizedBox(width: 8.w),
               Expanded(
                 child: Container(
                   constraints: BoxConstraints(
@@ -1032,32 +891,8 @@ class _StackedAvatars extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Animated dots (typing indicator + active-ride pulse).
+// Animated pulse dot (active-ride banner).
 // ─────────────────────────────────────────────────────────────────────────────
-
-class _Dot extends StatelessWidget {
-  final int phase;
-  const _Dot({required this.phase});
-
-  @override
-  Widget build(BuildContext context) {
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0.3, end: 1.0),
-      duration: Duration(milliseconds: 600 + (phase * 100)),
-      curve: Curves.easeInOut,
-      builder: (_, value, __) {
-        return Container(
-          width: 5.w,
-          height: 5.w,
-          decoration: BoxDecoration(
-            color: Consonants.primaryColor.withValues(alpha: value),
-            shape: BoxShape.circle,
-          ),
-        );
-      },
-    );
-  }
-}
 
 class _PulseDot extends StatefulWidget {
   final Color color;

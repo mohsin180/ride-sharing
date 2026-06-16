@@ -95,10 +95,8 @@ class _NewpasswordState extends ConsumerState<Newpassword> {
               FontWeight.w700,
             ),
             SizedBox(height: 10.h),
-            AuthFields(
+            PasswordField(
               text: "New Password",
-              obscure: true,
-              suffixIcon: Icon(Icons.remove_red_eye_rounded, size: 10.sp),
               controller: newpassword,
               validator: (value) {
                 if (value == null || value.isEmpty) {
@@ -111,10 +109,8 @@ class _NewpasswordState extends ConsumerState<Newpassword> {
               },
             ),
             SizedBox(height: 10.h),
-            AuthFields(
+            PasswordField(
               text: "Confirm Password",
-              obscure: true,
-              suffixIcon: Icon(Icons.remove_red_eye_rounded, size: 10.sp),
               controller: confirmPassword,
               validator: (value) {
                 if (value == null || value.isEmpty) {

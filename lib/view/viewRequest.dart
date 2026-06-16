@@ -673,41 +673,8 @@ Widget _selectedRideCard(String? rideType) {
             ),
           ],
         ),
-        SizedBox(height: 12.h),
-        Container(
-          padding:
-              EdgeInsets.symmetric(horizontal: 12.w, vertical: 9.h),
-          decoration: BoxDecoration(
-            color: Consonants.whiteColor.withValues(alpha: 0.18),
-            borderRadius: BorderRadius.circular(12.r),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _featureChip(Icons.event_seat_rounded, "4 seats"),
-              _featureChip(Icons.ac_unit_rounded, "AC"),
-              _featureChip(Icons.star_rounded, "Top-rated"),
-            ],
-          ),
-        ),
       ],
     ),
-  );
-}
-
-Widget _featureChip(IconData icon, String text) {
-  return Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      Icon(icon, size: 12.sp, color: Consonants.whiteColor),
-      SizedBox(width: 4.w),
-      CustomWidgets.customText(
-        text,
-        10.sp,
-        Consonants.whiteColor,
-        FontWeight.w600,
-      ),
-    ],
   );
 }
 
@@ -770,7 +737,6 @@ Widget _routeCard({
           dotColor: Consonants.primaryColor,
           label: "Pickup",
           place: pickup,
-          time: "08:45 AM",
           showLine: true,
         ),
         SizedBox(height: 14.h),
@@ -778,7 +744,6 @@ Widget _routeCard({
           dotColor: const Color(0xffEF4444),
           label: "Destination",
           place: drop,
-          time: "09:07 AM",
           showLine: false,
         ),
       ],
@@ -790,7 +755,6 @@ Widget _routeRow({
   required Color dotColor,
   required String label,
   required String place,
-  required String time,
   required bool showLine,
 }) {
   return Row(
@@ -835,19 +799,6 @@ Widget _routeRow({
               FontWeight.w700,
             ),
           ],
-        ),
-      ),
-      Container(
-        padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
-        decoration: BoxDecoration(
-          color: Consonants.lightBlueColor,
-          borderRadius: BorderRadius.circular(8.r),
-        ),
-        child: CustomWidgets.customText(
-          time,
-          10.sp,
-          Consonants.primaryColor,
-          FontWeight.w700,
         ),
       ),
     ],

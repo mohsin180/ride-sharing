@@ -134,10 +134,14 @@ class Rideservice {
   // ── driver ride-lifecycle ──────────────────────────────────────
 
   /// Fresh ride requests the authenticated driver can claim. Re-uses the
-  /// [AvailableRide] DTO (same on-screen shape as the passenger feed);
-  /// distanceKm / etaMinutes come back null.
-  Future<List<AvailableRide>> getDriverFeed() async {
-    final json = await apiclient.get(Apiconsonants.driverFeedEndpoint);
+  /// [AvailableRide] DTO (same on-screen shape as the passenger feed). Passes
+  /// the driver's current location so the backend can bound the feed by
+  /// proximity and stamp each ride with a distanceKm; pass null on both when
+  /// no fix is available and the backend returns the full pending feed.
+  Future<List<AvailableRide>> getDriverFeed({double? lat, double? lng}) async {
+    final json = await apiclient.get(
+      Apiconsonants.driverFeedEndpoint(lat: lat, lng: lng),
+    );
     if (json is! List) return const [];
     return json
         .whereType<Map<String, dynamic>>()
@@ -203,6 +207,24 @@ class Rideservice {
         .whereType<Map<String, dynamic>>()
         .map(RideDetails.fromJson)
         .toList(growable: false);
+  }
+
+  /// Driver ride history (completed + cancelled). Backend infers the
+  /// driver from the JWT. Contract: see [DriverRideHistory].
+  Future<List<DriverRideHistory>> getDriverHistory() async {
+    final json = await apiclient.get(Apiconsonants.driverHistoryEndpoint);
+    if (json is! List) return const [];
+    return json
+        .whereType<Map<String, dynamic>>()
+        .map(DriverRideHistory.fromJson)
+        .toList(growable: false);
+  }
+
+  /// The driver's earnings summary (today + lifetime) for the home
+  /// dashboard. Contract: see [DriverEarnings].
+  Future<DriverEarnings> getDriverEarnings() async {
+    final json = await apiclient.get(Apiconsonants.driverEarningsEndpoint);
+    return DriverEarnings.fromJson(json as Map<String, dynamic>);
   }
 
   // ── ratings (post-trip) ────────────────────────────────────────

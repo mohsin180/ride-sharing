@@ -30,9 +30,9 @@ class Drivernotification extends ConsumerStatefulWidget {
       _DrivernotificationState();
 }
 
-enum _NotifType { request, trip, earnings, rating, system }
+enum _NotifType { request, trip, rating, system }
 
-enum _Filter { all, unread, trips, earnings }
+enum _Filter { all, unread, trips }
 
 class _NotificationItem {
   final String id;
@@ -463,8 +463,6 @@ class _DrivernotificationState extends ConsumerState<Drivernotification> {
             .where((n) =>
                 n.type == _NotifType.trip || n.type == _NotifType.request)
             .toList();
-      case _Filter.earnings:
-        return all.where((n) => n.type == _NotifType.earnings).toList();
     }
   }
 
@@ -589,37 +587,7 @@ class _DrivernotificationState extends ConsumerState<Drivernotification> {
                 ),
               ),
             ),
-            SizedBox(width: 8.w),
           ],
-          GestureDetector(
-            onTap: () {
-              ScaffoldMessenger.of(context)
-                ..hideCurrentSnackBar()
-                ..showSnackBar(
-                  CustomWidgets.customSuccessSnackBar(
-                    "Notification settings coming soon",
-                  ),
-                );
-            },
-            child: Container(
-              width: 36.w,
-              height: 36.w,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: Consonants.whiteColor,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.04),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Icon(Icons.tune_rounded,
-                  size: 16.sp, color: Consonants.boldTextColor),
-            ),
-          ),
         ],
       ),
     );
@@ -645,11 +613,6 @@ class _DrivernotificationState extends ConsumerState<Drivernotification> {
                   .where((n) =>
                       n.type == _NotifType.trip ||
                       n.type == _NotifType.request)
-                  .length),
-          SizedBox(width: 8.w),
-          _pill("Earnings", _Filter.earnings,
-              count: _items
-                  .where((n) => n.type == _NotifType.earnings)
                   .length),
         ],
       ),
@@ -955,12 +918,6 @@ class _DrivernotificationState extends ConsumerState<Drivernotification> {
           fg: const Color(0xff16A34A),
           bg: Consonants.primaryGreenColor,
         );
-      case _NotifType.earnings:
-        return _NotifVisuals(
-          icon: Icons.emoji_events_rounded,
-          fg: const Color(0xffB45309),
-          bg: const Color(0xffFEF3C7),
-        );
       case _NotifType.rating:
         return _NotifVisuals(
           icon: Icons.star_rounded,
@@ -1043,11 +1000,6 @@ class _DrivernotificationState extends ConsumerState<Drivernotification> {
         return (
           "No trip activity yet",
           "Trip and request updates will appear here",
-        );
-      case _Filter.earnings:
-        return (
-          "No earnings updates",
-          "Bonus and payout notifications will land here",
         );
       case _Filter.all:
         return (

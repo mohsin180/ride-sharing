@@ -398,6 +398,69 @@ class RideCoPassenger {
       name.trim().isEmpty ? '?' : name.trim()[0].toUpperCase();
 }
 
+/// The driver assigned to an active ride. Returned as the nested `driver`
+/// object on [RideDetails] once a driver accepts — null while the ride is
+/// still PENDING (no driver yet).
+///
+/// Backend contract:
+///   {
+///     "id":      "uuid",
+///     "name":    "Ahmed Khan",   // nullable
+///     "carInfo": "Toyota · Silver · LEA-2143", // nullable
+///     "rating":  4.9,            // double 1.0–5.0, nullable (unrated)
+///     "phone":   "+923001234567" // nullable
+///   }
+class DriverInfo {
+  final String id;
+  final String? name;
+  final String? carInfo;
+  final double? rating;
+  final String? phone;
+
+  const DriverInfo({
+    required this.id,
+    this.name,
+    this.carInfo,
+    this.rating,
+    this.phone,
+  });
+
+  /// First letter of the driver's name for the avatar circle. Falls back
+  /// to "?" for null/empty names so the UI never throws on `[0]`.
+  String get initial {
+    final n = name?.trim() ?? '';
+    return n.isEmpty ? '?' : n[0].toUpperCase();
+  }
+
+  /// "Ahmed Khan" / "Your driver" — a safe display name when the backend
+  /// hasn't sent one.
+  String get displayName {
+    final n = name?.trim() ?? '';
+    return n.isEmpty ? 'Your driver' : n;
+  }
+
+  /// "4.9" / "New" — one-glance rating label.
+  String get ratingLabel =>
+      rating == null ? 'New' : rating!.toStringAsFixed(1);
+
+  factory DriverInfo.fromJson(Map<String, dynamic> json) {
+    String? readString(String key) {
+      final v = json[key];
+      if (v == null) return null;
+      final s = v.toString().trim();
+      return s.isEmpty ? null : s;
+    }
+
+    return DriverInfo(
+      id: (json['id'] ?? '').toString(),
+      name: readString('name'),
+      carInfo: readString('carInfo'),
+      rating: json['rating'] is num ? (json['rating'] as num).toDouble() : null,
+      phone: readString('phone'),
+    );
+  }
+}
+
 /// Fare math for a single rider on a shared ride. Backend computes
 /// once and sends it down — frontend just renders.
 class RideFareBreakdown {
@@ -486,6 +549,10 @@ class RideDetails {
   final RideFareBreakdown? fare;
   final bool youHaveJoined;
 
+  /// The driver assigned to this ride. Null while the ride is still
+  /// PENDING (no driver has accepted yet).
+  final DriverInfo? driver;
+
   const RideDetails({
     required this.id,
     required this.pickup,
@@ -503,6 +570,7 @@ class RideDetails {
     this.createdAt,
     this.fare,
     this.youHaveJoined = false,
+    this.driver,
   });
 
   factory RideDetails.fromJson(Map<String, dynamic> json) {
@@ -535,6 +603,11 @@ class RideDetails {
         ? RideFareBreakdown.fromJson(fareRaw)
         : null;
 
+    final driverRaw = json['driver'];
+    final driver = driverRaw is Map<String, dynamic>
+        ? DriverInfo.fromJson(driverRaw)
+        : null;
+
     return RideDetails(
       id: (json['id'] ?? '').toString(),
       pickup: (json['pickup'] ?? '').toString(),
@@ -562,6 +635,7 @@ class RideDetails {
         bool b => b,
         _ => false,
       },
+      driver: driver,
     );
   }
 }
@@ -669,6 +743,137 @@ class AvailableRide {
         bool b => b,
         _ => true,
       },
+    );
+  }
+}
+
+/// One row in the driver ride-history screen. Backed by
+/// `GET /api/v1/rides/driver/history` filtered to the authenticated
+/// driver's completed + cancelled rides.
+///
+/// Backend contract (one object per ride in the response array):
+///   {
+///     "id":            "uuid",
+///     "pickup":        "Hostel City, Block B",  // nullable
+///     "drop":          "Taramri Chowk",         // nullable
+///     "status":        "COMPLETED" | "CANCELLED",
+///     "completedAt":   "2026-04-12T09:22:00Z",  // nullable, when ride ended
+///     "fare":          450,                     // double — driver earnings
+///     "passengerName": "Sarah Ahmed"
+///   }
+///
+/// Unlike the passenger DTO there is no per-ride passenger-count or
+/// rating-received field, so the card drops those.
+class DriverRideHistory {
+  final String id;
+  final String pickup;
+  final String drop;
+  final RideStatus status;
+  final DateTime? completedAt;
+  final double fare;
+  final String passengerName;
+
+  const DriverRideHistory({
+    required this.id,
+    required this.pickup,
+    required this.drop,
+    required this.status,
+    required this.fare,
+    required this.passengerName,
+    this.completedAt,
+  });
+
+  /// True for rides the driver actually completed (vs cancelled).
+  bool get isCompleted => status == RideStatus.completed;
+
+  /// "12 Apr" — short month + day, locale-agnostic (matches
+  /// [PassengerRideHistoryItem.dateLabel]).
+  String get dateLabel {
+    final dt = completedAt;
+    if (dt == null) return '—';
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    return '${dt.day} ${months[dt.month - 1]}';
+  }
+
+  /// "09:22" — 24-hour HH:mm.
+  String get timeLabel {
+    final dt = completedAt;
+    if (dt == null) return '—';
+    final h = dt.hour.toString().padLeft(2, '0');
+    final m = dt.minute.toString().padLeft(2, '0');
+    return '$h:$m';
+  }
+
+  factory DriverRideHistory.fromJson(Map<String, dynamic> json) {
+    double? readDouble(String key) {
+      final v = json[key];
+      return v is num ? v.toDouble() : null;
+    }
+
+    DateTime? readDate(String key) {
+      final raw = json[key];
+      if (raw is! String || raw.isEmpty) return null;
+      return DateTime.tryParse(raw);
+    }
+
+    return DriverRideHistory(
+      id: (json['id'] ?? '').toString(),
+      pickup: (json['pickup'] ?? '').toString(),
+      drop: (json['drop'] ?? '').toString(),
+      status: RideStatus.fromWire(json['status'] as String?),
+      completedAt: readDate('completedAt'),
+      fare: readDouble('fare') ?? 0.0,
+      passengerName: (json['passengerName'] ?? '').toString(),
+    );
+  }
+}
+
+/// Driver earnings summary for the home dashboard. Backed by
+/// `GET /api/v1/rides/driver/earnings`.
+///
+/// Backend contract:
+///   {
+///     "todayEarnings": 1240,    // double, PKR earned today
+///     "todayTrips":    8,       // int, trips completed today
+///     "totalEarnings": 84200,   // double, lifetime PKR earned
+///     "totalTrips":    312,     // int, lifetime completed trips
+///     "currency":      "PKR"
+///   }
+class DriverEarnings {
+  final double todayEarnings;
+  final int todayTrips;
+  final double totalEarnings;
+  final int totalTrips;
+  final String currency;
+
+  const DriverEarnings({
+    required this.todayEarnings,
+    required this.todayTrips,
+    required this.totalEarnings,
+    required this.totalTrips,
+    this.currency = 'PKR',
+  });
+
+  factory DriverEarnings.fromJson(Map<String, dynamic> json) {
+    double readDouble(String key) {
+      final v = json[key];
+      return v is num ? v.toDouble() : 0.0;
+    }
+
+    int readInt(String key) {
+      final v = json[key];
+      return v is num ? v.toInt() : 0;
+    }
+
+    return DriverEarnings(
+      todayEarnings: readDouble('todayEarnings'),
+      todayTrips: readInt('todayTrips'),
+      totalEarnings: readDouble('totalEarnings'),
+      totalTrips: readInt('totalTrips'),
+      currency: (json['currency'] as String?) ?? 'PKR',
     );
   }
 }

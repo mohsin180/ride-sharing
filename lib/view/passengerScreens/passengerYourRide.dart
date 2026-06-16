@@ -3,11 +3,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:ride_sharing/model/rideModels.dart';
+import 'package:ride_sharing/provider/directionsProvider.dart';
 import 'package:ride_sharing/provider/passengerActiveRideProvider.dart';
+import 'package:ride_sharing/provider/providers.dart';
 import 'package:ride_sharing/view/bottomNavbar.dart' show bottomNavIndexProvider;
+import 'package:ride_sharing/view/driverScreens/driverChatDetail.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
+import 'package:ride_sharing/widgets/consonants/errorHandler.dart';
+import 'package:ride_sharing/widgets/consonants/jwtUtils.dart';
+import 'package:ride_sharing/widgets/consonants/tokenStorage.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
 import 'package:ride_sharing/widgets/custom/liveTrackingMap.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// Index of the "Your Ride" tab inside [bottomNavIndexProvider]. Used to
 /// lazily mount the [GoogleMap] only after the user has visited this tab
@@ -51,15 +59,19 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
   static const _pickup = LatLng(31.5142, 74.3625);
   static const _drop = LatLng(31.5290, 74.3500);
 
-  static const _pickupAddr = "Liberty Market, Gulberg III, Lahore";
-  static const _dropAddr = "DHA Phase 5, Sector A, Lahore";
-
   _RidePhase _phase = _RidePhase.driverEnRoute;
 
   /// True once the user has selected the "Your Ride" tab at least once.
   /// Same lazy-mount trick as the driver screen — keeps the GoogleMap
   /// platform view out of the IndexedStack until visited.
   bool _mapMounted = false;
+
+  /// The authenticated user's id, read from the JWT once on init. Used to
+  /// decide host-vs-co-passenger when cancelling a ride.
+  String? _myUserId;
+
+  /// Guards the cancel call so a double-tap can't fire two requests.
+  bool _cancelling = false;
 
   late final AnimationController _pulse;
 
@@ -70,6 +82,13 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
       vsync: this,
       duration: const Duration(milliseconds: 1100),
     )..repeat(reverse: true);
+    _loadMyUserId();
+  }
+
+  Future<void> _loadMyUserId() async {
+    final token = await Tokenstorage.getToken();
+    if (!mounted || token == null) return;
+    setState(() => _myUserId = JwtUtils.extractUserId(token));
   }
 
   @override
@@ -89,28 +108,32 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
         setState(() => _phase = _RidePhase.inTransit);
         break;
       case _RidePhase.inTransit:
+        // "I've Reached" — a passenger can't complete the trip; only the
+        // driver does that server-side. This is a LOCAL acknowledgment
+        // only: advance the phase UI and confirm. The screen flips to its
+        // empty state once the driver marks the ride COMPLETED on the
+        // backend (the active-trip provider then returns no ride).
         setState(() => _phase = _RidePhase.arrived);
-        _completeTrip();
+        _acknowledgeArrival();
         break;
       case _RidePhase.arrived:
         break;
     }
   }
 
-  void _completeTrip() {
-    // The trip really ends when the driver completes it on the backend;
-    // refetch so this screen flips to its empty state when that happens.
-    ref.invalidate(passengerActiveRideProvider);
+  void _acknowledgeArrival() {
+    // No backend call — the driver completes the trip server-side. We just
+    // confirm the rider's arrival locally so the UI reflects it.
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
         CustomWidgets.customSuccessSnackBar(
-          "Trip completed — thanks for riding!",
+          "Glad you've reached — the driver will close out the trip.",
         ),
       );
   }
 
-  void _confirmCancel() {
+  void _confirmCancel(RideDetails ride) {
     showDialog<void>(
       context: context,
       barrierDismissible: true,
@@ -181,7 +204,7 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
                       child: GestureDetector(
                         onTap: () {
                           Navigator.of(dialogCtx).pop();
-                          _completeTripCancelled();
+                          _cancelRide(ride);
                         },
                         behavior: HitTestBehavior.opaque,
                         child: Container(
@@ -220,13 +243,130 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
     );
   }
 
-  void _completeTripCancelled() {
-    ref.invalidate(passengerActiveRideProvider);
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        CustomWidgets.customErrorSnackBar("Ride cancelled"),
+  /// Cancels (host) or leaves (co-passenger) the active ride on the backend.
+  /// Host-vs-co-passenger is decided by comparing the ride's host id to the
+  /// authenticated user id from the JWT. On success we invalidate the
+  /// active-ride provider and pop back; backend rejections (e.g. cancelling
+  /// a STARTED ride) surface via [ErrorHandler] rather than crashing.
+  Future<void> _cancelRide(RideDetails ride) async {
+    if (_cancelling) return;
+    setState(() => _cancelling = true);
+
+    final isHost = _myUserId != null && ride.host.id == _myUserId;
+    try {
+      final service = ref.read(rideServiceProvider);
+      if (isHost) {
+        await service.cancelRide(ride.id);
+      } else {
+        await service.leaveRide(ride.id);
+      }
+      if (!mounted) return;
+      ref.invalidate(passengerActiveRideProvider);
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          CustomWidgets.customSuccessSnackBar(
+            isHost ? "Ride cancelled" : "You left the ride",
+          ),
+        );
+      Navigator.of(context).maybePop();
+    } catch (e) {
+      if (!mounted) return;
+      ErrorHandler.show(context, e);
+    } finally {
+      if (mounted) setState(() => _cancelling = false);
+    }
+  }
+
+  // ─── Action launches ────────────────────────────────────
+
+  /// Calls the driver. The button is hidden when there's no phone, so this
+  /// is only ever invoked with a non-null number — guard anyway.
+  Future<void> _callDriver(DriverInfo? driver) async {
+    final phone = driver?.phone;
+    if (phone == null || phone.isEmpty) {
+      _quickActionSnack("No phone number available for the driver");
+      return;
+    }
+    await _launch(Uri(scheme: 'tel', path: phone),
+        fallback: "Couldn't start the call");
+  }
+
+  /// Emergency hotline (Pakistan Rescue 1122).
+  Future<void> _emergencyCall() async {
+    await _launch(Uri(scheme: 'tel', path: '1122'),
+        fallback: "Couldn't reach emergency services");
+  }
+
+  /// Opens the ride's group chat — same `DriverChatDetail` screen the
+  /// Messages tab pushes, keyed by the ride id.
+  void _openChat(RideDetails ride) {
+    final driver = ride.driver;
+    final title = driver != null && driver.displayName.trim().isNotEmpty
+        ? driver.displayName
+        : "Ride chat";
+    final members = driver != null
+        ? [ChatMember(initial: driver.initial, color: Consonants.primaryColor)]
+        : const <ChatMember>[];
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => DriverChatDetail(
+          rideId: ride.id,
+          title: title,
+          members: members,
+          isActive: true,
+        ),
+      ),
+    );
+  }
+
+  /// External maps directions to the drop-off.
+  Future<void> _navigateToDrop(RideDetails ride) async {
+    final lat = ride.dropLat;
+    final lng = ride.dropLng;
+    if (lat == null || lng == null) {
+      _quickActionSnack("Drop-off location isn't available yet");
+      return;
+    }
+    final uri = Uri.parse(
+      "https://www.google.com/maps/dir/?api=1&destination=$lat,$lng",
+    );
+    await _launch(uri,
+        mode: LaunchMode.externalApplication,
+        fallback: "Couldn't open maps");
+  }
+
+  /// Shares the trip as text via the OS share sheet.
+  Future<void> _shareTrip(RideDetails ride) async {
+    final driverName = ride.driver?.displayName ?? "my driver";
+    final text =
+        "I'm on a SafeRide trip with $driverName.\n"
+        "From: ${ride.pickup}\n"
+        "To: ${ride.drop}";
+    try {
+      await SharePlus.instance.share(
+        ShareParams(text: text, subject: "My SafeRide trip"),
       );
+    } catch (e) {
+      if (mounted) ErrorHandler.show(context, e);
+    }
+  }
+
+  /// Guarded `launchUrl` with a SnackBar fallback when the platform can't
+  /// handle the URI (no dialer, no maps app, etc.).
+  Future<void> _launch(
+    Uri uri, {
+    LaunchMode mode = LaunchMode.platformDefault,
+    required String fallback,
+  }) async {
+    try {
+      if (await canLaunchUrl(uri) && await launchUrl(uri, mode: mode)) {
+        return;
+      }
+    } catch (_) {
+      // fall through to the snackbar below
+    }
+    if (mounted) _quickActionSnack(fallback);
   }
 
   // ─── Phase-driven copy ──────────────────────────────────
@@ -234,11 +374,11 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
   String get _statusLine {
     switch (_phase) {
       case _RidePhase.driverEnRoute:
-        return "Driver on the way · ETA ${_kSampleDriver.etaToPickup}";
+        return "Driver on the way to pick you up";
       case _RidePhase.driverArrived:
         return "Your driver has arrived";
       case _RidePhase.inTransit:
-        return "Heading to your drop-off · 12 min";
+        return "Heading to your drop-off";
       case _RidePhase.arrived:
         return "You've arrived at your destination";
     }
@@ -368,18 +508,18 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
                     children: [
                       _statusBand(),
                       SizedBox(height: 12.h),
-                      _driverCard(),
+                      _driverCard(ride),
                       SizedBox(height: 12.h),
-                      _tripStrip(),
+                      _tripStrip(ride, pickupLL, dropLL),
                       SizedBox(height: 14.h),
-                      _routeCard(),
+                      _routeCard(ride),
                       SizedBox(height: 14.h),
                       _safetyTile(),
                       SizedBox(height: 16.h),
                     ],
                   ),
                 ),
-                _stickyCta(bottomInset),
+                _stickyCta(ride, bottomInset),
               ],
             ),
           ),
@@ -442,15 +582,7 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
                   _circleIconButton(
                     icon: Icons.shield_rounded,
                     iconColor: const Color(0xffEF4444),
-                    onTap: () {
-                      ScaffoldMessenger.of(context)
-                        ..hideCurrentSnackBar()
-                        ..showSnackBar(
-                          CustomWidgets.customErrorSnackBar(
-                            "Emergency support coming soon",
-                          ),
-                        );
-                    },
+                    onTap: _emergencyCall,
                   ),
                 ],
               ),
@@ -536,7 +668,9 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
     );
   }
 
-  Widget _driverCard() {
+  Widget _driverCard(RideDetails ride) {
+    final driver = ride.driver;
+
     return Container(
       padding: EdgeInsets.all(14.w),
       decoration: BoxDecoration(
@@ -551,77 +685,130 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
           ),
         ],
       ),
-      child: Column(
-        children: [
-          Row(
+      child: driver == null
+          ? _driverPending()
+          : _driverDetails(ride, driver),
+    );
+  }
+
+  /// Graceful placeholder shown when the backend hasn't attached a driver
+  /// to the ride yet (e.g. the host cancelled / re-assigned).
+  Widget _driverPending() {
+    return Row(
+      children: [
+        Container(
+          width: 52.w,
+          height: 52.w,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: Consonants.lightBlueColor,
+            shape: BoxShape.circle,
+          ),
+          child: Icon(Icons.person_search_rounded,
+              size: 24.sp, color: Consonants.primaryColor),
+        ),
+        SizedBox(width: 12.w),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 52.w,
-                height: 52.w,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: _kSampleDriver.avatarColor,
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: Consonants.whiteColor,
-                    width: 2.5,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: _kSampleDriver.avatarColor
-                          .withValues(alpha: 0.30),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
+              CustomWidgets.customText(
+                "Driver assigned soon",
+                14.sp,
+                Consonants.boldTextColor,
+                FontWeight.w800,
+                maxLines: 1,
+              ),
+              SizedBox(height: 3.h),
+              CustomWidgets.customText(
+                "We'll show their details here once they're on the way.",
+                11.sp,
+                Consonants.greyColor,
+                FontWeight.w500,
+                maxLines: 2,
+              ),
+            ],
+          ),
+        ),
+        _phaseChip(),
+      ],
+    );
+  }
+
+  Widget _driverDetails(RideDetails ride, DriverInfo driver) {
+    final hasPhone = driver.phone != null && driver.phone!.isNotEmpty;
+    final carInfo = driver.carInfo?.trim() ?? '';
+
+    return Column(
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 52.w,
+              height: 52.w,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: Consonants.primaryColor,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Consonants.whiteColor,
+                  width: 2.5,
                 ),
-                child: Text(
-                  _kSampleDriver.initial,
-                  style: TextStyle(
-                    color: Consonants.whiteColor,
-                    fontSize: 20.sp,
-                    fontWeight: FontWeight.w800,
-                    fontFamily: Consonants.fontFamily,
+                boxShadow: [
+                  BoxShadow(
+                    color: Consonants.primaryColor.withValues(alpha: 0.30),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
                   ),
+                ],
+              ),
+              child: Text(
+                driver.initial,
+                style: TextStyle(
+                  color: Consonants.whiteColor,
+                  fontSize: 20.sp,
+                  fontWeight: FontWeight.w800,
+                  fontFamily: Consonants.fontFamily,
                 ),
               ),
-              SizedBox(width: 12.w),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: CustomWidgets.customText(
-                            _kSampleDriver.name,
-                            14.sp,
-                            Consonants.boldTextColor,
-                            FontWeight.w800,
-                            maxLines: 1,
-                          ),
+            ),
+            SizedBox(width: 12.w),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: CustomWidgets.customText(
+                          driver.displayName,
+                          14.sp,
+                          Consonants.boldTextColor,
+                          FontWeight.w800,
+                          maxLines: 1,
                         ),
-                        SizedBox(width: 4.w),
-                        Icon(Icons.verified_rounded,
-                            size: 14.sp, color: Consonants.primaryColor),
-                      ],
-                    ),
-                    SizedBox(height: 3.h),
-                    Row(
-                      children: [
-                        Icon(Icons.star_rounded,
-                            size: 12.sp,
-                            color: const Color(0xffF5B800)),
-                        SizedBox(width: 3.w),
-                        Flexible(
-                          child: CustomWidgets.customText(
-                            _kSampleDriver.rating,
-                            11.sp,
-                            Consonants.greyColor,
-                            FontWeight.w700,
-                            maxLines: 1,
-                          ),
+                      ),
+                      SizedBox(width: 4.w),
+                      Icon(Icons.verified_rounded,
+                          size: 14.sp, color: Consonants.primaryColor),
+                    ],
+                  ),
+                  SizedBox(height: 3.h),
+                  Row(
+                    children: [
+                      Icon(Icons.star_rounded,
+                          size: 12.sp, color: const Color(0xffF5B800)),
+                      SizedBox(width: 3.w),
+                      Flexible(
+                        child: CustomWidgets.customText(
+                          driver.ratingLabel,
+                          11.sp,
+                          Consonants.greyColor,
+                          FontWeight.w700,
+                          maxLines: 1,
                         ),
+                      ),
+                      if (carInfo.isNotEmpty) ...[
                         SizedBox(width: 8.w),
                         Container(
                           width: 3.w,
@@ -634,7 +821,7 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
                         SizedBox(width: 8.w),
                         Flexible(
                           child: CustomWidgets.customText(
-                            _kSampleDriver.vehicleColor,
+                            carInfo,
                             11.sp,
                             Consonants.greyColor,
                             FontWeight.w600,
@@ -642,13 +829,15 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
                           ),
                         ),
                       ],
-                    ),
-                  ],
-                ),
+                    ],
+                  ),
+                ],
               ),
-              _phaseChip(),
-            ],
-          ),
+            ),
+            _phaseChip(),
+          ],
+        ),
+        if (carInfo.isNotEmpty) ...[
           SizedBox(height: 14.h),
           Container(height: 1, color: Consonants.lightGreyColor),
           SizedBox(height: 12.h),
@@ -667,78 +856,57 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
               ),
               SizedBox(width: 10.w),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    CustomWidgets.customText(
-                      _kSampleDriver.vehicleModel,
-                      12.sp,
-                      Consonants.boldTextColor,
-                      FontWeight.w800,
-                      maxLines: 1,
-                    ),
-                    SizedBox(height: 2.h),
-                    CustomWidgets.customText(
-                      _kSampleDriver.vehicleColor,
-                      10.sp,
-                      Consonants.greyColor,
-                      FontWeight.w500,
-                      maxLines: 1,
-                    ),
-                  ],
-                ),
-              ),
-              Container(
-                padding:
-                    EdgeInsets.symmetric(horizontal: 10.w, vertical: 6.h),
-                decoration: BoxDecoration(
-                  color: Consonants.scaffoldBackgroundColor,
-                  borderRadius: BorderRadius.circular(8.r),
-                  border:
-                      Border.all(color: Consonants.lightGreyColor),
-                ),
                 child: CustomWidgets.customText(
-                  _kSampleDriver.vehiclePlate,
+                  carInfo,
                   12.sp,
                   Consonants.boldTextColor,
                   FontWeight.w800,
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 14.h),
-          Row(
-            children: [
-              Expanded(
-                child: _quickAction(
-                  icon: Icons.phone_rounded,
-                  label: "Call",
-                  onTap: () => _quickActionSnack(
-                      "Calling ${_kSampleDriver.name}…"),
-                ),
-              ),
-              SizedBox(width: 8.w),
-              Expanded(
-                child: _quickAction(
-                  icon: Icons.chat_bubble_outline_rounded,
-                  label: "Message",
-                  onTap: () => _quickActionSnack("Messages coming soon"),
-                ),
-              ),
-              SizedBox(width: 8.w),
-              Expanded(
-                child: _quickAction(
-                  icon: Icons.share_location_rounded,
-                  label: "Share",
-                  onTap: () =>
-                      _quickActionSnack("Sharing live trip status…"),
-                  primary: true,
+                  maxLines: 2,
                 ),
               ),
             ],
           ),
         ],
-      ),
+        SizedBox(height: 14.h),
+        Row(
+          children: [
+            if (hasPhone) ...[
+              Expanded(
+                child: _quickAction(
+                  icon: Icons.phone_rounded,
+                  label: "Call",
+                  onTap: () => _callDriver(driver),
+                ),
+              ),
+              SizedBox(width: 8.w),
+            ],
+            Expanded(
+              child: _quickAction(
+                icon: Icons.chat_bubble_outline_rounded,
+                label: "Message",
+                onTap: () => _openChat(ride),
+              ),
+            ),
+            SizedBox(width: 8.w),
+            Expanded(
+              child: _quickAction(
+                icon: Icons.navigation_rounded,
+                label: "Navigate",
+                onTap: () => _navigateToDrop(ride),
+              ),
+            ),
+            SizedBox(width: 8.w),
+            Expanded(
+              child: _quickAction(
+                icon: Icons.ios_share_rounded,
+                label: "Share",
+                onTap: () => _shareTrip(ride),
+                primary: true,
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 
@@ -835,49 +1003,70 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
       ..showSnackBar(CustomWidgets.customSuccessSnackBar(message));
   }
 
-  Widget _tripStrip() {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 12.h),
-      decoration: BoxDecoration(
-        color: Consonants.scaffoldBackgroundColor,
-        borderRadius: BorderRadius.circular(14.r),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: _stripItem(
-              icon: Icons.straighten_rounded,
-              value: "12.4 km",
-              label: "Distance",
-            ),
+  Widget _tripStrip(RideDetails ride, LatLng pickup, LatLng drop) {
+    // Real km + min from the routing provider, falling back to the static
+    // demo numbers while the request is loading or if it errors (mirrors
+    // _LiveDistanceStrip in rideScreen.dart).
+    final fare = ride.fare;
+    final fareValue = fare != null ? fare.format(fare.perRider) : "—";
+
+    return Consumer(
+      builder: (context, ref, _) {
+        String distanceValue = "12.4 km";
+        String durationValue = "32 min";
+
+        final async = ref.watch(directionsProvider(
+          DirectionsRequest(origin: pickup, destination: drop),
+        ));
+        async.whenData((r) {
+          distanceValue = "${r.distanceKm.toStringAsFixed(1)} km";
+          durationValue = "${r.durationMinutes} min";
+        });
+
+        return Container(
+          padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 12.h),
+          decoration: BoxDecoration(
+            color: Consonants.scaffoldBackgroundColor,
+            borderRadius: BorderRadius.circular(14.r),
           ),
-          Container(
-            width: 1,
-            height: 26.h,
-            color: Consonants.lightGreyColor,
+          child: Row(
+            children: [
+              Expanded(
+                child: _stripItem(
+                  icon: Icons.straighten_rounded,
+                  value: distanceValue,
+                  label: "Distance",
+                ),
+              ),
+              Container(
+                width: 1,
+                height: 26.h,
+                color: Consonants.lightGreyColor,
+              ),
+              Expanded(
+                child: _stripItem(
+                  icon: Icons.access_time_rounded,
+                  value: durationValue,
+                  label: "Duration",
+                ),
+              ),
+              Container(
+                width: 1,
+                height: 26.h,
+                color: Consonants.lightGreyColor,
+              ),
+              Expanded(
+                child: _stripItem(
+                  icon: Icons.payments_rounded,
+                  value: fareValue,
+                  label: "Fare",
+                  accent: Consonants.primaryColor,
+                ),
+              ),
+            ],
           ),
-          Expanded(
-            child: _stripItem(
-              icon: Icons.access_time_rounded,
-              value: "32 min",
-              label: "Duration",
-            ),
-          ),
-          Container(
-            width: 1,
-            height: 26.h,
-            color: Consonants.lightGreyColor,
-          ),
-          Expanded(
-            child: _stripItem(
-              icon: Icons.payments_rounded,
-              value: "Rs 480",
-              label: "Fare",
-              accent: Consonants.primaryColor,
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -910,7 +1099,11 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
     );
   }
 
-  Widget _routeCard() {
+  Widget _routeCard(RideDetails ride) {
+    final pickupAddr =
+        ride.pickup.trim().isEmpty ? "Pickup location" : ride.pickup.trim();
+    final dropAddr =
+        ride.drop.trim().isEmpty ? "Drop-off location" : ride.drop.trim();
     return Container(
       padding: EdgeInsets.all(14.w),
       decoration: BoxDecoration(
@@ -924,7 +1117,7 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
             icon: Icons.my_location_rounded,
             iconColor: Consonants.primaryColor,
             label: "PICKUP",
-            address: _pickupAddr,
+            address: pickupAddr,
             highlight: _isPickupPhase,
           ),
           Padding(
@@ -947,7 +1140,7 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
             icon: Icons.location_on_rounded,
             iconColor: const Color(0xffEF4444),
             label: "DROP-OFF",
-            address: _dropAddr,
+            address: dropAddr,
             highlight: !_isPickupPhase,
           ),
         ],
@@ -1058,7 +1251,7 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
     );
   }
 
-  Widget _stickyCta(double bottomInset) {
+  Widget _stickyCta(RideDetails ride, double bottomInset) {
     final canCancel = _phase == _RidePhase.driverEnRoute ||
         _phase == _RidePhase.driverArrived;
     return Container(
@@ -1077,7 +1270,7 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
         children: [
           if (canCancel) ...[
             GestureDetector(
-              onTap: _confirmCancel,
+              onTap: _cancelling ? null : () => _confirmCancel(ride),
               child: Container(
                 height: 54.h,
                 width: 54.h,
@@ -1268,46 +1461,7 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Sample driver data
-//
-// Hardcoded for now while the demo runs entirely client-side. Lift into
-// an `activeRideProvider` once the backend assigns a real driver to the
-// passenger's request.
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _Driver {
-  final String name;
-  final String initial;
-  final String rating;
-  final String vehicleModel;
-  final String vehicleColor;
-  final String vehiclePlate;
-  final String etaToPickup;
-  final Color avatarColor;
-
-  const _Driver({
-    required this.name,
-    required this.initial,
-    required this.rating,
-    required this.vehicleModel,
-    required this.vehicleColor,
-    required this.vehiclePlate,
-    required this.etaToPickup,
-    required this.avatarColor,
-  });
-}
-
-const _Driver _kSampleDriver = _Driver(
-  name: "Ahmed Khan",
-  initial: "A",
-  rating: "4.92",
-  vehicleModel: "Toyota Corolla",
-  vehicleColor: "Silver",
-  vehiclePlate: "LEA-2143",
-  etaToPickup: "3 min",
-  avatarColor: Color(0xff5AC8FA),
-);
-
-// The active-trip map is now the shared LiveTrackingMap (real-time car /
-// person markers); the old static _RouteMap / _RouteMarker were removed.
+// The active-trip driver/route/fare now come from the real RideDetails
+// (via passengerActiveRideProvider) — the old hardcoded _kSampleDriver and
+// address constants were removed. The active-trip map is the shared
+// LiveTrackingMap (real-time car / person markers).

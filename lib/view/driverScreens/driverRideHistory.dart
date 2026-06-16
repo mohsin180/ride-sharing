@@ -1,70 +1,39 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:ride_sharing/model/rideModels.dart';
+import 'package:ride_sharing/provider/driverRideHistoryProvider.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
+import 'package:ride_sharing/widgets/consonants/errorHandler.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
 
 /// Driver-side ride-history screen. Shows the driver's completed and
-/// cancelled rides as a scrollable list of compact cards.
+/// cancelled rides as a scrollable list of compact cards, backed by
+/// `GET /api/v1/rides/driver/history` via [driverHistoryProvider].
 ///
-/// Each card surfaces only what a driver actually needs at a glance:
-///   • Date + time
+/// Each card surfaces only what the backend gives us per ride:
+///   • Date + time (completedAt)
 ///   • Pickup and drop-off addresses
 ///   • Status (Completed / Cancelled)
-///   • Earnings, passenger count, rating received
+///   • Earnings (fare) + passenger name
+///
+/// The driver DTO has no per-ride passenger count or rating-received, so
+/// (unlike the passenger card) those are dropped.
 ///
 /// Designed to match the rest of the app — same Consonants palette, screenutil
 /// sizing, rounded white cards with a soft shadow.
-class DriverRideHistory extends StatelessWidget {
-  const DriverRideHistory({super.key});
-
-  static final List<_DriverRide> _rides = [
-    _DriverRide(
-      pickup: "Hostel City Trip",
-      dropOff: "F-10 Markaz",
-      date: "12 Apr",
-      time: "09:22",
-      status: _RideStatus.completed,
-      earnings: 450,
-      passengers: 2,
-      rating: 4.9,
-    ),
-    _DriverRide(
-      pickup: "Bahria Phase 7",
-      dropOff: "Saddar",
-      date: "11 Apr",
-      time: "18:05",
-      status: _RideStatus.completed,
-      earnings: 620,
-      passengers: 3,
-      rating: 5.0,
-    ),
-    _DriverRide(
-      pickup: "G-9 Markaz",
-      dropOff: "Faizabad",
-      date: "10 Apr",
-      time: "07:40",
-      status: _RideStatus.cancelled,
-      earnings: 0,
-      passengers: 0,
-      rating: null,
-    ),
-    _DriverRide(
-      pickup: "I-8 Sector",
-      dropOff: "Zero Point",
-      date: "08 Apr",
-      time: "21:15",
-      status: _RideStatus.completed,
-      earnings: 380,
-      passengers: 1,
-      rating: 4.7,
-    ),
-  ];
+class DriverRideHistoryScreen extends ConsumerWidget {
+  const DriverRideHistoryScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final completed = _rides.where((r) => r.status == _RideStatus.completed);
-    final totalEarnings =
-        completed.fold<int>(0, (sum, r) => sum + r.earnings);
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(driverHistoryProvider);
+    final rides = async.value ?? const <DriverRideHistory>[];
+
+    // Summary numbers run over completed rides only — cancelled trips
+    // never earned anything so they shouldn't inflate "Total earned".
+    final completed = rides.where((r) => r.isCompleted);
+    final totalEarnings = completed.fold<double>(0, (sum, r) => sum + r.fare);
     final totalTrips = completed.length;
 
     return Scaffold(
@@ -75,20 +44,50 @@ class DriverRideHistory extends StatelessWidget {
             _topBar(context),
             _summaryStrip(totalEarnings: totalEarnings, totalTrips: totalTrips),
             Expanded(
-              child: _rides.isEmpty
-                  ? const _EmptyState()
-                  : ListView.builder(
-                      physics: const BouncingScrollPhysics(),
-                      padding: EdgeInsets.fromLTRB(16.w, 14.h, 16.w, 24.h),
-                      itemCount: _rides.length,
-                      itemBuilder: (_, i) => Padding(
-                        padding: EdgeInsets.only(bottom: 12.h),
-                        child: _RideCard(ride: _rides[i]),
-                      ),
-                    ),
+              child: RefreshIndicator(
+                color: Consonants.primaryColor,
+                onRefresh: () async {
+                  ref.invalidate(driverHistoryProvider);
+                  await ref.read(driverHistoryProvider.future);
+                },
+                child: _buildBody(async, rides),
+              ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// State-aware list body. On the first fetch we show a spinner; once
+  /// there's *any* cached data we keep rendering it and let the
+  /// RefreshIndicator's spinner cover the loading signal instead.
+  Widget _buildBody(
+    AsyncValue<List<DriverRideHistory>> async,
+    List<DriverRideHistory> rides,
+  ) {
+    if (async.isLoading && rides.isEmpty) return const _LoadingState();
+    if (async.hasError && rides.isEmpty) {
+      return _ErrorState(message: ErrorHandler.message(async.error));
+    }
+    if (rides.isEmpty) {
+      // Empty must still be scrollable so RefreshIndicator can trigger.
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
+        children: const [_EmptyState()],
+      );
+    }
+    return ListView.builder(
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: BouncingScrollPhysics(),
+      ),
+      padding: EdgeInsets.fromLTRB(16.w, 14.h, 16.w, 24.h),
+      itemCount: rides.length,
+      itemBuilder: (_, i) => Padding(
+        padding: EdgeInsets.only(bottom: 12.h),
+        child: _RideCard(ride: rides[i]),
       ),
     );
   }
@@ -99,7 +98,7 @@ class DriverRideHistory extends StatelessWidget {
       child: Row(
         children: [
           GestureDetector(
-            onTap: () => Navigator.of(context).pop(),
+            onTap: () => Navigator.of(context).maybePop(),
             child: Container(
               width: 38.w,
               height: 38.w,
@@ -148,7 +147,7 @@ class DriverRideHistory extends StatelessWidget {
   }
 
   Widget _summaryStrip({
-    required int totalEarnings,
+    required double totalEarnings,
     required int totalTrips,
   }) {
     return Container(
@@ -173,7 +172,7 @@ class DriverRideHistory extends StatelessWidget {
             child: _summaryCell(
               icon: Icons.payments_rounded,
               label: "Total earned",
-              value: "PKR $totalEarnings",
+              value: "PKR ${totalEarnings.round()}",
             ),
           ),
           Container(
@@ -229,16 +228,16 @@ class DriverRideHistory extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Ride card — compact, only the info a driver actually needs.
+// Ride card — compact, only the info the backend gives us per ride.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _RideCard extends StatelessWidget {
-  final _DriverRide ride;
+  final DriverRideHistory ride;
   const _RideCard({required this.ride});
 
   @override
   Widget build(BuildContext context) {
-    final isCompleted = ride.status == _RideStatus.completed;
+    final isCompleted = ride.isCompleted;
     return Container(
       padding: EdgeInsets.all(14.w),
       decoration: BoxDecoration(
@@ -259,7 +258,7 @@ class _RideCard extends StatelessWidget {
             children: [
               Expanded(
                 child: CustomWidgets.customText(
-                  "${ride.date} · ${ride.time}",
+                  "${ride.dateLabel} · ${ride.timeLabel}",
                   11.sp,
                   Consonants.greyColor,
                   FontWeight.w600,
@@ -267,7 +266,7 @@ class _RideCard extends StatelessWidget {
                 ),
               ),
               SizedBox(width: 8.w),
-              _StatusPill(status: ride.status),
+              _StatusPill(isCompleted: isCompleted),
             ],
           ),
           SizedBox(height: 12.h),
@@ -282,9 +281,15 @@ class _RideCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _addressBlock("Pickup", ride.pickup),
+                    _addressBlock(
+                      "Pickup",
+                      ride.pickup.isEmpty ? "—" : ride.pickup,
+                    ),
                     SizedBox(height: 12.h),
-                    _addressBlock("Drop-off", ride.dropOff),
+                    _addressBlock(
+                      "Drop-off",
+                      ride.drop.isEmpty ? "—" : ride.drop,
+                    ),
                   ],
                 ),
               ),
@@ -295,37 +300,40 @@ class _RideCard extends StatelessWidget {
             SizedBox(height: 12.h),
             Container(height: 1, color: Consonants.lightGreyColor),
             SizedBox(height: 10.h),
-            // ── Footer: earnings · passengers · rating ──
+            // ── Footer: passenger · earnings ──
             Row(
               children: [
-                _footerItem(
-                  icon: Icons.payments_rounded,
-                  text: "PKR ${ride.earnings}",
-                  color: Consonants.primaryColor,
-                ),
-                SizedBox(width: 12.w),
-                _footerItem(
-                  icon: Icons.group_rounded,
-                  text:
-                      "${ride.passengers} ${ride.passengers == 1 ? "rider" : "riders"}",
-                  color: Consonants.greyColor,
-                ),
-                const Spacer(),
-                if (ride.rating != null)
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.star_rounded,
-                          size: 14.sp, color: const Color(0xffF5B800)),
-                      SizedBox(width: 3.w),
-                      CustomWidgets.customText(
-                        ride.rating!.toStringAsFixed(1),
-                        11.sp,
-                        Consonants.boldTextColor,
-                        FontWeight.w700,
-                      ),
-                    ],
+                Container(
+                  width: 36.w,
+                  height: 36.w,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: Consonants.lightBlueColor,
+                    shape: BoxShape.circle,
                   ),
+                  child: Icon(Icons.person_rounded,
+                      size: 18.sp, color: Consonants.primaryColor),
+                ),
+                SizedBox(width: 10.w),
+                Expanded(
+                  child: CustomWidgets.customText(
+                    ride.passengerName.isNotEmpty
+                        ? ride.passengerName
+                        : "Passenger",
+                    12.sp,
+                    Consonants.boldTextColor,
+                    FontWeight.w700,
+                    maxLines: 1,
+                  ),
+                ),
+                SizedBox(width: 8.w),
+                CustomWidgets.customText(
+                  "PKR ${ride.fare.round()}",
+                  13.sp,
+                  Consonants.primaryColor,
+                  FontWeight.w800,
+                  maxLines: 1,
+                ),
               ],
             ),
           ],
@@ -352,26 +360,6 @@ class _RideCard extends StatelessWidget {
           Consonants.boldTextColor,
           FontWeight.w700,
           maxLines: 2,
-        ),
-      ],
-    );
-  }
-
-  Widget _footerItem({
-    required IconData icon,
-    required String text,
-    required Color color,
-  }) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 13.sp, color: color),
-        SizedBox(width: 4.w),
-        CustomWidgets.customText(
-          text,
-          11.sp,
-          color == Consonants.greyColor ? Consonants.greyColor : color,
-          FontWeight.w700,
         ),
       ],
     );
@@ -411,12 +399,11 @@ class _Timeline extends StatelessWidget {
 }
 
 class _StatusPill extends StatelessWidget {
-  final _RideStatus status;
-  const _StatusPill({required this.status});
+  final bool isCompleted;
+  const _StatusPill({required this.isCompleted});
 
   @override
   Widget build(BuildContext context) {
-    final isCompleted = status == _RideStatus.completed;
     final bg = isCompleted
         ? Consonants.primaryGreenColor
         : const Color(0xffFEE2E2);
@@ -439,70 +426,134 @@ class _StatusPill extends StatelessWidget {
   }
 }
 
+class _LoadingState extends StatelessWidget {
+  const _LoadingState();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      children: [
+        SizedBox(height: 80.h),
+        Center(
+          child: SizedBox(
+            width: 32.w,
+            height: 32.w,
+            child: const CircularProgressIndicator(
+              strokeWidth: 2.5,
+              color: Consonants.primaryColor,
+            ),
+          ),
+        ),
+        SizedBox(height: 14.h),
+        Center(
+          child: CustomWidgets.customText(
+            "Loading your rides…",
+            12.sp,
+            Consonants.greyColor,
+            FontWeight.w500,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ErrorState extends StatelessWidget {
+  final String message;
+  const _ErrorState({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 80.h),
+      children: [
+        Center(
+          child: Container(
+            width: 64.w,
+            height: 64.w,
+            alignment: Alignment.center,
+            decoration: const BoxDecoration(
+              color: Color(0xffFEE2E2),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.cloud_off_rounded,
+              size: 28.sp,
+              color: const Color(0xffEF4444),
+            ),
+          ),
+        ),
+        SizedBox(height: 12.h),
+        CustomWidgets.customText(
+          "Couldn't load your rides",
+          13.sp,
+          Consonants.boldTextColor,
+          FontWeight.w700,
+          textAlign: TextAlign.center,
+        ),
+        SizedBox(height: 4.h),
+        CustomWidgets.customText(
+          message,
+          11.sp,
+          Consonants.greyColor,
+          FontWeight.w500,
+          textAlign: TextAlign.center,
+          maxLines: 3,
+        ),
+        SizedBox(height: 8.h),
+        CustomWidgets.customText(
+          "Pull down to retry",
+          10.sp,
+          Consonants.greyColor,
+          FontWeight.w500,
+          textAlign: TextAlign.center,
+        ),
+      ],
+    );
+  }
+}
+
 class _EmptyState extends StatelessWidget {
   const _EmptyState();
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 84.w,
-            height: 84.w,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: Consonants.lightBlueColor,
-              shape: BoxShape.circle,
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 80.h),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 84.w,
+              height: 84.w,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: Consonants.lightBlueColor,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.directions_car_filled_rounded,
+                  size: 36.sp, color: Consonants.primaryColor),
             ),
-            child: Icon(Icons.directions_car_filled_rounded,
-                size: 36.sp, color: Consonants.primaryColor),
-          ),
-          SizedBox(height: 14.h),
-          CustomWidgets.customText(
-            "No rides yet",
-            14.sp,
-            Consonants.boldTextColor,
-            FontWeight.w800,
-          ),
-          SizedBox(height: 4.h),
-          CustomWidgets.customText(
-            "Your completed rides will show up here",
-            11.sp,
-            Consonants.greyColor,
-            FontWeight.w500,
-          ),
-        ],
+            SizedBox(height: 14.h),
+            CustomWidgets.customText(
+              "No rides yet",
+              14.sp,
+              Consonants.boldTextColor,
+              FontWeight.w800,
+            ),
+            SizedBox(height: 4.h),
+            CustomWidgets.customText(
+              "Your completed rides will show up here",
+              11.sp,
+              Consonants.greyColor,
+              FontWeight.w500,
+            ),
+          ],
+        ),
       ),
     );
   }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Models
-// ─────────────────────────────────────────────────────────────────────────────
-
-enum _RideStatus { completed, cancelled }
-
-class _DriverRide {
-  final String pickup;
-  final String dropOff;
-  final String date;
-  final String time;
-  final _RideStatus status;
-  final int earnings;
-  final int passengers;
-  final double? rating;
-
-  const _DriverRide({
-    required this.pickup,
-    required this.dropOff,
-    required this.date,
-    required this.time,
-    required this.status,
-    required this.earnings,
-    required this.passengers,
-    required this.rating,
-  });
 }
