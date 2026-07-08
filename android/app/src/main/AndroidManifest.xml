@@ -39,6 +39,14 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- Disable the Impeller renderer on Android. Impeller's OpenGLES
+             backend crashes the Android emulator's GPU translation layer
+             (gfxstream SIGILL in glInvalidateFramebuffer) on Intel macOS.
+             Falling back to Skia avoids the crash. Remove if testing on a
+             device where Impeller works. -->
+        <meta-data
+            android:name="io.flutter.embedding.android.EnableImpeller"
+            android:value="false" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

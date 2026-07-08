@@ -1,19 +1,15 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_cancellable_tile_provider/flutter_map_cancellable_tile_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:ride_sharing/controller/trackingSocket.dart';
-import 'package:ride_sharing/model/trackingModels.dart';
+import 'package:ride_sharing/model/rideModels.dart';
 import 'package:ride_sharing/provider/directionsProvider.dart';
+import 'package:ride_sharing/provider/rideTrackingProvider.dart';
+import 'package:ride_sharing/widgets/custom/rideRouteMap.dart' show orderRouteStops;
 import 'package:ride_sharing/services/maps/mapTilesService.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
-import 'package:ride_sharing/widgets/consonants/jwtUtils.dart';
-import 'package:ride_sharing/widgets/consonants/tokenStorage.dart';
 
 /// Live tracking map shared by the driver and passenger trip screens.
 ///
@@ -32,12 +28,25 @@ class LiveTrackingMap extends ConsumerStatefulWidget {
   /// marker and to tag the positions you publish.
   final String myRole;
 
+  /// All stops on the shared ride (host + each joined co-passenger's
+  /// pickup/drop). When 2+ are given, the map draws the FULL route through
+  /// every stop in shortest-path order (A→B→C→D) with labelled markers,
+  /// instead of just a single host pickup→drop line. Empty ⇒ fall back to
+  /// the plain pickup/drop route.
+  final List<RideStop> stops;
+
+  /// Host user id, used to anchor the shortest-path ordering at the host's
+  /// pickup (start) and drop (end).
+  final String hostId;
+
   const LiveTrackingMap({
     super.key,
     required this.rideId,
     required this.pickup,
     required this.drop,
     required this.myRole,
+    this.stops = const [],
+    this.hostId = '',
   });
 
   @override
@@ -55,8 +64,6 @@ class _Track {
 
 class _LiveTrackingMapState extends ConsumerState<LiveTrackingMap>
     with SingleTickerProviderStateMixin {
-  final TrackingSocket _socket = TrackingSocket();
-  StreamSubscription<Position>? _gpsSub;
   Ticker? _ticker;
 
   final Map<String, _Track> _tracks = {};
@@ -66,64 +73,22 @@ class _LiveTrackingMapState extends ConsumerState<LiveTrackingMap>
   void initState() {
     super.initState();
     _ticker = createTicker(_onTick)..start();
-    _init();
   }
 
-  Future<void> _init() async {
-    final token = await Tokenstorage.getToken();
-    _myUserId = token != null ? JwtUtils.extractUserId(token) : null;
-    await _socket.connect(rideId: widget.rideId, onPosition: _onIncoming);
-    _startGps();
-  }
-
-  void _startGps() {
-    try {
-      _gpsSub = Geolocator.getPositionStream(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          distanceFilter: 8, // metres of movement before a new fix
-        ),
-      ).listen(_onMyPosition, onError: (_) {});
-    } catch (_) {
-      // Location stream unavailable (permissions/services) — others still
-      // show; this device just won't broadcast its own position.
-    }
-  }
-
-  void _onMyPosition(Position pos) {
-    final id = _myUserId;
-    if (id == null) return;
-    final here = LatLng(pos.latitude, pos.longitude);
-    // Show our own marker immediately (don't wait for the server echo).
-    final existing = _tracks[id];
-    if (existing == null) {
-      _tracks[id] = _Track(here, here, widget.myRole);
-      if (mounted) setState(() {});
-    } else {
-      existing.target = here;
-      existing.role = widget.myRole;
-    }
-    _socket.send(
-      widget.rideId,
-      lat: here.latitude,
-      lng: here.longitude,
-      role: widget.myRole,
-      bearing: pos.heading,
-    );
-  }
-
-  void _onIncoming(TrackPosition p) {
-    if (!mounted) return;
-    // Our own position is handled locally from GPS — ignore the echo.
-    if (_myUserId != null && p.userId == _myUserId) return;
-    final existing = _tracks[p.userId];
-    if (existing == null) {
-      // New member: appear instantly, then animate from here on.
-      setState(() => _tracks[p.userId] = _Track(p.latLng, p.latLng, p.role));
-    } else {
-      existing.target = p.latLng;
-      existing.role = p.role;
-    }
+  /// Fold the shared tracking state (socket + GPS live in the provider) into
+  /// our local eased markers. New members appear instantly; existing ones get
+  /// a fresh target the ticker glides toward.
+  void _syncFrom(RideTrackingState tracking) {
+    _myUserId = tracking.myUserId ?? _myUserId;
+    tracking.members.forEach((userId, m) {
+      final existing = _tracks[userId];
+      if (existing == null) {
+        _tracks[userId] = _Track(m.position, m.position, m.role);
+      } else {
+        existing.target = m.position;
+        existing.role = m.role;
+      }
+    });
   }
 
   /// Eases every marker toward its target a little each frame for smooth
@@ -148,21 +113,48 @@ class _LiveTrackingMapState extends ConsumerState<LiveTrackingMap>
 
   @override
   void dispose() {
-    _gpsSub?.cancel();
     _ticker?.dispose();
-    _socket.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final async = ref.watch(directionsProvider(
-      DirectionsRequest(origin: widget.pickup, destination: widget.drop),
-    ));
-    final routePoints = async.maybeWhen(
-      data: (r) => r.points,
-      orElse: () => <LatLng>[widget.pickup, widget.drop],
-    );
+    // Live positions come from the shared tracking session (one socket + GPS
+    // stream per ride/role); fold them into our eased markers.
+    final tracking = ref
+            .watch(rideTrackingProvider(
+                RideTrackArgs(widget.rideId, widget.myRole)))
+            .asData
+            ?.value ??
+        const RideTrackingState();
+    _syncFrom(tracking);
+
+    // Full multi-stop route (host + co-passengers) in shortest-path order when
+    // we have the stops; otherwise a plain pickup→drop line.
+    final ordered = widget.stops.length >= 2
+        ? orderRouteStops(widget.stops, widget.hostId)
+        : const <RideStop>[];
+    final useMulti = ordered.length >= 2;
+
+    final List<LatLng> routePoints;
+    if (useMulti) {
+      final waypoints = [for (final s in ordered) LatLng(s.lat, s.lng)];
+      routePoints = ref
+          .watch(routeThroughProvider(RouteThroughRequest(waypoints)))
+          .maybeWhen(
+            data: (r) => r.points.isNotEmpty ? r.points : waypoints,
+            orElse: () => waypoints,
+          );
+    } else {
+      routePoints = ref
+          .watch(directionsProvider(
+            DirectionsRequest(origin: widget.pickup, destination: widget.drop),
+          ))
+          .maybeWhen(
+            data: (r) => r.points,
+            orElse: () => <LatLng>[widget.pickup, widget.drop],
+          );
+    }
 
     return FlutterMap(
       options: MapOptions(
@@ -193,24 +185,39 @@ class _LiveTrackingMapState extends ConsumerState<LiveTrackingMap>
         ),
         MarkerLayer(
           markers: [
-            Marker(
-              point: widget.pickup,
-              width: 26,
-              height: 26,
-              child: const _PinMarker(
-                color: Color(0xff2196F3),
-                icon: Icons.my_location_rounded,
+            // Labelled stop markers A,B,C… along the ordered multi-stop route;
+            // fall back to plain pickup/drop pins when there are no stops.
+            if (useMulti)
+              for (int i = 0; i < ordered.length; i++)
+                Marker(
+                  point: LatLng(ordered[i].lat, ordered[i].lng),
+                  width: 30,
+                  height: 30,
+                  child: _StopMarker(
+                    letter: String.fromCharCode(65 + i),
+                    isPickup: ordered[i].isPickup,
+                  ),
+                )
+            else ...[
+              Marker(
+                point: widget.pickup,
+                width: 26,
+                height: 26,
+                child: const _PinMarker(
+                  color: Color(0xff2196F3),
+                  icon: Icons.my_location_rounded,
+                ),
               ),
-            ),
-            Marker(
-              point: widget.drop,
-              width: 26,
-              height: 26,
-              child: const _PinMarker(
-                color: Color(0xffEF4444),
-                icon: Icons.location_on_rounded,
+              Marker(
+                point: widget.drop,
+                width: 26,
+                height: 26,
+                child: const _PinMarker(
+                  color: Color(0xffEF4444),
+                  icon: Icons.location_on_rounded,
+                ),
               ),
-            ),
+            ],
             for (final entry in _tracks.entries)
               Marker(
                 point: entry.value.displayed,
@@ -269,6 +276,42 @@ class _PinMarker extends StatelessWidget {
         ],
       ),
       child: Icon(icon, color: Colors.white, size: 13),
+    );
+  }
+}
+
+/// A labelled stop on the multi-stop route — a lettered circle (A, B, C…),
+/// blue for a pickup and red for a drop-off.
+class _StopMarker extends StatelessWidget {
+  final String letter;
+  final bool isPickup;
+  const _StopMarker({required this.letter, required this.isPickup});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isPickup ? Consonants.primaryColor : const Color(0xffEF4444);
+    return Container(
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white, width: 2),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.25),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Text(
+        letter,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 12,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
     );
   }
 }

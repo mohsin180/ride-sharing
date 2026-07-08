@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -87,6 +89,7 @@ class _DriverChatDetailState extends ConsumerState<DriverChatDetail> {
   late final ScrollController _scroll;
   late final FocusNode _focus;
   final ChatSocket _socket = ChatSocket();
+  Timer? _poll;
 
   List<_Message> _messages = [];
   String? _myUserId;
@@ -125,8 +128,30 @@ class _DriverChatDetailState extends ConsumerState<DriverChatDetail> {
         _error = ErrorHandler.message(e);
       });
     }
-    // Live updates (best-effort — REST history already loaded above).
+    // Live updates: the STOMP socket pushes new messages instantly. As a
+    // fallback (e.g. if the WebSocket can't connect through the tunnel/proxy),
+    // also poll the history every 4s and merge anything new — so messages
+    // always appear within a few seconds even without the socket.
     await _socket.connect(rideId: widget.rideId, onMessage: _onIncoming);
+    _poll = Timer.periodic(const Duration(seconds: 4), (_) => _pollMessages());
+  }
+
+  Future<void> _pollMessages() async {
+    try {
+      final latest =
+          await ref.read(messagingServiceProvider).getMessages(widget.rideId);
+      if (!mounted) return;
+      final known = _messages.map((m) => m.id).toSet();
+      final fresh =
+          latest.where((m) => !known.contains(m.id)).map(_fromServer).toList();
+      if (fresh.isEmpty) return;
+      setState(() => _messages = [..._messages, ...fresh]);
+      _scrollToBottomSoon();
+      ref.read(messagingServiceProvider).markRead(widget.rideId);
+      ref.invalidate(unreadMessagesCountProvider);
+    } catch (_) {
+      // Transient — the next tick retries.
+    }
   }
 
   _Message _fromServer(ChatMessage m) {
@@ -168,6 +193,7 @@ class _DriverChatDetailState extends ConsumerState<DriverChatDetail> {
 
   @override
   void dispose() {
+    _poll?.cancel();
     _socket.dispose();
     _composer.dispose();
     _scroll.dispose();

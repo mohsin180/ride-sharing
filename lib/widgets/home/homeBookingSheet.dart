@@ -133,6 +133,8 @@ class _SheetBody extends StatelessWidget {
                       SizedBox(height: 18.h),
                       const _SeatsPicker(),
                       SizedBox(height: 18.h),
+                      const _SchedulePicker(),
+                      SizedBox(height: 18.h),
                       CustomWidgets.customText(
                         'Choose a ride',
                         13.sp,
@@ -355,6 +357,96 @@ class _DropoffRowState extends ConsumerState<_DropoffRow> {
 // underlying notifier still clamps to [1, 6] in case other entry points
 // pass higher values.
 // ─────────────────────────────────────────────────────────────────────────────
+
+/// "Leave now" vs a scheduled departure. Tapping the pill opens a date then a
+/// time picker; the chosen time is stored in [scheduledDepartureProvider] and
+/// sent with the ride so it appears as a scheduled ride.
+class _SchedulePicker extends ConsumerWidget {
+  const _SchedulePicker();
+
+  static const _months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+  ];
+
+  String _label(DateTime dt) {
+    final h = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+    final m = dt.minute.toString().padLeft(2, '0');
+    final ap = dt.hour < 12 ? 'AM' : 'PM';
+    return '${_months[dt.month - 1]} ${dt.day}, $h:$m $ap';
+  }
+
+  Future<void> _pick(BuildContext context, WidgetRef ref) async {
+    final now = DateTime.now();
+    final date = await showDatePicker(
+      context: context,
+      initialDate: now,
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 30)),
+    );
+    if (date == null || !context.mounted) return;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(now.add(const Duration(minutes: 30))),
+    );
+    if (time == null) return;
+    final when =
+        DateTime(date.year, date.month, date.day, time.hour, time.minute);
+    // Only accept a future time; otherwise it's just "leave now".
+    ref.read(scheduledDepartureProvider.notifier).set(
+          when.isAfter(DateTime.now()) ? when : null,
+        );
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scheduled = ref.watch(scheduledDepartureProvider);
+    return Row(
+      children: [
+        Icon(Icons.schedule_rounded, size: 18.sp, color: Consonants.greyColor),
+        SizedBox(width: 8.w),
+        CustomWidgets.customText(
+          'Departure',
+          13.sp,
+          Consonants.boldTextColor,
+          FontWeight.w700,
+        ),
+        const Spacer(),
+        if (scheduled != null) ...[
+          GestureDetector(
+            onTap: () => ref.read(scheduledDepartureProvider.notifier).clear(),
+            child: Icon(Icons.close_rounded,
+                size: 16.sp, color: Consonants.greyColor),
+          ),
+          SizedBox(width: 8.w),
+        ],
+        GestureDetector(
+          onTap: () => _pick(context, ref),
+          child: Container(
+            padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 8.h),
+            decoration: BoxDecoration(
+              color: scheduled != null
+                  ? Consonants.lightBlueColor
+                  : Consonants.scaffoldBackgroundColor,
+              borderRadius: BorderRadius.circular(20.r),
+              border: Border.all(
+                color: scheduled != null
+                    ? Consonants.primaryColor
+                    : Consonants.lightGreyColor,
+              ),
+            ),
+            child: CustomWidgets.customText(
+              scheduled != null ? _label(scheduled) : 'Leave now',
+              12.sp,
+              scheduled != null ? Consonants.primaryColor : Consonants.greyColor,
+              FontWeight.w700,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
 
 class _SeatsPicker extends ConsumerWidget {
   const _SeatsPicker();

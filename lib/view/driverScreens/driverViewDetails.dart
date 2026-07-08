@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:ride_sharing/model/rideModels.dart';
-import 'package:ride_sharing/provider/driverActiveRideProvider.dart';
 import 'package:ride_sharing/provider/driverFeedProvider.dart';
 import 'package:ride_sharing/provider/providers.dart';
 import 'package:ride_sharing/widgets/consonants/apiException.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// Review screen for a ride request the driver opened from the feed.
 /// Shows the host + route + fare, with a sticky CTA to Accept. Accepting
@@ -18,6 +18,9 @@ import 'package:ride_sharing/widgets/custom/customWidgets.dart';
 enum PickupStatus { upcoming, current, picked, dropped }
 
 class Passenger {
+  /// The rider's backend userId — used to mark them picked up / dropped off
+  /// and to call them. Empty for the feed-review view (no ids needed there).
+  final String userId;
   final String name;
   final String initial;
   final Color avatarColor;
@@ -31,7 +34,12 @@ class Passenger {
   final PickupStatus status;
   final bool isHost;
 
+  /// Contact number, so the driver can call to coordinate pickup. Null when
+  /// unavailable (e.g. the feed-review view, which has no phone).
+  final String? phone;
+
   const Passenger({
+    this.userId = '',
     required this.name,
     required this.initial,
     required this.avatarColor,
@@ -44,9 +52,11 @@ class Passenger {
     required this.seats,
     required this.status,
     this.isHost = false,
+    this.phone,
   });
 
   Passenger copyWith({PickupStatus? status}) => Passenger(
+        userId: userId,
         name: name,
         initial: initial,
         avatarColor: avatarColor,
@@ -59,6 +69,7 @@ class Passenger {
         seats: seats,
         status: status ?? this.status,
         isHost: isHost,
+        phone: phone,
       );
 }
 
@@ -106,19 +117,38 @@ class _DriverViewDetailsState extends ConsumerState<DriverViewDetails> {
     ];
   }
 
-  Future<void> _acceptRide() async {
+  /// Open the ride's pickup in the external maps app (directions to it).
+  Future<void> _openPickupInMaps() async {
+    final r = widget.ride;
+    final uri = Uri.parse(
+      "https://www.google.com/maps/dir/?api=1&destination=${r.pickupLat},${r.pickupLng}",
+    );
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else if (mounted) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+            CustomWidgets.customErrorSnackBar("Couldn't open maps"));
+    }
+  }
+
+  Future<void> _offerToDrive() async {
     if (_accepting) return;
     setState(() => _accepting = true);
     try {
-      await ref.read(rideServiceProvider).acceptRide(widget.ride.id);
-      // The ride leaves the feed and enters the driver's active trip.
+      await ref.read(rideServiceProvider).offerToDrive(widget.ride.id);
+      // The offer is sent; the ride only becomes active once the host accepts
+      // it (the driver gets a notification then). Refresh the feed but don't
+      // claim it as the active trip yet.
       ref.invalidate(driverFeedProvider);
-      ref.invalidate(driverActiveRideProvider);
       if (!mounted) return;
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
-          CustomWidgets.customSuccessSnackBar("Ride accepted — see Your Ride"),
+          CustomWidgets.customSuccessSnackBar(
+            "Offer sent — waiting for the host to accept",
+          ),
         );
       Navigator.of(context).pop();
     } on ApiException catch (e) {
@@ -127,7 +157,7 @@ class _DriverViewDetailsState extends ConsumerState<DriverViewDetails> {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(CustomWidgets.customErrorSnackBar(e.message));
-      // Conflict / not-found means the ride is no longer claimable —
+      // Conflict / not-found means the ride is no longer available —
       // bounce back to a fresh feed.
       if (e.isConflict || e.isNotFound) {
         ref.invalidate(driverFeedProvider);
@@ -139,7 +169,7 @@ class _DriverViewDetailsState extends ConsumerState<DriverViewDetails> {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
-          CustomWidgets.customErrorSnackBar("Couldn't accept ride"),
+          CustomWidgets.customErrorSnackBar("Couldn't send offer"),
         );
     }
   }
@@ -232,7 +262,7 @@ class _DriverViewDetailsState extends ConsumerState<DriverViewDetails> {
                 ),
                 SizedBox(height: 2.h),
                 CustomWidgets.customText(
-                  "${_passengers.length} riders in this trip",
+                  "${_passengers.length} ${_passengers.length == 1 ? 'rider' : 'riders'} in this trip",
                   10.sp,
                   Consonants.greyColor,
                   FontWeight.w500,
@@ -240,31 +270,34 @@ class _DriverViewDetailsState extends ConsumerState<DriverViewDetails> {
               ],
             ),
           ),
-          Container(
-            padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 8.h),
-            decoration: BoxDecoration(
-              color: Consonants.whiteColor,
-              borderRadius: BorderRadius.circular(12.r),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.04),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.map_outlined,
-                    size: 14.sp, color: Consonants.primaryColor),
-                SizedBox(width: 5.w),
-                CustomWidgets.customText(
-                  "Map",
-                  11.sp,
-                  Consonants.boldTextColor,
-                  FontWeight.w700,
-                ),
-              ],
+          GestureDetector(
+            onTap: _openPickupInMaps,
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 8.h),
+              decoration: BoxDecoration(
+                color: Consonants.whiteColor,
+                borderRadius: BorderRadius.circular(12.r),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.04),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.map_outlined,
+                      size: 14.sp, color: Consonants.primaryColor),
+                  SizedBox(width: 5.w),
+                  CustomWidgets.customText(
+                    "Map",
+                    11.sp,
+                    Consonants.boldTextColor,
+                    FontWeight.w700,
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -866,14 +899,14 @@ class _DriverViewDetailsState extends ConsumerState<DriverViewDetails> {
   }
 
   Widget _completeRideBar() {
-    // Single CTA: claim the ride. While the request is in flight the bar
-    // greys out to prevent a double-accept; on success the screen pops
-    // and the trip moves to the "Your Ride" tab.
+    // Single CTA: offer to drive. The host must accept the offer before the
+    // driver is assigned; while the request is in flight the bar greys out to
+    // prevent a double-send, and on success the screen pops back to the feed.
     return _stickyBar(
-      onTap: _accepting ? null : _acceptRide,
+      onTap: _accepting ? null : _offerToDrive,
       active: !_accepting,
-      icon: Icons.check_circle_rounded,
-      label: _accepting ? "Accepting…" : "Accept Ride",
+      icon: Icons.local_taxi_rounded,
+      label: _accepting ? "Sending offer…" : "Offer to drive",
     );
   }
 

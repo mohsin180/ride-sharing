@@ -115,12 +115,8 @@ final appRouter = GoRouter(
         final dropLatLng = extra['dropLatLng'];
         return Viewrequest(
           rideId: rideId is String && rideId.isNotEmpty ? rideId : null,
-          pickup: pickup is String && pickup.isNotEmpty
-              ? pickup
-              : "Hostel City, Block B",
-          drop: drop is String && drop.isNotEmpty
-              ? drop
-              : "Taramri Chowk",
+          pickup: pickup is String && pickup.isNotEmpty ? pickup : "Pickup",
+          drop: drop is String && drop.isNotEmpty ? drop : "Destination",
           seats: seats is int ? seats : 1,
           pickupLatLng: pickupLatLng is LatLng ? pickupLatLng : null,
           dropLatLng: dropLatLng is LatLng ? dropLatLng : null,

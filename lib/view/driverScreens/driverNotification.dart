@@ -125,6 +125,9 @@ class _DrivernotificationState extends ConsumerState<Drivernotification> {
         id: n.id,
         type: switch (n.type) {
           NotifType.request => _NotifType.request,
+          // Drivers don't receive driver-offer cards (those go to the host);
+          // map to the generic request style for safety.
+          NotifType.driverOffer => _NotifType.request,
           NotifType.trip => _NotifType.trip,
           NotifType.rating => _NotifType.rating,
           NotifType.system => _NotifType.system,

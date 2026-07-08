@@ -36,4 +36,16 @@ class JwtUtils {
 
   static String? extractGender(String token) =>
       decode(token)?['gender'] as String?;
+
+  /// True when the token's `exp` claim is in the past (with a small skew
+  /// allowance). A malformed token, or one with no `exp`, is treated as NOT
+  /// expired — the backend stays the authority and rejects it on the next
+  /// call; we only use this to avoid auto-logging-in on a clearly-dead token.
+  static bool isExpired(String token) {
+    final exp = decode(token)?['exp'];
+    if (exp is! num) return false;
+    final expiryMs = exp.toInt() * 1000;
+    // 10s skew so a just-expired token still routes cleanly to login.
+    return DateTime.now().millisecondsSinceEpoch >= expiryMs - 10000;
+  }
 }

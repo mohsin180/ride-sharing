@@ -2,6 +2,7 @@
 /// Mirrors the `type` string sent by notification-service.
 enum NotifType {
   request,
+  driverOffer,
   trip,
   rating,
   system;
@@ -10,6 +11,8 @@ enum NotifType {
     switch (raw?.toUpperCase()) {
       case 'REQUEST':
         return NotifType.request;
+      case 'DRIVER_OFFER':
+        return NotifType.driverOffer;
       case 'TRIP':
         return NotifType.trip;
       case 'RATING':
@@ -76,8 +79,21 @@ class AppNotification {
       subjectUserId != null &&
       subjectUserId!.isNotEmpty;
 
-  /// True when this is a host's join request to accept or decline.
+  /// True when this is a co-passenger's join request for the host to accept
+  /// or decline. Type-scoped so a driver offer (which reuses [requestId])
+  /// doesn't match.
   bool get isJoinRequest =>
+      type == NotifType.request &&
+      rideId != null &&
+      requestId != null &&
+      requestId!.isNotEmpty &&
+      subjectUserId != null;
+
+  /// True when this is a driver's offer for the host to accept or decline.
+  /// [requestId] carries the offer id; [subjectUserId]/[subjectName]/
+  /// [subjectRating] are the driver's.
+  bool get isDriverOffer =>
+      type == NotifType.driverOffer &&
       rideId != null &&
       requestId != null &&
       requestId!.isNotEmpty &&

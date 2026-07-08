@@ -183,10 +183,13 @@ class _HomepageState extends ConsumerState<Homepage> {
       dropLng: rideReq.dropLatLng!.longitude,
       seats: rideReq.seats,
       rideType: kRideOptions[selectedIndex].title.toUpperCase(),
+      departureTime: ref.read(scheduledDepartureProvider),
     );
 
     try {
       await ref.read(rideCreationProvider.notifier).createRide(request);
+      // Clear the scheduled time so the next booking defaults to "leave now".
+      ref.read(scheduledDepartureProvider.notifier).clear();
       // New ride means the host now has an active ride — wipe the
       // myRides cache so the next visit to the Your Rides tab (and
       // the next Book attempt's guard above) sees the freshly-created

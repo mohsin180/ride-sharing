@@ -68,13 +68,18 @@ class TrackingSocket {
   }) {
     final client = _client;
     if (client == null || !_connected) return false;
+    // A non-finite lat/lng/bearing (e.g. the emulator/iOS reporting heading as
+    // NaN when it's unknown) would serialize to `NaN` — invalid JSON that makes
+    // the server drop the whole position, so the marker never reaches others.
+    // Bail on bad coords; strip a bad bearing but still broadcast the position.
+    if (!lat.isFinite || !lng.isFinite) return false;
     client.send(
       destination: '/app/track/$rideId',
       body: jsonEncode({
         'lat': lat,
         'lng': lng,
         'role': role,
-        if (bearing != null) 'bearing': bearing,
+        if (bearing != null && bearing.isFinite) 'bearing': bearing,
       }),
     );
     return true;

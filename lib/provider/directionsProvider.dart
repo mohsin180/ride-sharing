@@ -71,6 +71,33 @@ class DirectionsRequest {
       );
 }
 
+/// Args for [routeThroughProvider] — an ordered list of waypoints. Value
+/// equality over the coords so Riverpod caches identical routes (and the
+/// map doesn't refetch on every rebuild).
+class RouteThroughRequest {
+  final List<LatLng> waypoints;
+  const RouteThroughRequest(this.waypoints);
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! RouteThroughRequest) return false;
+    if (other.waypoints.length != waypoints.length) return false;
+    for (var i = 0; i < waypoints.length; i++) {
+      if (waypoints[i].latitude != other.waypoints[i].latitude ||
+          waypoints[i].longitude != other.waypoints[i].longitude) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  @override
+  int get hashCode => Object.hashAll(
+        waypoints.map((p) => Object.hash(p.latitude, p.longitude)),
+      );
+}
+
 /// Singleton [RoutingService]. One HTTP client lives for the app's
 /// lifetime; closed automatically on container dispose.
 final routingServiceProvider = Provider<RoutingService>((ref) {
@@ -87,6 +114,24 @@ final directionsProvider =
   (ref, req) async {
     final service = ref.read(routingServiceProvider);
     final route = await service.route(from: req.origin, to: req.destination);
+    return DirectionsResult(
+      distanceMeters: route.distanceMeters,
+      durationSeconds: route.durationSeconds,
+      points: route.points,
+      bounds: route.bounds,
+    );
+  },
+);
+
+/// Multi-stop route through an ordered list of waypoints (the shared-ride
+/// map polyline: host pickup → … → host drop). autoDispose so closing the
+/// ride screen drops the cache. Returns one [DirectionsResult] whose
+/// `points` span the whole trip.
+final routeThroughProvider =
+    FutureProvider.autoDispose.family<DirectionsResult, RouteThroughRequest>(
+  (ref, req) async {
+    final service = ref.read(routingServiceProvider);
+    final route = await service.routeThrough(req.waypoints);
     return DirectionsResult(
       distanceMeters: route.distanceMeters,
       durationSeconds: route.durationSeconds,

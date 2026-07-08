@@ -57,15 +57,28 @@ class RoutingService {
     required LatLng from,
     required LatLng to,
     TravelMode mode = TravelMode.drive,
+  }) =>
+      routeThrough([from, to], mode: mode);
+
+  /// Computes a route that passes through [waypoints] in the given order
+  /// (2 or more points). Geoapify draws each consecutive leg and returns a
+  /// `MultiLineString`, which [_extractPoints] flattens into one ordered
+  /// list — so the whole multi-stop trip comes back as a single polyline.
+  Future<RouteResult> routeThrough(
+    List<LatLng> waypoints, {
+    TravelMode mode = TravelMode.drive,
   }) async {
-    // Geoapify wants waypoints as "lat,lon|lat,lon" — note: lat first
+    if (waypoints.length < 2) {
+      throw const RoutingException('Need at least two waypoints to route');
+    }
+    // Geoapify wants waypoints as "lat,lon|lat,lon|..." — note: lat first
     // here (the GeoJSON output later is lon,lat — Geoapify is
     // intentionally inconsistent about input vs output).
-    final waypoints = '${from.latitude},${from.longitude}'
-        '|${to.latitude},${to.longitude}';
+    final waypointsParam =
+        waypoints.map((p) => '${p.latitude},${p.longitude}').join('|');
 
     final uri = Uri.https('api.geoapify.com', '/v1/routing', {
-      'waypoints': waypoints,
+      'waypoints': waypointsParam,
       'mode': mode.code,
       'apiKey': _apiKey,
     });

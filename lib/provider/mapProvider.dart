@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
@@ -57,8 +59,29 @@ class CurrentLocationNotifier extends AsyncNotifier<LatLng> {
       throw const LocationFailure('Location permission denied.');
     }
 
-    final position = await Geolocator.getCurrentPosition();
-    return LatLng(position.latitude, position.longitude);
+    // Cap the wait for a fresh fix. On an emulator with no injected
+    // location, or a real device with weak signal, a fresh fix can take a
+    // very long time (or never arrive); without a limit the UI hangs on
+    // "loading" forever. On timeout, fall back to the last known position
+    // so the map still centres somewhere sensible.
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 10),
+        ),
+      );
+      return LatLng(position.latitude, position.longitude);
+    } on TimeoutException {
+      final last = await Geolocator.getLastKnownPosition();
+      if (last != null) {
+        return LatLng(last.latitude, last.longitude);
+      }
+      throw const LocationFailure(
+        'Could not get a location fix. On an emulator, set a location in '
+        'Extended Controls → Location, then retry.',
+      );
+    }
   }
 }
 
@@ -130,4 +153,19 @@ class SelectedRideIndexNotifier extends Notifier<int> {
 final selectedRideIndexProvider =
     NotifierProvider<SelectedRideIndexNotifier, int>(
   SelectedRideIndexNotifier.new,
+);
+
+/// Optional scheduled departure for the ride being booked. Null = leave now
+/// (on-demand). Set from the booking sheet's schedule picker, read when the
+/// ride is created, and reset after.
+class ScheduledDepartureNotifier extends Notifier<DateTime?> {
+  @override
+  DateTime? build() => null;
+  void set(DateTime? when) => state = when;
+  void clear() => state = null;
+}
+
+final scheduledDepartureProvider =
+    NotifierProvider<ScheduledDepartureNotifier, DateTime?>(
+  ScheduledDepartureNotifier.new,
 );

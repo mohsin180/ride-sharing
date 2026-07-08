@@ -3,8 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:ride_sharing/model/rideModels.dart';
 import 'package:ride_sharing/provider/driverFeedProvider.dart';
+import 'package:ride_sharing/provider/providers.dart';
 import 'package:ride_sharing/provider/driverStatusProvider.dart';
 import 'package:ride_sharing/view/driverScreens/driverViewDetails.dart';
+import 'package:ride_sharing/view/nearbyRidesMap.dart';
 import 'package:ride_sharing/widgets/consonants/apiException.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
@@ -28,6 +30,16 @@ class Driverrides extends ConsumerStatefulWidget {
 
 enum _GenderFilter { all, male, female }
 
+enum _FeedSort { nearest, highestFare, soonest }
+
+extension _FeedSortLabel on _FeedSort {
+  String get label => switch (this) {
+        _FeedSort.nearest => 'Nearest',
+        _FeedSort.highestFare => 'Top fare',
+        _FeedSort.soonest => 'Soonest',
+      };
+}
+
 class _DriverridesState extends ConsumerState<Driverrides> {
   _GenderFilter _filter = _GenderFilter.all;
 
@@ -35,6 +47,8 @@ class _DriverridesState extends ConsumerState<Driverrides> {
   // without a backend round-trip (there's no per-driver decline yet, so
   // a refresh brings them back).
   final Set<String> _declined = {};
+
+  _FeedSort _sort = _FeedSort.nearest;
 
   List<_RideRequest> _applyGenderFilter(List<_RideRequest> rides) {
     switch (_filter) {
@@ -45,6 +59,95 @@ class _DriverridesState extends ConsumerState<Driverrides> {
       case _GenderFilter.female:
         return rides.where((r) => r.gender == "FEMALE").toList();
     }
+  }
+
+  List<_RideRequest> _applySort(List<_RideRequest> rides) {
+    final list = [...rides];
+    switch (_sort) {
+      case _FeedSort.nearest:
+        list.sort((a, b) => (a.source.distanceKm ?? 1e9)
+            .compareTo(b.source.distanceKm ?? 1e9));
+      case _FeedSort.highestFare:
+        list.sort((a, b) => b.totalFare.compareTo(a.totalFare));
+      case _FeedSort.soonest:
+        list.sort((a, b) =>
+            (a.source.departureTime?.millisecondsSinceEpoch ?? 0)
+                .compareTo(b.source.departureTime?.millisecondsSinceEpoch ?? 0));
+    }
+    return list;
+  }
+
+  /// Opens the nearby-requests map; tapping a pin opens that ride's details.
+  Widget _mapButton(List<_RideRequest> rides) {
+    return GestureDetector(
+      onTap: () => Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => NearbyRidesMapScreen(
+          rides: rides.map((r) => r.source).toList(),
+          title: 'Nearby requests',
+          onTapRide: (ride) => Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => DriverViewDetails(ride: ride),
+          )),
+        ),
+      )),
+      child: Container(
+        height: 30.h,
+        padding: EdgeInsets.symmetric(horizontal: 12.w),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: Consonants.primaryColor,
+          borderRadius: BorderRadius.circular(20.r),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.map_rounded, size: 14.sp, color: Consonants.whiteColor),
+            SizedBox(width: 5.w),
+            CustomWidgets.customText(
+                'Map', 11.sp, Consonants.whiteColor, FontWeight.w700),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Sort chips for the feed.
+  Widget _sortBar() {
+    return SizedBox(
+      height: 30.h,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: EdgeInsets.symmetric(horizontal: 20.w),
+        itemCount: _FeedSort.values.length,
+        separatorBuilder: (_, __) => SizedBox(width: 8.w),
+        itemBuilder: (_, i) {
+          final s = _FeedSort.values[i];
+          final selected = s == _sort;
+          return GestureDetector(
+            onTap: () => setState(() => _sort = s),
+            child: Container(
+              alignment: Alignment.center,
+              padding: EdgeInsets.symmetric(horizontal: 14.w),
+              decoration: BoxDecoration(
+                color:
+                    selected ? Consonants.primaryColor : Consonants.whiteColor,
+                borderRadius: BorderRadius.circular(20.r),
+                border: Border.all(
+                  color: selected
+                      ? Consonants.primaryColor
+                      : Consonants.lightGreyColor,
+                ),
+              ),
+              child: CustomWidgets.customText(
+                s.label,
+                11.sp,
+                selected ? Consonants.whiteColor : Consonants.greyColor,
+                FontWeight.w700,
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   @override
@@ -74,6 +177,8 @@ class _DriverridesState extends ConsumerState<Driverrides> {
                     ],
                   )
                 : ref.watch(driverFeedProvider).when(
+                      // Don't flash the spinner on the 12s background poll.
+                      skipLoadingOnReload: true,
                       loading: () => Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -100,7 +205,7 @@ class _DriverridesState extends ConsumerState<Driverrides> {
                             .where((r) => !_declined.contains(r.id))
                             .map(_RideRequest.fromAvailable)
                             .toList();
-                        final filtered = _applyGenderFilter(all);
+                        final filtered = _applySort(_applyGenderFilter(all));
                         final maleCount =
                             all.where((r) => r.gender == "MALE").length;
                         final femaleCount =
@@ -119,6 +224,15 @@ class _DriverridesState extends ConsumerState<Driverrides> {
                               femaleCount: femaleCount,
                               onSelect: (v) => setState(() => _filter = v),
                             ),
+                            SizedBox(height: 10.h),
+                            Row(
+                              children: [
+                                Expanded(child: _sortBar()),
+                                SizedBox(width: 8.w),
+                                _mapButton(filtered),
+                                SizedBox(width: 20.w),
+                              ],
+                            ),
                             SizedBox(height: 14.h),
                             if (filtered.isEmpty)
                               _EmptyState(filter: _filter)
@@ -135,8 +249,14 @@ class _DriverridesState extends ConsumerState<Driverrides> {
                                     ),
                                   ),
                                   onDecline: () {
-                                    setState(
-                                        () => _declined.add(filtered[i].id));
+                                    final id = filtered[i].id;
+                                    // Hide it instantly, and persist the
+                                    // decline so it stays gone on later polls.
+                                    setState(() => _declined.add(id));
+                                    ref
+                                        .read(rideServiceProvider)
+                                        .driverDeclineRide(id)
+                                        .catchError((_) {});
                                     ScaffoldMessenger.of(context)
                                       ..hideCurrentSnackBar()
                                       ..showSnackBar(
@@ -644,17 +764,75 @@ class _RideSummaryCard extends StatelessWidget {
             child: Column(
               children: [
                 _statsPills(),
-                SizedBox(height: 14.h),
-                Container(height: 1, color: Consonants.lightGreyColor),
-                SizedBox(height: 14.h),
-                _routeTimeline(),
-                SizedBox(height: 14.h),
-                _distanceDurationStrip(),
+                _metaRow(),
                 SizedBox(height: 16.h),
                 _actionButtons(),
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  static const _months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+  ];
+
+  String _scheduledLabel(DateTime dt) {
+    final h = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+    final m = dt.minute.toString().padLeft(2, '0');
+    final ap = dt.hour < 12 ? 'AM' : 'PM';
+    return '${_months[dt.month - 1]} ${dt.day}, $h:$m $ap';
+  }
+
+  /// Quick facts under the stats: scheduled-departure badge (when set) and the
+  /// trip's length + how far the pickup is from the driver.
+  Widget _metaRow() {
+    final r = ride.source;
+    final chips = <Widget>[];
+    if (r.isScheduled) {
+      chips.add(_metaChip(
+          Icons.schedule_rounded, _scheduledLabel(r.departureTime!),
+          accent: true));
+    } else {
+      chips.add(_metaChip(Icons.bolt_rounded, 'Leave now'));
+    }
+    if (r.tripDistanceKm != null) {
+      chips.add(_metaChip(Icons.straighten_rounded,
+          '${r.tripDistanceKm!.toStringAsFixed(1)} km trip'));
+    }
+    if (r.tripDurationMin != null) {
+      chips.add(_metaChip(Icons.access_time_rounded, '${r.tripDurationMin} min'));
+    }
+    if (r.distanceKm != null) {
+      chips.add(_metaChip(
+          Icons.near_me_rounded, '${r.distanceKm!.toStringAsFixed(1)} km away'));
+    }
+    return Padding(
+      padding: EdgeInsets.only(top: 12.h),
+      child: Wrap(spacing: 8.w, runSpacing: 8.h, children: chips),
+    );
+  }
+
+  Widget _metaChip(IconData icon, String label, {bool accent = false}) {
+    final fg = accent ? Consonants.primaryColor : Consonants.greyColor;
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 6.h),
+      decoration: BoxDecoration(
+        color: accent
+            ? Consonants.lightBlueColor
+            : Consonants.scaffoldBackgroundColor,
+        borderRadius: BorderRadius.circular(20.r),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13.sp, color: fg),
+          SizedBox(width: 4.w),
+          CustomWidgets.customText(
+              label, 10.5.sp, fg, FontWeight.w700, maxLines: 1),
         ],
       ),
     );
@@ -799,7 +977,7 @@ class _RideSummaryCard extends StatelessWidget {
           child: _statTile(
             icon: Icons.payments_rounded,
             value: "Rs ${ride.totalFare}",
-            label: "Total fare",
+            label: "Fare / rider",
           ),
         ),
         SizedBox(width: 8.w),
@@ -851,152 +1029,6 @@ class _RideSummaryCard extends StatelessWidget {
             9.sp,
             Consonants.greyColor,
             FontWeight.w500,
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ─── Route timeline (start → destination) ───────────────
-  Widget _routeTimeline() {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Column(
-          children: [
-            Container(
-              width: 12.w,
-              height: 12.w,
-              decoration: BoxDecoration(
-                color: Consonants.whiteColor,
-                shape: BoxShape.circle,
-                border:
-                    Border.all(color: Consonants.primaryColor, width: 2.5),
-              ),
-            ),
-            Container(
-              width: 2.w,
-              height: 26.h,
-              color: Consonants.lightGreyColor,
-            ),
-            Icon(Icons.location_on_rounded,
-                size: 14.sp, color: const Color(0xffEF4444)),
-          ],
-        ),
-        SizedBox(width: 12.w),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  CustomWidgets.customText(
-                    "First pickup",
-                    9.sp,
-                    Consonants.greyColor,
-                    FontWeight.w600,
-                  ),
-                  SizedBox(width: 6.w),
-                  Container(
-                    padding: EdgeInsets.symmetric(
-                        horizontal: 6.w, vertical: 1.5.h),
-                    decoration: BoxDecoration(
-                      color: Consonants.lightBlueColor,
-                      borderRadius: BorderRadius.circular(20.r),
-                    ),
-                    child: CustomWidgets.customText(
-                      "START",
-                      8.sp,
-                      Consonants.primaryColor,
-                      FontWeight.w800,
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: 2.h),
-              CustomWidgets.customText(
-                ride.startPoint,
-                12.sp,
-                Consonants.boldTextColor,
-                FontWeight.w700,
-                maxLines: 2,
-              ),
-              SizedBox(height: 14.h),
-              Row(
-                children: [
-                  CustomWidgets.customText(
-                    "Final drop-off",
-                    9.sp,
-                    Consonants.greyColor,
-                    FontWeight.w600,
-                  ),
-                  SizedBox(width: 6.w),
-                  Container(
-                    padding: EdgeInsets.symmetric(
-                        horizontal: 6.w, vertical: 1.5.h),
-                    decoration: BoxDecoration(
-                      color: const Color(0xffFEE2E2),
-                      borderRadius: BorderRadius.circular(20.r),
-                    ),
-                    child: CustomWidgets.customText(
-                      "END",
-                      8.sp,
-                      const Color(0xffEF4444),
-                      FontWeight.w800,
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: 2.h),
-              CustomWidgets.customText(
-                ride.endPoint,
-                12.sp,
-                Consonants.boldTextColor,
-                FontWeight.w700,
-                maxLines: 2,
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ─── Distance + duration strip ──────────────────────────
-  Widget _distanceDurationStrip() {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
-      decoration: BoxDecoration(
-        color: Consonants.lightBlueColor,
-        borderRadius: BorderRadius.circular(12.r),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.straighten_rounded,
-              size: 14.sp, color: Consonants.primaryColor),
-          SizedBox(width: 6.w),
-          CustomWidgets.customText(
-            ride.distance,
-            11.sp,
-            Consonants.boldTextColor,
-            FontWeight.w800,
-          ),
-          SizedBox(width: 4.w),
-          CustomWidgets.customText(
-            "total distance",
-            10.sp,
-            Consonants.greyColor,
-            FontWeight.w500,
-          ),
-          const Spacer(),
-          Icon(Icons.access_time_rounded,
-              size: 12.sp, color: Consonants.primaryColor),
-          SizedBox(width: 4.w),
-          CustomWidgets.customText(
-            ride.duration,
-            11.sp,
-            Consonants.primaryColor,
-            FontWeight.w800,
           ),
         ],
       ),
@@ -1121,7 +1153,7 @@ class _RideRequest {
       hostRating: r.hostRatingLabel,
       gender: r.hostGender ?? "",
       totalFare: r.fareForRider != null ? r.fareForRider!.round() : 0,
-      riderCount: r.seatsAvailable,
+      riderCount: r.ridersJoined,
       startPoint: r.pickup,
       endPoint: r.drop,
       distance: r.distanceKm != null

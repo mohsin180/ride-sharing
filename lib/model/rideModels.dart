@@ -56,6 +56,7 @@ class RideStats {
 enum RideStatus {
   pending,
   accepted,
+  arrived,
   started,
   completed,
   cancelled,
@@ -67,6 +68,8 @@ enum RideStatus {
         return RideStatus.pending;
       case 'ACCEPTED':
         return RideStatus.accepted;
+      case 'ARRIVED':
+        return RideStatus.arrived;
       case 'STARTED':
       case 'IN_PROGRESS':
         return RideStatus.started;
@@ -83,6 +86,7 @@ enum RideStatus {
   String toWire() => switch (this) {
     RideStatus.pending => 'PENDING',
     RideStatus.accepted => 'ACCEPTED',
+    RideStatus.arrived => 'ARRIVED',
     RideStatus.started => 'STARTED',
     RideStatus.completed => 'COMPLETED',
     RideStatus.cancelled => 'CANCELLED',
@@ -113,6 +117,9 @@ class CreateRideRequest {
   final int seats;
   final String rideType;
 
+  /// Optional scheduled departure. Null = leave now (on-demand).
+  final DateTime? departureTime;
+
   const CreateRideRequest({
     required this.pickup,
     required this.drop,
@@ -122,6 +129,7 @@ class CreateRideRequest {
     required this.dropLng,
     required this.seats,
     required this.rideType,
+    this.departureTime,
   });
 
   Map<String, dynamic> toJson() => {
@@ -133,6 +141,8 @@ class CreateRideRequest {
     "dropLng": dropLng,
     "seats": seats,
     "rideType": rideType,
+    if (departureTime != null)
+      "departureTime": departureTime!.toUtc().toIso8601String(),
   };
 }
 
@@ -250,6 +260,10 @@ class PassengerRideHistoryItem {
   final String? carInfo;
   final double? ratingGiven;
 
+  /// Whether this rider's cash fare was collected by the driver. Null when
+  /// there's no payment record (e.g. cancelled ride).
+  final bool? paid;
+
   const PassengerRideHistoryItem({
     required this.id,
     required this.pickup,
@@ -260,6 +274,7 @@ class PassengerRideHistoryItem {
     this.driverName,
     this.carInfo,
     this.ratingGiven,
+    this.paid,
   });
 
   /// True for rides the user actually took (vs cancelled before start).
@@ -309,6 +324,7 @@ class PassengerRideHistoryItem {
       driverName: json['driverName'] as String?,
       carInfo: json['carInfo'] as String?,
       ratingGiven: readDouble('ratingGiven'),
+      paid: json['paid'] is bool ? json['paid'] as bool : null,
     );
   }
 }
@@ -323,6 +339,14 @@ class RideHost {
   final int trips;
   final String? gender;
 
+  /// Contact number — present only for the assigned driver (to coordinate
+  /// pickup); null for everyone else.
+  final String? phone;
+
+  /// Trip progress once STARTED: "WAITING" | "PICKED" | "DROPPED". Null before
+  /// the trip starts.
+  final String? pickupStatus;
+
   const RideHost({
     required this.id,
     required this.name,
@@ -330,6 +354,8 @@ class RideHost {
     this.rating,
     this.ratingCount = 0,
     this.gender,
+    this.phone,
+    this.pickupStatus,
   });
 
   /// "4.9 (12)" / "New" — rating with how many it's based on.
@@ -349,6 +375,42 @@ class RideHost {
             ? (json['ratingCount'] as num).toInt()
             : 0,
         gender: json['gender'] as String?,
+        phone: json['phone'] as String?,
+        pickupStatus: json['pickupStatus'] as String?,
+      );
+}
+
+/// A pickup or drop-off on a shared ride's route, belonging to the host
+/// or a joined co-passenger. The map orders these by shortest path (each
+/// owner's pickup before their drop) and draws a polyline through them.
+/// Coords are plain doubles to keep this model free of map-package
+/// imports; the UI builds `LatLng` at the call site. [ownerId] pairs an
+/// owner's pickup with their drop.
+enum RideStopKind { pickup, drop }
+
+class RideStop {
+  final String ownerId;
+  final String label;
+  final RideStopKind kind;
+  final double lat;
+  final double lng;
+
+  const RideStop({
+    required this.ownerId,
+    required this.label,
+    required this.kind,
+    required this.lat,
+    required this.lng,
+  });
+
+  bool get isPickup => kind == RideStopKind.pickup;
+
+  factory RideStop.fromJson(Map<String, dynamic> json) => RideStop(
+        ownerId: (json['ownerId'] ?? '').toString(),
+        label: (json['label'] ?? '').toString(),
+        kind: json['kind'] == 'DROP' ? RideStopKind.drop : RideStopKind.pickup,
+        lat: json['lat'] is num ? (json['lat'] as num).toDouble() : 0,
+        lng: json['lng'] is num ? (json['lng'] as num).toDouble() : 0,
       );
 }
 
@@ -363,6 +425,12 @@ class RideCoPassenger {
   final int trips;
   final String? gender;
 
+  /// Contact number — present only for the assigned driver; null otherwise.
+  final String? phone;
+
+  /// Trip progress once STARTED: "WAITING" | "PICKED" | "DROPPED".
+  final String? pickupStatus;
+
   const RideCoPassenger({
     required this.id,
     required this.name,
@@ -370,6 +438,8 @@ class RideCoPassenger {
     this.rating,
     this.ratingCount = 0,
     this.gender,
+    this.phone,
+    this.pickupStatus,
   });
 
   /// "4.7 (8)" / "New" — rating with how many it's based on.
@@ -390,6 +460,8 @@ class RideCoPassenger {
             ? (json['ratingCount'] as num).toInt()
             : 0,
         gender: json['gender'] as String?,
+        phone: json['phone'] as String?,
+        pickupStatus: json['pickupStatus'] as String?,
       );
 
   /// First letter of the name for the avatar circle. Falls back to "?"
@@ -504,6 +576,89 @@ class RideFareBreakdown {
   }
 }
 
+/// One rider's cash fare on a ride — for the driver's collect-cash sheet and
+/// the rider's own paid/unpaid indicator.
+class RidePaymentEntry {
+  final String userId;
+  final String? name;
+  final double amount;
+  final String currency;
+  final String method; // "CASH"
+  final String status; // "PENDING" | "COLLECTED"
+  final bool isHost;
+
+  const RidePaymentEntry({
+    required this.userId,
+    required this.name,
+    required this.amount,
+    required this.currency,
+    required this.method,
+    required this.status,
+    required this.isHost,
+  });
+
+  bool get isCollected => status.toUpperCase() == 'COLLECTED';
+
+  String get amountLabel {
+    final symbol = currency == 'PKR'
+        ? 'Rs'
+        : currency == 'USD'
+            ? '\$'
+            : currency;
+    return '$symbol ${amount.round()}';
+  }
+
+  factory RidePaymentEntry.fromJson(Map<String, dynamic> json) {
+    final a = json['amount'];
+    return RidePaymentEntry(
+      userId: (json['userId'] ?? '').toString(),
+      name: json['name'] as String?,
+      amount: a is num ? a.toDouble() : 0.0,
+      currency: (json['currency'] as String?) ?? 'PKR',
+      method: (json['method'] as String?) ?? 'CASH',
+      status: (json['status'] as String?) ?? 'PENDING',
+      isHost: json['isHost'] == true,
+    );
+  }
+}
+
+/// Outcome of cancelling a ride: the fee recorded (0 when inside the free
+/// window, before the driver arrived), its currency, and the rider's running
+/// count of fee-bearing cancellations.
+class CancellationResult {
+  final double fee;
+  final String currency;
+  final int strikeCount;
+
+  const CancellationResult({
+    required this.fee,
+    required this.currency,
+    required this.strikeCount,
+  });
+
+  bool get hasFee => fee > 0;
+
+  /// "Rs 50" style label for the fee.
+  String get feeLabel {
+    final symbol = currency == 'PKR'
+        ? 'Rs'
+        : currency == 'USD'
+            ? '\$'
+            : currency;
+    return '$symbol ${fee.round()}';
+  }
+
+  factory CancellationResult.fromJson(Map<String, dynamic> json) {
+    final f = json['fee'];
+    final s = json['strikeCount'];
+    return CancellationResult(
+      fee: f is num ? f.toDouble() : 0.0,
+      currency: (json['currency'] as String?) ?? 'PKR',
+      strikeCount: s is num ? s.toInt() : 0,
+    );
+  }
+}
+
 /// Full backing data for the viewRequest screen — host, route, fare,
 /// who's joined. Backed by `GET /api/v1/rides/{id}`.
 ///
@@ -546,8 +701,36 @@ class RideDetails {
   final int seatsTotal;
   final int seatsAvailable;
   final List<RideCoPassenger> coPassengers;
+
+  /// Every stop on the shared route (host pickup/drop + each joined
+  /// co-passenger's pickup/drop), unordered — the map orders by shortest
+  /// path and draws the polyline. Empty for legacy responses.
+  final List<RideStop> stops;
+
   final RideFareBreakdown? fare;
   final bool youHaveJoined;
+
+  /// Whether the host has published this ride to the driver feed yet. Drives
+  /// the host's "Publish to drivers" vs "Waiting for a driver" CTA.
+  final bool publishedToDrivers;
+
+  /// True when the viewer has a still-PENDING join request for this ride
+  /// (requested but not yet accepted/declined). Drives a persistent
+  /// "Request sent" CTA so the viewer can't re-request. Always false for
+  /// the host and for anyone already joined.
+  final bool youHaveRequested;
+
+  /// The viewer's OWN requested route (from their join request), so the
+  /// "Your Route" section can show the co-passenger's own pickup/drop
+  /// instead of the host's — and persist it across app restarts/devices
+  /// (the in-memory search form doesn't survive those). Null for the host
+  /// and for viewers with no active request.
+  final String? yourPickup;
+  final String? yourDrop;
+
+  /// The VIEWER's own booked seats — the host's party for the host, a
+  /// co-passenger's chosen seats for them. Null for a non-member browsing.
+  final int? yourSeats;
 
   /// The driver assigned to this ride. Null while the ride is still
   /// PENDING (no driver has accepted yet).
@@ -563,6 +746,8 @@ class RideDetails {
     required this.seatsTotal,
     required this.seatsAvailable,
     required this.coPassengers,
+    this.yourSeats,
+    this.stops = const [],
     this.pickupLat,
     this.pickupLng,
     this.dropLat,
@@ -570,6 +755,10 @@ class RideDetails {
     this.createdAt,
     this.fare,
     this.youHaveJoined = false,
+    this.publishedToDrivers = false,
+    this.youHaveRequested = false,
+    this.yourPickup,
+    this.yourDrop,
     this.driver,
   });
 
@@ -597,6 +786,14 @@ class RideDetails {
             .map(RideCoPassenger.fromJson)
             .toList(growable: false)
         : const <RideCoPassenger>[];
+
+    final stopsRaw = json['stops'];
+    final stops = stopsRaw is List
+        ? stopsRaw
+            .whereType<Map<String, dynamic>>()
+            .map(RideStop.fromJson)
+            .toList(growable: false)
+        : const <RideStop>[];
 
     final fareRaw = json['fare'];
     final fare = fareRaw is Map<String, dynamic>
@@ -626,7 +823,11 @@ class RideDetails {
       seatsAvailable: json['seatsAvailable'] is num
           ? (json['seatsAvailable'] as num).toInt()
           : 0,
+      yourSeats: json['yourSeats'] is num
+          ? (json['yourSeats'] as num).toInt()
+          : null,
       coPassengers: co,
+      stops: stops,
       fare: fare,
       // Pattern-match so anything that isn't an actual bool — null,
       // missing key, "true"/"false" strings, 0/1 — falls cleanly to
@@ -635,6 +836,16 @@ class RideDetails {
         bool b => b,
         _ => false,
       },
+      publishedToDrivers: switch (json['publishedToDrivers']) {
+        bool b => b,
+        _ => false,
+      },
+      youHaveRequested: switch (json['youHaveRequested']) {
+        bool b => b,
+        _ => false,
+      },
+      yourPickup: (json['yourPickup'] as String?)?.trim(),
+      yourDrop: (json['yourDrop'] as String?)?.trim(),
       driver: driver,
     );
   }
@@ -671,6 +882,15 @@ class AvailableRide {
   final String? hostGender;
   final int? etaMinutes;
   final double? distanceKm;
+
+  /// The ride's own trip distance (km) + driving duration (min), from the
+  /// route stored at creation. Lets the card show how long the trip is.
+  final double? tripDistanceKm;
+  final int? tripDurationMin;
+
+  /// Scheduled departure; null = on-demand ("leave now").
+  final DateTime? departureTime;
+
   final double? fareForRider;
   final String pickup;
   final String drop;
@@ -679,6 +899,10 @@ class AvailableRide {
   final double dropLat;
   final double dropLng;
   final int seatsAvailable;
+
+  /// Co-passengers who have actually joined (accepted) this ride — what the
+  /// "Riders" stat shows. Distinct from [seatsAvailable] (remaining capacity).
+  final int ridersJoined;
 
   /// On the "Your Rides" tab: true if you host this ride, false if you
   /// joined it as a co-passenger. Defaults true (the available-rides feed
@@ -696,14 +920,22 @@ class AvailableRide {
     required this.dropLat,
     required this.dropLng,
     required this.seatsAvailable,
+    this.ridersJoined = 0,
     this.hostRating,
     this.hostRatingCount = 0,
     this.hostGender,
     this.etaMinutes,
     this.distanceKm,
+    this.tripDistanceKm,
+    this.tripDurationMin,
+    this.departureTime,
     this.fareForRider,
     this.youAreHost = true,
   });
+
+  /// True when this ride has a future scheduled departure.
+  bool get isScheduled =>
+      departureTime != null && departureTime!.isAfter(DateTime.now());
 
   /// "4.9 (12)" / "New" — host rating with how many it's based on.
   String get hostRatingLabel {
@@ -731,6 +963,10 @@ class AvailableRide {
       hostGender: json['hostGender'] as String?,
       etaMinutes: readInt('etaMinutes'),
       distanceKm: readDouble('distanceKm'),
+      tripDistanceKm: readDouble('tripDistanceKm'),
+      tripDurationMin: readInt('tripDurationMin'),
+      departureTime: DateTime.tryParse((json['departureTime'] ?? '').toString())
+          ?.toLocal(),
       fareForRider: readDouble('fareForRider'),
       pickup: (json['pickup'] ?? '').toString(),
       drop: (json['drop'] ?? '').toString(),
@@ -739,6 +975,7 @@ class AvailableRide {
       dropLat: readDouble('dropLat') ?? 0,
       dropLng: readDouble('dropLng') ?? 0,
       seatsAvailable: readInt('seatsAvailable') ?? 0,
+      ridersJoined: readInt('ridersJoined') ?? 0,
       youAreHost: switch (json['youAreHost']) {
         bool b => b,
         _ => true,

@@ -2,23 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:flutter_map_cancellable_tile_provider/flutter_map_cancellable_tile_provider.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:ride_sharing/model/appRoutes.dart';
 import 'package:ride_sharing/model/rideModels.dart';
 import 'package:ride_sharing/provider/authProvider.dart';
 import 'package:ride_sharing/provider/availableRidesProvider.dart';
 import 'package:ride_sharing/provider/directionsProvider.dart';
-import 'package:ride_sharing/provider/mapProvider.dart';
+import 'package:ride_sharing/provider/myRidesProvider.dart';
 import 'package:ride_sharing/provider/providers.dart';
 import 'package:ride_sharing/provider/rideDetailsProvider.dart';
 import 'package:ride_sharing/provider/rideRequestProvider.dart';
-import 'package:ride_sharing/services/maps/mapTilesService.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/consonants/errorHandler.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
+import 'package:ride_sharing/widgets/custom/floatingRequestBanner.dart';
 import 'package:ride_sharing/widgets/custom/ratingSheet.dart';
+import 'package:ride_sharing/widgets/custom/rideRouteMap.dart';
 
 /// Pop the screen if there's something to go back to; otherwise fall
 /// back to the bottom navbar so the back button is never a dead-end
@@ -28,6 +27,44 @@ void _backOrHome(BuildContext context) {
     context.pop();
   } else {
     context.go(Approutes.bottomNavbar);
+  }
+}
+
+/// Host cancels the ride from the detail screen (works while PENDING or
+/// ACCEPTED — even after it's created and a driver is assigned). Confirms
+/// first, then refreshes the feeds and pops back.
+Future<void> _confirmCancelRide(
+    BuildContext context, WidgetRef ref, String rideId) async {
+  final confirm = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text("Cancel ride?"),
+      content: const Text(
+          "This cancels the ride for everyone on it. This can't be undone."),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text("Keep ride")),
+        TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text("Cancel ride")),
+      ],
+    ),
+  );
+  if (confirm != true) return;
+  try {
+    await ref.read(rideServiceProvider).cancelRide(rideId);
+    ref.invalidate(rideDetailsProvider(rideId));
+    ref.invalidate(availableRidesProvider);
+    ref.invalidate(myRidesProvider);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+          CustomWidgets.customSuccessSnackBar("Ride cancelled"));
+    _backOrHome(context);
+  } catch (e) {
+    if (context.mounted) ErrorHandler.show(context, e);
   }
 }
 
@@ -77,20 +114,10 @@ class Viewrequest extends ConsumerWidget {
         details != null &&
         details.host.id == currentUserId;
 
-    // The searcher's own pickup/destination — what THEY typed into the
-    // Available Rides search form. Drives the "Your Route" section for
-    // non-hosts so they see their intent alongside the ride they're
-    // considering. Hosts fall back to the ride's own pickup/drop.
-    final searcherRequest = ref.watch(rideRequestProvider);
-
     // Effective values — backend wins where available, navigator fallback
-    // covers everything else. Computed once so the helpers below stay
-    // simple and don't repeat the same null checks.
-    final effPickup =
-        (details?.pickup.isNotEmpty ?? false) ? details!.pickup : pickup;
-    final effDrop =
-        (details?.drop.isNotEmpty ?? false) ? details!.drop : drop;
-    final effSeats = details?.seatsTotal ?? seats;
+    // covers everything else. Seats = the VIEWER's own booking (yourSeats),
+    // not the ride's total capacity, so the host sees the 2 they booked (not 4).
+    final effSeats = details?.yourSeats ?? seats;
     final effPickupLatLng = (details?.pickupLat != null &&
             details?.pickupLng != null)
         ? LatLng(details!.pickupLat!, details.pickupLng!)
@@ -100,20 +127,31 @@ class Viewrequest extends ConsumerWidget {
             ? LatLng(details!.dropLat!, details.dropLng!)
             : dropLatLng;
 
-    // "Your Route" labels: host sees the ride's pickup/drop (it IS
-    // their ride); searcher sees what they entered in the search form.
-    // If the searcher hasn't filled the form yet, fall back to the
-    // ride's pickup/drop so the section never renders empty.
-    final yourRoutePickup = isHost
-        ? effPickup
-        : (searcherRequest.pickup.isNotEmpty
-            ? searcherRequest.pickup
-            : effPickup);
-    final yourRouteDrop = isHost
-        ? effDrop
-        : (searcherRequest.drop.isNotEmpty
-            ? searcherRequest.drop
-            : effDrop);
+    // Stops for the route map: prefer the backend's full set (host + every
+    // joined co-passenger's pickup/drop). Before details load — or on the
+    // rideId-less preview path — fall back to a simple host A→B built from
+    // the navigator coords so the map still shows something.
+    final routeStops = (details != null && details.stops.isNotEmpty)
+        ? details.stops
+        : <RideStop>[
+            if (effPickupLatLng != null)
+              RideStop(
+                ownerId: 'host',
+                label: 'Pickup',
+                kind: RideStopKind.pickup,
+                lat: effPickupLatLng.latitude,
+                lng: effPickupLatLng.longitude,
+              ),
+            if (effDropLatLng != null)
+              RideStop(
+                ownerId: 'host',
+                label: 'Destination',
+                kind: RideStopKind.drop,
+                lat: effDropLatLng.latitude,
+                lng: effDropLatLng.longitude,
+              ),
+          ];
+    final routeHostId = details?.host.id ?? 'host';
 
     return Scaffold(
       backgroundColor: Consonants.scaffoldBackgroundColor,
@@ -124,8 +162,9 @@ class Viewrequest extends ConsumerWidget {
             children: [
               _mapHeader(
                 context,
-                pickupLatLng: effPickupLatLng,
-                dropLatLng: effDropLatLng,
+                stops: routeStops,
+                hostId: routeHostId,
+                fallbackCenter: effPickupLatLng,
               ),
               Expanded(
                 child: RefreshIndicator(
@@ -146,12 +185,6 @@ class Viewrequest extends ConsumerWidget {
                         _tripHostCard(details?.host, details?.createdAt),
                         SizedBox(height: 12.h),
                         _selectedRideCard(details?.rideType),
-                        SizedBox(height: 12.h),
-                        _routeCard(
-                          pickup: yourRoutePickup,
-                          drop: yourRouteDrop,
-                          isHost: isHost,
-                        ),
                         SizedBox(height: 12.h),
                         _statsRow(
                           seats: effSeats,
@@ -198,6 +231,36 @@ class Viewrequest extends ConsumerWidget {
                       onTap: () => _backOrHome(context),
                     ),
                     const Spacer(),
+                    // Host can cancel the ride at any point after creating it.
+                    if (isHost && rideId != null)
+                      GestureDetector(
+                        onTap: () => _confirmCancelRide(context, ref, rideId!),
+                        child: Container(
+                          padding: EdgeInsets.symmetric(
+                              horizontal: 14.w, vertical: 8.h),
+                          decoration: BoxDecoration(
+                            color: const Color(0xffFEE2E2),
+                            borderRadius: BorderRadius.circular(30.r),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.08),
+                                blurRadius: 10,
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.close_rounded,
+                                  size: 15.sp, color: const Color(0xffEF4444)),
+                              SizedBox(width: 6.w),
+                              CustomWidgets.customText("Cancel ride", 12.sp,
+                                  const Color(0xffEF4444), FontWeight.w800),
+                            ],
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -217,8 +280,31 @@ class Viewrequest extends ConsumerWidget {
                 fare: details?.fare,
                 isHost: isHost,
                 hasJoined: details?.youHaveJoined ?? false,
+                publishedToDrivers: details?.publishedToDrivers ?? false,
+                youHaveRequested: details?.youHaveRequested ?? false,
+                // Until details resolve we don't know the viewer's role, so
+                // the bar must not offer "join" — otherwise a host would
+                // briefly see it on their own ride. Gate the CTA on this.
+                detailsReady: details != null,
               ),
             ),
+
+          // ─── Floating real-time request card (inDrive "Choose a driver"
+          // style) — driver offers + co-passenger join requests float in over
+          // the map with Accept/Decline. Only the host has pending requests,
+          // so it naturally shows for them only.
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: EdgeInsets.only(top: 64.h),
+                child: const FloatingRequestBanner(),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -226,10 +312,14 @@ class Viewrequest extends ConsumerWidget {
 }
 
 /// ───────────────────── MAP HEADER ─────────────────────
+/// Shows the full shared-ride route: every pickup/drop as a labelled
+/// marker (A, B, C…) in shortest-path order, joined by a road polyline.
+/// Replaces the old text route cards.
 Widget _mapHeader(
   BuildContext context, {
-  LatLng? pickupLatLng,
-  LatLng? dropLatLng,
+  required List<RideStop> stops,
+  required String hostId,
+  LatLng? fallbackCenter,
 }) {
   final width = MediaQuery.of(context).size.width;
   return ClipRRect(
@@ -240,104 +330,11 @@ Widget _mapHeader(
     child: SizedBox(
       height: 290.h,
       width: double.infinity,
-      child: Stack(
-        children: [
-          Container(color: const Color(0xffE5E7EB)),
-          FlutterMap(
-            options: const MapOptions(
-              initialCenter: kDefaultLatLng,
-              initialZoom: 13.5,
-              // Decorative header map — no rotate/tilt; pinch-zoom and
-              // drag still feel right for a quick orientation glance.
-              interactionOptions: InteractionOptions(
-                flags: InteractiveFlag.pinchZoom |
-                    InteractiveFlag.drag |
-                    InteractiveFlag.doubleTapZoom,
-              ),
-            ),
-            children: [
-              TileLayer(
-                urlTemplate: MapTilesService.tileUrl,
-                subdomains: MapTilesService.subdomains,
-                userAgentPackageName: MapTilesService.userAgentPackageName,
-                tileProvider: CancellableNetworkTileProvider(),
-              ),
-              const RichAttributionWidget(
-                alignment: AttributionAlignment.bottomLeft,
-                attributions: [
-                  TextSourceAttribution('OpenStreetMap contributors'),
-                  TextSourceAttribution('CARTO'),
-                ],
-              ),
-            ],
-          ),
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 48.h,
-            child: Center(
-              child: _etaChip(
-                pickupLatLng: pickupLatLng,
-                dropLatLng: dropLatLng,
-              ),
-            ),
-          ),
-        ],
+      child: RideRouteMap(
+        stops: stops,
+        hostId: hostId,
+        fallbackCenter: fallbackCenter,
       ),
-    ),
-  );
-}
-
-/// Floating "X min · Y km" pill on the map. Watches [directionsProvider]
-/// for the real road numbers when both coords are supplied; falls back
-/// to the original demo label otherwise.
-Widget _etaChip({LatLng? pickupLatLng, LatLng? dropLatLng}) {
-  return Consumer(
-    builder: (context, ref, _) {
-      String label = "22 min · 12.4 km";
-      if (pickupLatLng != null && dropLatLng != null) {
-        ref
-            .watch(directionsProvider(DirectionsRequest(
-              origin: pickupLatLng,
-              destination: dropLatLng,
-            )))
-            .whenData((r) {
-          label = "${r.durationMinutes} min · "
-              "${r.distanceKm.toStringAsFixed(1)} km";
-        });
-      }
-      return _etaChipShell(label);
-    },
-  );
-}
-
-Widget _etaChipShell(String label) {
-  return Container(
-    padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 8.h),
-    decoration: BoxDecoration(
-      color: Consonants.boldTextColor,
-      borderRadius: BorderRadius.circular(30.r),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withValues(alpha: 0.20),
-          blurRadius: 14,
-          offset: const Offset(0, 4),
-        ),
-      ],
-    ),
-    child: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(Icons.access_time_rounded,
-            color: Consonants.whiteColor, size: 13.sp),
-        SizedBox(width: 6.w),
-        CustomWidgets.customText(
-          label,
-          11.sp,
-          Consonants.whiteColor,
-          FontWeight.w700,
-        ),
-      ],
     ),
   );
 }
@@ -678,133 +675,6 @@ Widget _selectedRideCard(String? rideType) {
   );
 }
 
-/// ───────────────────── ROUTE CARD ─────────────────────
-/// [isHost] flips two pieces of copy: the section title ("Your Route"
-/// for searchers, "Ride Route" for hosts) and the right-side badge
-/// ("Your search" → "Your ride"). The pickup/drop strings themselves
-/// are resolved by the caller (searcher's own search vs. ride's own
-/// addresses).
-Widget _routeCard({
-  required String pickup,
-  required String drop,
-  required bool isHost,
-}) {
-  final title = isHost ? "Ride Route" : "Your Route";
-  final badge = isHost ? "Your ride" : "Your search";
-  return Container(
-    decoration: BoxDecoration(
-      color: Consonants.whiteColor,
-      borderRadius: BorderRadius.circular(18.r),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withValues(alpha: 0.04),
-          blurRadius: 12,
-          offset: const Offset(0, 4),
-        ),
-      ],
-    ),
-    padding: EdgeInsets.all(16.w),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            CustomWidgets.customText(
-              title,
-              13.sp,
-              Consonants.boldTextColor,
-              FontWeight.w700,
-            ),
-            const Spacer(),
-            Container(
-              padding:
-                  EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
-              decoration: BoxDecoration(
-                color: Consonants.primaryGreenColor,
-                borderRadius: BorderRadius.circular(20.r),
-              ),
-              child: CustomWidgets.customText(
-                badge,
-                9.sp,
-                const Color(0xff16A34A),
-                FontWeight.w700,
-              ),
-            ),
-          ],
-        ),
-        SizedBox(height: 14.h),
-        _routeRow(
-          dotColor: Consonants.primaryColor,
-          label: "Pickup",
-          place: pickup,
-          showLine: true,
-        ),
-        SizedBox(height: 14.h),
-        _routeRow(
-          dotColor: const Color(0xffEF4444),
-          label: "Destination",
-          place: drop,
-          showLine: false,
-        ),
-      ],
-    ),
-  );
-}
-
-Widget _routeRow({
-  required Color dotColor,
-  required String label,
-  required String place,
-  required bool showLine,
-}) {
-  return Row(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Column(
-        children: [
-          Container(
-            width: 14.w,
-            height: 14.w,
-            decoration: BoxDecoration(
-              color: Consonants.whiteColor,
-              shape: BoxShape.circle,
-              border: Border.all(color: dotColor, width: 3),
-            ),
-          ),
-          if (showLine)
-            Container(
-              width: 2.w,
-              height: 24.h,
-              margin: EdgeInsets.symmetric(vertical: 2.h),
-              color: Consonants.lightGreyColor,
-            ),
-        ],
-      ),
-      SizedBox(width: 12.w),
-      Expanded(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            CustomWidgets.customText(
-              label,
-              9.sp,
-              Consonants.greyColor,
-              FontWeight.w600,
-            ),
-            SizedBox(height: 2.h),
-            CustomWidgets.customText(
-              place,
-              12.sp,
-              Consonants.boldTextColor,
-              FontWeight.w700,
-            ),
-          ],
-        ),
-      ),
-    ],
-  );
-}
-
 /// ───────────────────── STATS ROW ─────────────────────
 ///
 /// When pickup + drop coordinates are present, the duration / distance
@@ -819,8 +689,8 @@ Widget _statsRow({
 }) {
   return Consumer(
     builder: (context, ref, _) {
-      String duration = "22 min";
-      String distance = "12.4 km";
+      String duration = "—";
+      String distance = "—";
       if (pickupLatLng != null && dropLatLng != null) {
         ref
             .watch(directionsProvider(DirectionsRequest(
@@ -1132,7 +1002,7 @@ Widget _fareCard(RideFareBreakdown? fare) {
                 size: 11.sp, color: Consonants.greyColor),
             SizedBox(width: 4.w),
             CustomWidgets.customText(
-              "Secure payment · Cash or card on arrival",
+              "Secure payment · Cash on arrival",
               9.sp,
               Consonants.greyColor,
               FontWeight.w500,
@@ -1181,12 +1051,18 @@ class _BottomBar extends ConsumerStatefulWidget {
   final RideFareBreakdown? fare;
   final bool isHost;
   final bool hasJoined;
+  final bool publishedToDrivers;
+  final bool youHaveRequested;
+  final bool detailsReady;
 
   const _BottomBar({
     required this.rideId,
     required this.fare,
     required this.isHost,
     required this.hasJoined,
+    required this.publishedToDrivers,
+    required this.youHaveRequested,
+    required this.detailsReady,
   });
 
   @override
@@ -1237,6 +1113,8 @@ class _BottomBarState extends ConsumerState<_BottomBar> {
           drop: req.drop.isNotEmpty ? req.drop : null,
           dropLat: req.dropLatLng?.latitude,
           dropLng: req.dropLatLng?.longitude,
+          // How many seats this co-passenger wants (from the search form).
+          seats: req.seats,
         );
         if (!mounted) return;
         setState(() => _requestSent = true);
@@ -1326,10 +1204,34 @@ class _BottomBarState extends ConsumerState<_BottomBar> {
   }
 
   Widget _buildButton() {
-    if (widget.isHost) return _hostingChip();
+    // Role unknown until details load — show a neutral placeholder rather
+    // than risk offering the wrong action (e.g. "join" to the host).
+    if (!widget.detailsReady) return _loadingChip();
+    // Host: publish the ride to drivers, then show a waiting state. Works even
+    // with co-passengers already joined / seats full.
+    if (widget.isHost) {
+      return widget.publishedToDrivers ? _publishedChip() : _publishButton();
+    }
     if (widget.hasJoined) return _leaveButton();
-    if (_requestSent) return _requestSentChip();
+    // Backend-backed pending request (survives leaving/reopening the screen)
+    // OR the optimistic flag set right after tapping, before the refetch.
+    if (widget.youHaveRequested || _requestSent) return _requestSentChip();
     return _confirmButton();
+  }
+
+  /// Shown while ride details are still loading — we don't yet know whether
+  /// the viewer is the host, a member, or a prospective joiner, so we show a
+  /// neutral, non-actionable placeholder instead of risking the wrong CTA.
+  Widget _loadingChip() {
+    return Container(
+      height: 54.h,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14.r),
+        color: Consonants.lightBlueColor,
+      ),
+      child: _spinner(Consonants.primaryColor),
+    );
   }
 
   /// Shown after a join request is sent — the host hasn't responded yet.
@@ -1361,10 +1263,74 @@ class _BottomBarState extends ConsumerState<_BottomBar> {
     );
   }
 
-  /// Host view — informational, not actionable. Cancellation lives in
-  /// the Your Rides tab so the action surface stays scoped to its
-  /// own list-level affordance.
-  Widget _hostingChip() {
+  /// Host publishes the ride to the driver feed. Available even with
+  /// co-passengers already joined / seats full — a full group still needs a
+  /// driver. On success the CTA flips to [_publishedChip].
+  Future<void> _onPublish() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await ref.read(rideServiceProvider).publishRide(widget.rideId);
+      ref.invalidate(rideDetailsProvider(widget.rideId));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        CustomWidgets.customSuccessSnackBar(
+          "Published — drivers can now see your ride",
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ErrorHandler.show(context, e);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Host CTA before publishing — pushes the ride to the driver feed.
+  Widget _publishButton() {
+    return GestureDetector(
+      onTap: _busy ? null : _onPublish,
+      child: Container(
+        height: 54.h,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14.r),
+          gradient: const LinearGradient(
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+            colors: [Consonants.primaryColor, Color(0xff5AC8FA)],
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Consonants.primaryColor.withValues(alpha: 0.35),
+              blurRadius: 14,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: _busy
+            ? _spinner(Consonants.whiteColor)
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.local_taxi_rounded,
+                      size: 16.sp, color: Consonants.whiteColor),
+                  SizedBox(width: 8.w),
+                  CustomWidgets.customText(
+                    "Publish to drivers",
+                    14.sp,
+                    Consonants.whiteColor,
+                    FontWeight.w800,
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+
+  /// Host CTA after publishing — informational, waiting for a driver to
+  /// accept. Cancellation still lives on the Your Rides tab.
+  Widget _publishedChip() {
     return Container(
       height: 54.h,
       alignment: Alignment.center,
@@ -1376,13 +1342,13 @@ class _BottomBarState extends ConsumerState<_BottomBar> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
-            Icons.workspace_premium_rounded,
+            Icons.check_circle_rounded,
             size: 16.sp,
             color: Consonants.primaryColor,
           ),
           SizedBox(width: 8.w),
           CustomWidgets.customText(
-            "You're hosting this ride",
+            "Published · waiting for a driver",
             13.sp,
             Consonants.primaryColor,
             FontWeight.w800,
@@ -1591,7 +1557,9 @@ Widget _coPassengersSheetContent(
                   ),
                 ),
                 GestureDetector(
-                  onTap: () => _backOrHome(context),
+                  // Just dismiss this modal sheet — not go_router navigation,
+                  // which could pop the whole screen or route home.
+                  onTap: () => Navigator.of(context).pop(),
                   child: Container(
                     width: 32.w,
                     height: 32.w,

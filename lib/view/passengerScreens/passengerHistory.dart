@@ -479,6 +479,32 @@ class _RideCard extends StatelessWidget {
                       FontWeight.w800,
                       maxLines: 1,
                     ),
+                    if (ride.paid != null) ...[
+                      SizedBox(height: 3.h),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            ride.paid!
+                                ? Icons.check_circle_rounded
+                                : Icons.schedule_rounded,
+                            size: 12.sp,
+                            color: ride.paid!
+                                ? const Color(0xff15803D)
+                                : Consonants.greyColor,
+                          ),
+                          SizedBox(width: 3.w),
+                          CustomWidgets.customText(
+                            ride.paid! ? "Paid" : "Unpaid",
+                            10.sp,
+                            ride.paid!
+                                ? const Color(0xff15803D)
+                                : Consonants.greyColor,
+                            FontWeight.w700,
+                          ),
+                        ],
+                      ),
+                    ],
                     if (ride.ratingGiven != null) ...[
                       SizedBox(height: 2.h),
                       Row(

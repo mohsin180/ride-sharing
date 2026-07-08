@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ride_sharing/provider/authProvider.dart';
 import 'package:ride_sharing/provider/availableRidesProvider.dart';
+import 'package:ride_sharing/provider/driverActiveRideProvider.dart';
 import 'package:ride_sharing/provider/driverFeedProvider.dart';
 import 'package:ride_sharing/provider/myRidesProvider.dart';
+import 'package:ride_sharing/provider/rideTrackingProvider.dart';
 import 'package:ride_sharing/view/driverScreens/driverHomepage.dart';
 import 'package:ride_sharing/view/driverScreens/driverProfile.dart';
 import 'package:ride_sharing/view/driverScreens/driverRides.dart';
@@ -63,7 +65,14 @@ class _BottomnavbarState extends ConsumerState<Bottomnavbar> {
 
     return Scaffold(
       backgroundColor: Consonants.scaffoldBackgroundColor,
-      body: IndexedStack(index: currentIndex, children: screens),
+      body: Stack(
+        children: [
+          IndexedStack(index: currentIndex, children: screens),
+          // Keeps the driver broadcasting their GPS for the whole active ride
+          // (across every tab), not just while the trip map is on screen.
+          if (isDriver) const _DriverLocationBroadcaster(),
+        ],
+      ),
       bottomNavigationBar: NavigationBarTheme(
         data: NavigationBarThemeData(
           indicatorColor: Colors.transparent,
@@ -126,5 +135,24 @@ class _BottomnavbarState extends ConsumerState<Bottomnavbar> {
         ),
       ),
     );
+  }
+}
+
+/// Invisible widget mounted in the driver shell. While the driver has an
+/// active ride it keeps the ride's tracking session alive, so their GPS keeps
+/// streaming to riders across every tab — not only when the trip map is open.
+/// Renders nothing.
+class _DriverLocationBroadcaster extends ConsumerWidget {
+  const _DriverLocationBroadcaster();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final active =
+        ref.watch(driverActiveRideProvider).asData?.value ?? const [];
+    if (active.isNotEmpty) {
+      // Watching keeps the provider (and its socket + GPS stream) alive.
+      ref.watch(rideTrackingProvider(RideTrackArgs(active.first.id, 'DRIVER')));
+    }
+    return const SizedBox.shrink();
   }
 }

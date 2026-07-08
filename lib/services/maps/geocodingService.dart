@@ -27,6 +27,15 @@ class GeocodingService {
   final http.Client _client;
   final String _apiKey;
 
+  /// Search is limited to the Islamabad–Rawalpindi twin-city area. This is a
+  /// Geoapify `rect` boundary filter — `rect:lon1,lat1,lon2,lat2` (SW corner
+  /// → NE corner) — so autocomplete only ever returns places inside this box.
+  /// Widen/move the box here if the service area changes.
+  static const String _searchAreaFilter = 'rect:72.80,33.40,73.35,33.85';
+
+  /// Centre of the twin cities — biases ranking toward the middle of the area.
+  static const LatLng _searchAreaBias = LatLng(33.62, 73.04);
+
   /// Default constructor — uses the env key + a fresh `http.Client`.
   GeocodingService()
       : _client = http.Client(),
@@ -42,10 +51,12 @@ class GeocodingService {
 
   /// Place autocomplete — drives the pickup/destination dropdown.
   ///
-  /// [text] is the user's typed query. [bias] (optional) nudges results
-  /// toward a coordinate so suggestions near the user rank higher.
-  /// [countryCode] mirrors the old `countries: ["pk"]` filter; pass
-  /// null to search globally.
+  /// Results are hard-limited to the Islamabad–Rawalpindi area via
+  /// [_searchAreaFilter], so only places in those two cities are returned.
+  /// [text] is the user's typed query. [bias] (optional) nudges ranking
+  /// toward a coordinate (e.g. the user's location); it defaults to the area
+  /// centre. [countryCode] is accepted for call-site compatibility but the
+  /// area box already constrains results far more tightly than a country.
   Future<List<PlaceSuggestion>> autocomplete(
     String text, {
     LatLng? bias,
@@ -55,12 +66,14 @@ class GeocodingService {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return const [];
 
+    final biasPoint = bias ?? _searchAreaBias;
     final params = <String, String>{
       'text': trimmed,
       'limit': '$limit',
       'apiKey': _apiKey,
-      if (countryCode != null) 'filter': 'countrycode:$countryCode',
-      if (bias != null) 'bias': 'proximity:${bias.longitude},${bias.latitude}',
+      // Restrict suggestions to the Islamabad–Rawalpindi bounding box.
+      'filter': _searchAreaFilter,
+      'bias': 'proximity:${biasPoint.longitude},${biasPoint.latitude}',
     };
 
     final uri = Uri.https('api.geoapify.com', '/v1/geocode/autocomplete', params);

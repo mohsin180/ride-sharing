@@ -23,6 +23,9 @@ class Apiclient {
     final headers = <String, String>{
       'Content-Type': 'application/json',
       'Accept': 'application/json',
+      // Skip ngrok's free-tier browser interstitial so API calls go straight
+      // through (harmless when not tunnelling via ngrok).
+      'ngrok-skip-browser-warning': 'true',
     };
     final token = overrideToken ?? await Tokenstorage.getToken();
     if (requireAuth && token != null && token.isNotEmpty) {

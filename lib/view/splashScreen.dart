@@ -1,23 +1,27 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
 import 'package:ride_sharing/model/appRoutes.dart';
+import 'package:ride_sharing/provider/sessionRouter.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
+import 'package:ride_sharing/widgets/consonants/jwtUtils.dart';
+import 'package:ride_sharing/widgets/consonants/tokenStorage.dart';
 
-/// Animated brand splash. Plays the entrance animation for a short
-/// fixed hold, then hands off to the login screen — the login screen
-/// itself owns role-based routing into the bottom navbar after the
-/// user authenticates.
-class Splashscreen extends StatefulWidget {
+/// Animated brand splash. Plays the entrance animation for a short fixed hold,
+/// then auto-routes: a stored, unexpired session goes straight into the app
+/// (like inDrive/Uber — no re-login after closing the app); otherwise it hands
+/// off to the login screen.
+class Splashscreen extends ConsumerStatefulWidget {
   const Splashscreen({super.key});
 
   @override
-  State<Splashscreen> createState() => _SplashscreenState();
+  ConsumerState<Splashscreen> createState() => _SplashscreenState();
 }
 
-class _SplashscreenState extends State<Splashscreen>
+class _SplashscreenState extends ConsumerState<Splashscreen>
     with TickerProviderStateMixin {
   static const _entranceDuration = Duration(milliseconds: 1400);
   static const _minHoldOnSplash = Duration(milliseconds: 1700);
@@ -82,13 +86,44 @@ class _SplashscreenState extends State<Splashscreen>
     _scheduleHandoff();
   }
 
-  /// Holds on the splash for [_minHoldOnSplash] so the brand animation
-  /// always finishes, then hands off to the login screen. Authentication
-  /// + role-based routing into the navbar happens from the login screen.
+  /// Holds on the splash for [_minHoldOnSplash] so the brand animation always
+  /// finishes, then decides where to go. A valid stored session skips the
+  /// login screen entirely (persistent login); anything missing/expired falls
+  /// back to login.
   Future<void> _scheduleHandoff() async {
-    await Future.delayed(_minHoldOnSplash);
+    // Resolve the destination while the animation plays, so there's no extra
+    // wait after the hold.
+    final destination = _resolveDestination();
+    final results = await Future.wait([
+      Future.delayed(_minHoldOnSplash),
+      destination,
+    ]);
     if (!mounted) return;
-    context.go(Approutes.login);
+    context.go(results[1] as String);
+  }
+
+  /// Where to send the user based on their stored session.
+  Future<String> _resolveDestination() async {
+    try {
+      final token = await Tokenstorage.getToken();
+      // No session, or a clearly-dead one → log in (and clean up a stale token).
+      if (token == null || token.isEmpty || JwtUtils.isExpired(token)) {
+        if (token != null && token.isNotEmpty) {
+          await Tokenstorage.deleteToken();
+        }
+        return Approutes.login;
+      }
+      final role = JwtUtils.extractRole(token);
+      // Authenticated but no role yet (rare) → let login drive role selection
+      // with a fresh auth state.
+      if (role != "DRIVER" && role != "PASSENGER") {
+        return Approutes.login;
+      }
+      // Valid session → straight into the app (or profile setup if incomplete).
+      return await resolveHomeRouteForRole(ref, role!);
+    } catch (_) {
+      return Approutes.login;
+    }
   }
 
   @override

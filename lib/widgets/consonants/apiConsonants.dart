@@ -79,6 +79,11 @@ class Apiconsonants {
   static String cancelRideEndpoint(String id) =>
       "$rideServicebaseUrl/$id/cancel";
 
+  /// `POST` (host) publishes the ride to the driver feed so drivers can see
+  /// and accept it — works even after co-passengers have joined / seats fill.
+  static String publishRideEndpoint(String id) =>
+      "$rideServicebaseUrl/$id/publish";
+
   /// `POST` to join a ride as a co-passenger. Backend must:
   ///   - reject if the caller is the host (can't join your own ride)
   ///   - reject if seats are full
@@ -96,6 +101,15 @@ class Apiconsonants {
   static String declineJoinRequestEndpoint(String rideId, String requestId) =>
       "$rideServicebaseUrl/$rideId/join-requests/$requestId/decline";
 
+  /// `POST` (host) accepts a driver's offer — assigns that driver and moves
+  /// the ride to ACCEPTED.
+  static String acceptDriverOfferEndpoint(String rideId, String offerId) =>
+      "$rideServicebaseUrl/$rideId/driver-offers/$offerId/accept";
+
+  /// `POST` (host) declines a driver's offer.
+  static String declineDriverOfferEndpoint(String rideId, String offerId) =>
+      "$rideServicebaseUrl/$rideId/driver-offers/$offerId/decline";
+
   /// `POST` to leave a ride the authenticated user previously joined.
   /// Backend removes the caller from participants and frees a seat.
   /// Reject if the caller hasn't joined this ride.
@@ -110,9 +124,16 @@ class Apiconsonants {
   /// per-ride distance from the passenger's current location for the
   /// "Nearest / under X km" sort & filter pills. When omitted, the
   /// backend leaves `distanceKm` null and the UI shows "—".
-  static String availableRidesEndpoint({double? lat, double? lng}) {
+  static String availableRidesEndpoint(
+      {double? lat, double? lng, double? dropLat, double? dropLng}) {
     if (lat == null || lng == null) return "$rideServicebaseUrl/available";
-    return "$rideServicebaseUrl/available?lat=$lat&lng=$lng";
+    final q = StringBuffer("$rideServicebaseUrl/available?lat=$lat&lng=$lng");
+    // Destination lets the backend keep only rides going the same way and
+    // rank them by combined pickup + drop closeness (route overlap).
+    if (dropLat != null && dropLng != null) {
+      q.write("&dropLat=$dropLat&dropLng=$dropLng");
+    }
+    return q.toString();
   }
 
   // ── driver ride-lifecycle endpoints ────────────────────────────
@@ -127,15 +148,36 @@ class Apiconsonants {
     return "$rideServicebaseUrl/driver/feed?lat=$lat&lng=$lng";
   }
 
-  /// `POST` to claim a PENDING ride as its driver. Backend sets the
-  /// driverId + moves status → ACCEPTED. Rejects (409) the driver's own
-  /// ride, an already-taken ride, or when the driver already has an
-  /// active ride. Returns the updated [RideResponse].
-  static String acceptRideEndpoint(String id) =>
-      "$rideServicebaseUrl/$id/accept";
+  /// `POST` for a driver to OFFER to drive a PENDING ride. This does not
+  /// assign them — the host gets a notification to accept or decline. Rejects
+  /// (409) the driver's own ride, one that already has a driver, a duplicate
+  /// offer, or when the driver already has an active ride.
+  static String offerToDriveEndpoint(String id) =>
+      "$rideServicebaseUrl/$id/driver-offer";
 
-  /// `POST` to move an ACCEPTED ride → STARTED (driver en route /
-  /// trip begun). Only the assigned driver may call it.
+  /// `POST` for a driver to dismiss a ride from their feed (stays hidden).
+  static String driverDeclineRideEndpoint(String id) =>
+      "$rideServicebaseUrl/$id/driver-decline";
+
+  /// `POST` for the assigned driver to mark a rider picked up / dropped off.
+  static String riderPickupEndpoint(String id, String riderId) =>
+      "$rideServicebaseUrl/$id/riders/$riderId/pickup";
+  static String riderDropoffEndpoint(String id, String riderId) =>
+      "$rideServicebaseUrl/$id/riders/$riderId/dropoff";
+
+  /// `POST` to report a user on a ride, or to block another user.
+  static String reportUserEndpoint(String id) =>
+      "$rideServicebaseUrl/$id/report";
+  static String blockUserEndpoint(String userId) =>
+      "$rideServicebaseUrl/users/$userId/block";
+
+  /// `POST` to move an ACCEPTED ride → ARRIVED (the assigned driver has
+  /// reached the pickup point). Only the assigned driver may call it.
+  static String arriveRideEndpoint(String id) =>
+      "$rideServicebaseUrl/$id/arrive";
+
+  /// `POST` to move an ACCEPTED/ARRIVED ride → STARTED (trip begun).
+  /// Only the assigned driver may call it.
   static String startRideEndpoint(String id) =>
       "$rideServicebaseUrl/$id/start";
 
@@ -253,6 +295,19 @@ class Apiconsonants {
   /// only the STOMP topic differs (`/topic/track.<rideId>`).
   static String get trackWsUrl => chatWsUrl;
 
+  /// `GET` the driver's last-known position for a ride (REST fallback so a
+  /// rider who opens the app late sees the car before the next live frame).
+  static String lastDriverLocationEndpoint(String rideId) =>
+      "$messagingServicebaseUrl/track/$rideId/last";
+
   /// `GET` the passenger's in-progress trip (ACCEPTED/STARTED) for the live map.
   static String get myActiveTripEndpoint => "$rideServicebaseUrl/my/active";
+
+  /// `GET` a ride's cash fare ledger (one entry per rider).
+  static String ridePaymentsEndpoint(String rideId) =>
+      "$rideServicebaseUrl/$rideId/payments";
+
+  /// `POST` for the assigned driver to confirm they collected a rider's cash.
+  static String collectPaymentEndpoint(String rideId, String riderId) =>
+      "$rideServicebaseUrl/$rideId/payments/$riderId/collect";
 }

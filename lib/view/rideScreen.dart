@@ -6,13 +6,15 @@ import 'package:latlong2/latlong.dart';
 import 'package:ride_sharing/model/appRoutes.dart';
 import 'package:ride_sharing/model/rideModels.dart';
 import 'package:ride_sharing/provider/availableRidesProvider.dart';
-import 'package:ride_sharing/provider/directionsProvider.dart';
+import 'package:ride_sharing/provider/mapProvider.dart';
 import 'package:ride_sharing/provider/myRidesProvider.dart';
 import 'package:ride_sharing/provider/providers.dart';
 import 'package:ride_sharing/provider/rideRequestProvider.dart';
+import 'package:ride_sharing/view/nearbyRidesMap.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/consonants/errorHandler.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
+import 'package:ride_sharing/widgets/custom/floatingRequestBanner.dart';
 import 'package:ride_sharing/widgets/maps/placeSearchField.dart';
 
 class Ridescreen extends ConsumerStatefulWidget {
@@ -27,18 +29,66 @@ class Ridescreen extends ConsumerStatefulWidget {
 /// what the backend returns.
 const double _kRadiusKm = 5.0;
 
+enum _RideSort { best, nearest, cheapest, soonest, topRated }
+
+extension _RideSortLabel on _RideSort {
+  String get label => switch (this) {
+        _RideSort.best => 'Best match',
+        _RideSort.nearest => 'Nearest',
+        _RideSort.cheapest => 'Cheapest',
+        _RideSort.soonest => 'Soonest',
+        _RideSort.topRated => 'Top rated',
+      };
+}
+
 class _RidescreenState extends ConsumerState<Ridescreen> {
   late final TextEditingController _pickupController;
   late final TextEditingController _dropController;
 
-  /// Keeps only rides with enough seats for the party. The backend (PostGIS)
-  /// already bounded the list to within [_kRadiusKm] of the user's pickup and
-  /// returned it nearest-first, so we no longer filter by radius or re-sort.
+  /// Rides the user dismissed ("not interested") this session — filtered out
+  /// so they don't keep reappearing on refresh.
+  final Set<String> _dismissed = {};
+
+  /// How the results list is ordered. "Best match" keeps the backend's
+  /// route-overlap ranking; the rest sort client-side.
+  _RideSort _sort = _RideSort.best;
+
+  List<AvailableRide> _sortRides(List<AvailableRide> rides) {
+    final list = [...rides];
+    switch (_sort) {
+      case _RideSort.best:
+        break; // keep backend order (route-overlap / nearest-first)
+      case _RideSort.nearest:
+        list.sort((a, b) =>
+            (a.distanceKm ?? 1e9).compareTo(b.distanceKm ?? 1e9));
+      case _RideSort.cheapest:
+        list.sort((a, b) =>
+            (a.fareForRider ?? 1e9).compareTo(b.fareForRider ?? 1e9));
+      case _RideSort.soonest:
+        list.sort((a, b) {
+          // Scheduled rides ordered by departure; on-demand ("now") first.
+          final at = a.departureTime?.millisecondsSinceEpoch ?? 0;
+          final bt = b.departureTime?.millisecondsSinceEpoch ?? 0;
+          return at.compareTo(bt);
+        });
+      case _RideSort.topRated:
+        list.sort((a, b) =>
+            (b.hostRating ?? 0).compareTo(a.hostRating ?? 0));
+    }
+    return list;
+  }
+
+  /// Keeps rides with enough seats for the party and drops any the user
+  /// dismissed. The backend (PostGIS) already bounded the list to within
+  /// [_kRadiusKm] of the pickup and returned it nearest-first.
   List<AvailableRide> _filterBySeats(
     List<AvailableRide> rides,
     int neededSeats,
   ) {
-    return rides.where((r) => r.seatsAvailable >= neededSeats).toList();
+    return rides
+        .where((r) => r.seatsAvailable >= neededSeats)
+        .where((r) => !_dismissed.contains(r.id))
+        .toList();
   }
 
   @override
@@ -49,6 +99,35 @@ class _RidescreenState extends ConsumerState<Ridescreen> {
     final saved = ref.read(rideRequestProvider);
     _pickupController = TextEditingController(text: saved.pickup);
     _dropController = TextEditingController(text: saved.drop);
+    // Default the pickup to the user's current location (still editable).
+    if (saved.pickup.isEmpty) {
+      _prefillPickupFromCurrentLocation();
+    }
+  }
+
+  /// Fetches the user's GPS location, reverse-geocodes it to an address, and
+  /// fills the pickup field with it — unless they've already typed/saved one.
+  /// Fire-and-forget from initState; silently no-ops on permission/GPS errors.
+  Future<void> _prefillPickupFromCurrentLocation() async {
+    if (ref.read(rideRequestProvider).pickup.isNotEmpty) return;
+    try {
+      final here = await ref.read(currentLocationProvider.future);
+      // Bail if the user typed a pickup while we were resolving.
+      if (!mounted || ref.read(rideRequestProvider).pickup.isNotEmpty) return;
+      final details =
+          await ref.read(geocodingServiceProvider).reverseGeocode(here);
+      if (!mounted || ref.read(rideRequestProvider).pickup.isNotEmpty) return;
+      final address = (details?.displayLine ?? '').trim();
+      final label = address.isNotEmpty
+          ? address
+          : '${here.latitude.toStringAsFixed(5)}, '
+              '${here.longitude.toStringAsFixed(5)}';
+      ref.read(rideRequestProvider.notifier).setPickup(label, latLng: here);
+      _pickupController.text = label;
+    } catch (_) {
+      // No location / permission denied / geocode failed — leave it for the
+      // user to fill in manually.
+    }
   }
 
   @override
@@ -149,9 +228,13 @@ class _RidescreenState extends ConsumerState<Ridescreen> {
     // True the moment the user has actually committed pickup/drop via
     // Save — until then we show a prompt instead of a (necessarily
     // empty) results list.
-    final hasSearch =
-        ref.watch(rideRequestProvider.select((s) => s.pickupLatLng)) !=
-            null;
+    // A real search needs BOTH a pickup and a destination. Gating on pickup
+    // alone made the GPS auto-prefill flip this true and flash "No rides
+    // within 5 km" before the user has even entered a destination.
+    final hasSearch = ref.watch(
+          rideRequestProvider.select(
+              (s) => s.pickupLatLng != null && s.dropLatLng != null),
+        );
     final neededSeats =
         ref.watch(rideRequestProvider.select((s) => s.seats));
     final filtered = _filterBySeats(rides, neededSeats);
@@ -165,8 +248,10 @@ class _RidescreenState extends ConsumerState<Ridescreen> {
     // The instant they leave/cancel/complete, this flips and Find returns.
     final committed = myRides.isNotEmpty;
 
-    return SafeArea(
-      child: RefreshIndicator(
+    return Stack(
+      children: [
+        SafeArea(
+          child: RefreshIndicator(
         color: Consonants.primaryColor,
         onRefresh: () async {
           // Refresh both: myRides decides which view shows, availableRides
@@ -212,7 +297,23 @@ class _RidescreenState extends ConsumerState<Ridescreen> {
             ],
           ),
         ),
-      ),
+          ),
+        ),
+        // Floating, real-time request card over the ride page (inDrive style):
+        // incoming join requests / driver offers with Accept/Decline inline.
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: EdgeInsets.only(top: 8.h),
+              child: const FloatingRequestBanner(),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -448,22 +549,107 @@ class _RidescreenState extends ConsumerState<Ridescreen> {
     }
     if (filtered.isEmpty) return const _NoNearbyState();
 
+    final sorted = _sortRides(filtered);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (int i = 0; i < filtered.length; i++) ...[
+        Row(
+          children: [
+            Expanded(child: _sortBar()),
+            SizedBox(width: 8.w),
+            _mapButton(sorted),
+            SizedBox(width: 20.w),
+          ],
+        ),
+        SizedBox(height: 12.h),
+        for (int i = 0; i < sorted.length; i++) ...[
           _FeaturedRideCard(
-            ride: filtered[i],
-            onViewRequest: () => _onJoinRide(filtered[i]),
+            ride: sorted[i],
+            onViewRequest: () => _onJoinRide(sorted[i]),
             onDecline: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                CustomWidgets.customErrorSnackBar("Ride declined"),
-              );
+              setState(() => _dismissed.add(sorted[i].id));
+              ScaffoldMessenger.of(context)
+                ..hideCurrentSnackBar()
+                ..showSnackBar(
+                  CustomWidgets.customErrorSnackBar("Ride dismissed"),
+                );
             },
           ),
-          if (i != filtered.length - 1) SizedBox(height: 14.h),
+          if (i != sorted.length - 1) SizedBox(height: 14.h),
         ],
       ],
+    );
+  }
+
+  /// Opens the nearby-rides map; tapping a pin joins that ride.
+  Widget _mapButton(List<AvailableRide> rides) {
+    return GestureDetector(
+      onTap: () => Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => NearbyRidesMapScreen(
+          rides: rides,
+          title: 'Nearby rides',
+          onTapRide: _onJoinRide,
+        ),
+      )),
+      child: Container(
+        height: 34.h,
+        padding: EdgeInsets.symmetric(horizontal: 12.w),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: Consonants.primaryColor,
+          borderRadius: BorderRadius.circular(20.r),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.map_rounded, size: 14.sp, color: Consonants.whiteColor),
+            SizedBox(width: 5.w),
+            CustomWidgets.customText(
+                'Map', 11.sp, Consonants.whiteColor, FontWeight.w700),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Horizontal chip row to reorder the results.
+  Widget _sortBar() {
+    return SizedBox(
+      height: 34.h,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: EdgeInsets.symmetric(horizontal: 20.w),
+        itemCount: _RideSort.values.length,
+        separatorBuilder: (_, __) => SizedBox(width: 8.w),
+        itemBuilder: (_, i) {
+          final s = _RideSort.values[i];
+          final selected = s == _sort;
+          return GestureDetector(
+            onTap: () => setState(() => _sort = s),
+            child: Container(
+              alignment: Alignment.center,
+              padding: EdgeInsets.symmetric(horizontal: 14.w),
+              decoration: BoxDecoration(
+                color: selected
+                    ? Consonants.primaryColor
+                    : Consonants.whiteColor,
+                borderRadius: BorderRadius.circular(20.r),
+                border: Border.all(
+                  color: selected
+                      ? Consonants.primaryColor
+                      : Consonants.lightGreyColor,
+                ),
+              ),
+              child: CustomWidgets.customText(
+                s.label,
+                11.sp,
+                selected ? Consonants.whiteColor : Consonants.greyColor,
+                FontWeight.w700,
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -1077,10 +1263,71 @@ class _FeaturedRideCard extends StatelessWidget {
   String get avgRating => ride.hostRating?.toStringAsFixed(1) ?? '—';
   String get pickup => ride.pickup;
   String get drop => ride.drop;
-  int get seats => ride.seatsAvailable;
+  int get riders => ride.ridersJoined;
   LatLng? get pickupLatLng => LatLng(ride.pickupLat, ride.pickupLng);
   LatLng? get dropLatLng => LatLng(ride.dropLat, ride.dropLng);
   String? get hostGender => ride.hostGender;
+
+  static const _months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+  ];
+
+  String get _scheduledLabel {
+    final dt = ride.departureTime!;
+    final h = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+    final m = dt.minute.toString().padLeft(2, '0');
+    final ap = dt.hour < 12 ? 'AM' : 'PM';
+    return '${_months[dt.month - 1]} ${dt.day}, $h:$m $ap';
+  }
+
+  /// A row of quick facts under the stats: a scheduled-departure badge (when
+  /// set) and the trip's length / the distance to the pickup.
+  Widget _metaRow() {
+    final chips = <Widget>[];
+    if (ride.isScheduled) {
+      chips.add(_metaChip(Icons.schedule_rounded, _scheduledLabel, accent: true));
+    } else {
+      chips.add(_metaChip(Icons.bolt_rounded, 'Leave now'));
+    }
+    if (ride.tripDistanceKm != null) {
+      chips.add(_metaChip(Icons.straighten_rounded,
+          '${ride.tripDistanceKm!.toStringAsFixed(1)} km trip'));
+    }
+    if (ride.tripDurationMin != null) {
+      chips.add(_metaChip(Icons.access_time_rounded, '${ride.tripDurationMin} min'));
+    }
+    if (ride.distanceKm != null) {
+      chips.add(_metaChip(Icons.near_me_rounded,
+          '${ride.distanceKm!.toStringAsFixed(1)} km away'));
+    }
+    return Padding(
+      padding: EdgeInsets.only(top: 12.h),
+      child: Wrap(spacing: 8.w, runSpacing: 8.h, children: chips),
+    );
+  }
+
+  Widget _metaChip(IconData icon, String label, {bool accent = false}) {
+    final fg = accent ? Consonants.primaryColor : Consonants.greyColor;
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 6.h),
+      decoration: BoxDecoration(
+        color: accent
+            ? Consonants.lightBlueColor
+            : Consonants.scaffoldBackgroundColor,
+        borderRadius: BorderRadius.circular(20.r),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13.sp, color: fg),
+          SizedBox(width: 4.w),
+          CustomWidgets.customText(
+              label, 10.5.sp, fg, FontWeight.w700, maxLines: 1),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1105,17 +1352,7 @@ class _FeaturedRideCard extends StatelessWidget {
             child: Column(
               children: [
                 _statsPills(),
-                SizedBox(height: 14.h),
-                Container(height: 1, color: Consonants.lightGreyColor),
-                SizedBox(height: 14.h),
-                _routeTimeline(),
-                SizedBox(height: 14.h),
-                _LiveDistanceStrip(
-                  pickupLatLng: pickupLatLng,
-                  dropLatLng: dropLatLng,
-                  fallbackDistance: distance,
-                  fallbackMinutes: minutes,
-                ),
+                _metaRow(),
                 SizedBox(height: 16.h),
                 _actionButtons(),
               ],
@@ -1285,7 +1522,7 @@ class _FeaturedRideCard extends StatelessWidget {
         Expanded(
           child: _statTile(
             icon: Icons.people_alt_rounded,
-            value: "$seats",
+            value: "$riders",
             label: "Riders",
           ),
         ),
@@ -1324,109 +1561,6 @@ class _FeaturedRideCard extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-
-  // ─── Route timeline (start → destination) ───────────────
-  Widget _routeTimeline() {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Column(
-          children: [
-            Container(
-              width: 12.w,
-              height: 12.w,
-              decoration: BoxDecoration(
-                color: Consonants.whiteColor,
-                shape: BoxShape.circle,
-                border:
-                    Border.all(color: Consonants.primaryColor, width: 2.5),
-              ),
-            ),
-            Container(
-              width: 2.w,
-              height: 26.h,
-              color: Consonants.lightGreyColor,
-            ),
-            Icon(Icons.location_on_rounded,
-                size: 14.sp, color: const Color(0xffEF4444)),
-          ],
-        ),
-        SizedBox(width: 12.w),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  CustomWidgets.customText(
-                    "First pickup",
-                    9.sp,
-                    Consonants.greyColor,
-                    FontWeight.w600,
-                  ),
-                  SizedBox(width: 6.w),
-                  Container(
-                    padding: EdgeInsets.symmetric(
-                        horizontal: 6.w, vertical: 1.5.h),
-                    decoration: BoxDecoration(
-                      color: Consonants.lightBlueColor,
-                      borderRadius: BorderRadius.circular(20.r),
-                    ),
-                    child: CustomWidgets.customText(
-                      "START",
-                      8.sp,
-                      Consonants.primaryColor,
-                      FontWeight.w800,
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: 2.h),
-              CustomWidgets.customText(
-                pickup,
-                12.sp,
-                Consonants.boldTextColor,
-                FontWeight.w700,
-              ),
-              SizedBox(height: 14.h),
-              Row(
-                children: [
-                  CustomWidgets.customText(
-                    "Final drop-off",
-                    9.sp,
-                    Consonants.greyColor,
-                    FontWeight.w600,
-                  ),
-                  SizedBox(width: 6.w),
-                  Container(
-                    padding: EdgeInsets.symmetric(
-                        horizontal: 6.w, vertical: 1.5.h),
-                    decoration: BoxDecoration(
-                      color: const Color(0xffFEE2E2),
-                      borderRadius: BorderRadius.circular(20.r),
-                    ),
-                    child: CustomWidgets.customText(
-                      "END",
-                      8.sp,
-                      const Color(0xffEF4444),
-                      FontWeight.w800,
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: 2.h),
-              CustomWidgets.customText(
-                drop,
-                12.sp,
-                Consonants.boldTextColor,
-                FontWeight.w700,
-              ),
-            ],
-          ),
-        ),
-      ],
     );
   }
 
@@ -1498,82 +1632,6 @@ class _FeaturedRideCard extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-// ─────────────────── LIVE DISTANCE / DURATION STRIP ──────────────────
-// When pickup/drop coordinates are known we hit the Directions API for
-// real km + min via [directionsProvider]; while loading we render the
-// caller-supplied fallback (the static demo numbers) so the card never
-// flashes empty. On any error we also fall back so a missing API key
-// can't blank out the screen.
-
-class _LiveDistanceStrip extends ConsumerWidget {
-  final LatLng? pickupLatLng;
-  final LatLng? dropLatLng;
-  final String fallbackDistance; // e.g. "12.4"
-  final int fallbackMinutes;
-
-  const _LiveDistanceStrip({
-    required this.pickupLatLng,
-    required this.dropLatLng,
-    required this.fallbackDistance,
-    required this.fallbackMinutes,
-  });
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    String distanceText = "$fallbackDistance km";
-    String minutesText = "$fallbackMinutes min";
-
-    if (pickupLatLng != null && dropLatLng != null) {
-      final async = ref.watch(directionsProvider(DirectionsRequest(
-        origin: pickupLatLng!,
-        destination: dropLatLng!,
-      )));
-      async.whenData((r) {
-        distanceText = "${r.distanceKm.toStringAsFixed(1)} km";
-        minutesText = "${r.durationMinutes} min";
-      });
-    }
-
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
-      decoration: BoxDecoration(
-        color: Consonants.lightBlueColor,
-        borderRadius: BorderRadius.circular(12.r),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.straighten_rounded,
-              size: 14.sp, color: Consonants.primaryColor),
-          SizedBox(width: 6.w),
-          CustomWidgets.customText(
-            distanceText,
-            11.sp,
-            Consonants.boldTextColor,
-            FontWeight.w800,
-          ),
-          SizedBox(width: 4.w),
-          CustomWidgets.customText(
-            "total distance",
-            10.sp,
-            Consonants.greyColor,
-            FontWeight.w500,
-          ),
-          const Spacer(),
-          Icon(Icons.access_time_rounded,
-              size: 12.sp, color: Consonants.primaryColor),
-          SizedBox(width: 4.w),
-          CustomWidgets.customText(
-            minutesText,
-            11.sp,
-            Consonants.primaryColor,
-            FontWeight.w800,
-          ),
-        ],
-      ),
     );
   }
 }

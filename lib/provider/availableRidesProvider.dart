@@ -19,10 +19,16 @@ import 'package:ride_sharing/provider/rideRequestProvider.dart';
 /// of an unbounded global list.
 final availableRidesProvider =
     FutureProvider<List<AvailableRide>>((ref) async {
-  final pickup = ref.read(rideRequestProvider).pickupLatLng;
+  final req = ref.read(rideRequestProvider);
+  final pickup = req.pickupLatLng;
   if (pickup == null) return const [];
+  // Pass the destination too when set, so the backend keeps only rides going
+  // the same way (route overlap) and ranks them best-match first.
+  final drop = req.dropLatLng;
   return ref.read(rideServiceProvider).getAvailableRides(
         lat: pickup.latitude,
         lng: pickup.longitude,
+        dropLat: drop?.latitude,
+        dropLng: drop?.longitude,
       );
 });

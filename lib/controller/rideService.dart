@@ -59,10 +59,26 @@ class Rideservice {
   }
 
   /// Cancels a ride the authenticated user hosts. Throws if the user
-  /// isn't the host (backend should return 403/404). Body intentionally
-  /// empty — the URL path identifies the ride.
-  Future<void> cancelRide(String id) async {
-    await apiclient.post(Apiconsonants.cancelRideEndpoint(id), const {});
+  /// isn't the host (backend should return 403/404). Cancelling is free
+  /// until the driver reaches the pickup (ride ARRIVED); after that the
+  /// returned [CancellationResult] carries the flat fee recorded.
+  Future<CancellationResult> cancelRide(String id, {String? reason}) async {
+    final json = await apiclient.post(
+      Apiconsonants.cancelRideEndpoint(id),
+      {if (reason != null && reason.trim().isNotEmpty) 'reason': reason.trim()},
+    );
+    if (json is Map<String, dynamic>) {
+      return CancellationResult.fromJson(json);
+    }
+    // Older/empty response — treat as a free cancellation.
+    return const CancellationResult(fee: 0, currency: 'PKR', strikeCount: 0);
+  }
+
+  /// Host publishes the ride to the driver feed (drivers can then accept it,
+  /// even if all passenger seats are taken). Backend rejects if the caller
+  /// isn't the host or the ride is no longer PENDING.
+  Future<void> publishRide(String id) async {
+    await apiclient.post(Apiconsonants.publishRideEndpoint(id), const {});
   }
 
   /// Requests to join a ride — this does NOT add the rider; the host gets a
@@ -78,6 +94,7 @@ class Rideservice {
     String? drop,
     double? dropLat,
     double? dropLng,
+    int? seats,
   }) async {
     await apiclient.post(Apiconsonants.joinRideEndpoint(id), {
       if (pickup != null) 'pickup': pickup,
@@ -86,6 +103,7 @@ class Rideservice {
       if (drop != null) 'drop': drop,
       if (dropLat != null) 'dropLat': dropLat,
       if (dropLng != null) 'dropLng': dropLng,
+      if (seats != null) 'seats': seats,
     });
   }
 
@@ -93,6 +111,23 @@ class Rideservice {
   Future<void> acceptJoinRequest(String rideId, String requestId) async {
     await apiclient.post(
       Apiconsonants.acceptJoinRequestEndpoint(rideId, requestId),
+      const {},
+    );
+  }
+
+  /// Host accepts a driver's offer — that driver is assigned and the ride
+  /// moves to ACCEPTED.
+  Future<void> acceptDriverOffer(String rideId, String offerId) async {
+    await apiclient.post(
+      Apiconsonants.acceptDriverOfferEndpoint(rideId, offerId),
+      const {},
+    );
+  }
+
+  /// Host declines a driver's offer.
+  Future<void> declineDriverOffer(String rideId, String offerId) async {
+    await apiclient.post(
+      Apiconsonants.declineDriverOfferEndpoint(rideId, offerId),
       const {},
     );
   }
@@ -120,9 +155,12 @@ class Rideservice {
   Future<List<AvailableRide>> getAvailableRides({
     double? lat,
     double? lng,
+    double? dropLat,
+    double? dropLng,
   }) async {
     final json = await apiclient.get(
-      Apiconsonants.availableRidesEndpoint(lat: lat, lng: lng),
+      Apiconsonants.availableRidesEndpoint(
+          lat: lat, lng: lng, dropLat: dropLat, dropLng: dropLng),
     );
     if (json is! List) return const [];
     return json
@@ -149,19 +187,61 @@ class Rideservice {
         .toList(growable: false);
   }
 
-  /// Claims a PENDING ride as its driver. Throws (via `ApiException`)
-  /// when the ride was just taken, is the driver's own ride, or the
-  /// driver already has an active ride — the 409 message surfaces in
-  /// the UI. Body intentionally empty; the path identifies the ride.
-  Future<RideResponse> acceptRide(String id) async {
+  /// Driver OFFERS to drive a PENDING ride — does NOT assign them. The host
+  /// gets a notification to accept or decline. Throws (via `ApiException`)
+  /// when the ride was just taken, is the driver's own ride, a duplicate
+  /// offer, or the driver already has an active ride — the 409 message
+  /// surfaces in the UI. Body intentionally empty; the path identifies the ride.
+  Future<void> offerToDrive(String id) async {
+    await apiclient.post(
+      Apiconsonants.offerToDriveEndpoint(id),
+      const {},
+    );
+  }
+
+  /// Driver dismisses a ride from their feed — recorded so it stays hidden
+  /// for them on later polls.
+  Future<void> driverDeclineRide(String id) async {
+    await apiclient.post(Apiconsonants.driverDeclineRideEndpoint(id), const {});
+  }
+
+  /// Assigned driver marks a rider as picked up (in the vehicle).
+  Future<void> markRiderPickedUp(String rideId, String riderId) async {
+    await apiclient.post(
+        Apiconsonants.riderPickupEndpoint(rideId, riderId), const {});
+  }
+
+  /// Assigned driver drops a rider at their stop — settles their cash fare.
+  Future<void> markRiderDroppedOff(String rideId, String riderId) async {
+    await apiclient.post(
+        Apiconsonants.riderDropoffEndpoint(rideId, riderId), const {});
+  }
+
+  /// Report another user for misconduct on a ride.
+  Future<void> reportUser(String rideId, String reportedUserId,
+      {String? reason}) async {
+    await apiclient.post(Apiconsonants.reportUserEndpoint(rideId), {
+      'reportedUserId': reportedUserId,
+      if (reason != null && reason.trim().isNotEmpty) 'reason': reason.trim(),
+    });
+  }
+
+  /// Block another user — they no longer appear in each other's matching.
+  Future<void> blockUser(String userId) async {
+    await apiclient.post(Apiconsonants.blockUserEndpoint(userId), const {});
+  }
+
+  /// Moves an ACCEPTED ride → ARRIVED (driver reached the pickup). Only the
+  /// assigned driver may call; every rider's screen flips to "driver arrived".
+  Future<RideResponse> arriveRide(String id) async {
     final json = await apiclient.post(
-      Apiconsonants.acceptRideEndpoint(id),
+      Apiconsonants.arriveRideEndpoint(id),
       const {},
     );
     return RideResponse.fromJson(json as Map<String, dynamic>);
   }
 
-  /// Moves an ACCEPTED ride → STARTED. Only the assigned driver may call.
+  /// Moves an ACCEPTED/ARRIVED ride → STARTED. Only the assigned driver may call.
   Future<RideResponse> startRide(String id) async {
     final json = await apiclient.post(
       Apiconsonants.startRideEndpoint(id),
@@ -177,6 +257,28 @@ class Rideservice {
       const {},
     );
     return RideResponse.fromJson(json as Map<String, dynamic>);
+  }
+
+  /// A ride's cash fare ledger — one entry per rider. Any member may read it
+  /// (driver collects; riders see their own paid state).
+  Future<List<RidePaymentEntry>> getRidePayments(String id) async {
+    final json = await apiclient.get(Apiconsonants.ridePaymentsEndpoint(id));
+    if (json is List) {
+      return json
+          .whereType<Map<String, dynamic>>()
+          .map(RidePaymentEntry.fromJson)
+          .toList();
+    }
+    return const [];
+  }
+
+  /// The assigned driver confirms they collected a rider's cash fare.
+  Future<RidePaymentEntry> collectPayment(String id, String riderId) async {
+    final json = await apiclient.post(
+      Apiconsonants.collectPaymentEndpoint(id, riderId),
+      const {},
+    );
+    return RidePaymentEntry.fromJson(json as Map<String, dynamic>);
   }
 
   /// The assigned driver backs out — the ride re-opens (PENDING) for

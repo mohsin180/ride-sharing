@@ -6,6 +6,7 @@ import 'package:ride_sharing/model/rideModels.dart';
 import 'package:ride_sharing/provider/directionsProvider.dart';
 import 'package:ride_sharing/provider/passengerActiveRideProvider.dart';
 import 'package:ride_sharing/provider/providers.dart';
+import 'package:ride_sharing/provider/rideTrackingProvider.dart';
 import 'package:ride_sharing/view/bottomNavbar.dart' show bottomNavIndexProvider;
 import 'package:ride_sharing/view/driverScreens/driverChatDetail.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
@@ -14,7 +15,7 @@ import 'package:ride_sharing/widgets/consonants/jwtUtils.dart';
 import 'package:ride_sharing/widgets/consonants/tokenStorage.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
 import 'package:ride_sharing/widgets/custom/liveTrackingMap.dart';
-import 'package:share_plus/share_plus.dart';
+import 'package:ride_sharing/widgets/custom/ratingSheet.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// Index of the "Your Ride" tab inside [bottomNavIndexProvider]. Used to
@@ -30,15 +31,17 @@ const int _kRideTabIndex = 1;
 /// perspective.
 ///
 /// Shown while a passenger has an accepted ride: live route map up top,
-/// a status banner that flips through phases, a driver/vehicle focus
-/// card with quick actions, a trip strip and a sticky CTA that mirrors
-/// the user's natural next action ("Driver arrived" → "I'm in the car"
-/// → "I've reached"). When there's no active ride the tab falls back
-/// to a clean empty state with a shortcut into the Ride tab.
+/// a status banner that reflects the trip phase, a driver/vehicle focus
+/// card with quick actions, a trip strip and a sticky bar (cancel before
+/// the trip moves, a passive status once it's underway). When there's no
+/// active ride the tab falls back to a clean empty state with a shortcut
+/// into the Ride tab.
 ///
-/// State is local for now (`_demoActive`, `_phase`) — same approach as
-/// the driver counterpart. Lift into a provider once the rides API
-/// lands so other tabs can react to the in-progress trip.
+/// The phase is DERIVED from the ride's real backend status
+/// (`_phaseFor(ride.status)`): ACCEPTED → driver en route, ARRIVED →
+/// driver arrived, STARTED → in transit. The driver drives the real
+/// state machine; this screen only mirrors it (updated on the active-trip
+/// provider's poll).
 class Passengeryourride extends ConsumerStatefulWidget {
   const Passengeryourride({super.key});
 
@@ -59,7 +62,24 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
   static const _pickup = LatLng(31.5142, 74.3625);
   static const _drop = LatLng(31.5290, 74.3500);
 
+  /// The trip phase shown to the passenger. This is a DERIVED cache of the
+  /// ride's real backend status (set at the top of [_activeRide] each build),
+  /// not something the passenger drives. The driver advances the real state
+  /// machine; the passenger's screen only reflects it.
   _RidePhase _phase = _RidePhase.driverEnRoute;
+
+  /// Map the authoritative backend ride status to the passenger-facing phase.
+  _RidePhase _phaseFor(RideStatus status) {
+    switch (status) {
+      case RideStatus.arrived:
+        return _RidePhase.driverArrived;
+      case RideStatus.started:
+        return _RidePhase.inTransit;
+      case RideStatus.accepted:
+      default:
+        return _RidePhase.driverEnRoute;
+    }
+  }
 
   /// True once the user has selected the "Your Ride" tab at least once.
   /// Same lazy-mount trick as the driver screen — keeps the GoogleMap
@@ -72,6 +92,13 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
 
   /// Guards the cancel call so a double-tap can't fire two requests.
   bool _cancelling = false;
+
+  /// Last active trip we saw, so when it leaves the active list (completed)
+  /// we can prompt this passenger to rate the driver + co-passengers.
+  RideDetails? _lastActiveRide;
+
+  /// Ride ids we've already shown the rating prompt for — never twice.
+  final Set<String> _ratedRides = {};
 
   late final AnimationController _pulse;
 
@@ -97,43 +124,16 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
     super.dispose();
   }
 
-  // ─── Phase machine ───────────────────────────────────────
-
-  void _advance() {
-    switch (_phase) {
-      case _RidePhase.driverEnRoute:
-        setState(() => _phase = _RidePhase.driverArrived);
-        break;
-      case _RidePhase.driverArrived:
-        setState(() => _phase = _RidePhase.inTransit);
-        break;
-      case _RidePhase.inTransit:
-        // "I've Reached" — a passenger can't complete the trip; only the
-        // driver does that server-side. This is a LOCAL acknowledgment
-        // only: advance the phase UI and confirm. The screen flips to its
-        // empty state once the driver marks the ride COMPLETED on the
-        // backend (the active-trip provider then returns no ride).
-        setState(() => _phase = _RidePhase.arrived);
-        _acknowledgeArrival();
-        break;
-      case _RidePhase.arrived:
-        break;
-    }
-  }
-
-  void _acknowledgeArrival() {
-    // No backend call — the driver completes the trip server-side. We just
-    // confirm the rider's arrival locally so the UI reflects it.
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        CustomWidgets.customSuccessSnackBar(
-          "Glad you've reached — the driver will close out the trip.",
-        ),
-      );
-  }
+  // ─── Cancellation ────────────────────────────────────────
 
   void _confirmCancel(RideDetails ride) {
+    // A fee applies only when the host cancels after the driver has already
+    // reached the pickup (ride ARRIVED). Everyone else / earlier is free.
+    final isHost = _myUserId != null && ride.host.id == _myUserId;
+    final feeApplies = isHost && ride.status == RideStatus.arrived;
+    final subtitle = feeApplies
+        ? "Your driver has already arrived, so a cancellation fee applies."
+        : "Frequent cancellations may affect your account.";
     showDialog<void>(
       context: context,
       barrierDismissible: true,
@@ -169,10 +169,10 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
                 ),
                 SizedBox(height: 6.h),
                 CustomWidgets.customText(
-                  "Frequent cancellations may affect your account.",
+                  subtitle,
                   11.sp,
-                  Consonants.greyColor,
-                  FontWeight.w500,
+                  feeApplies ? const Color(0xffEF4444) : Consonants.greyColor,
+                  feeApplies ? FontWeight.w700 : FontWeight.w500,
                   textAlign: TextAlign.center,
                   maxLines: 2,
                 ),
@@ -255,20 +255,23 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
     final isHost = _myUserId != null && ride.host.id == _myUserId;
     try {
       final service = ref.read(rideServiceProvider);
+      CancellationResult? result;
       if (isHost) {
-        await service.cancelRide(ride.id);
+        result = await service.cancelRide(ride.id);
       } else {
         await service.leaveRide(ride.id);
       }
       if (!mounted) return;
       ref.invalidate(passengerActiveRideProvider);
+      // If a fee was recorded (cancelled after the driver arrived), say so.
+      final message = result != null && result.hasFee
+          ? "Ride cancelled · ${result.feeLabel} fee applied"
+          : isHost
+              ? "Ride cancelled"
+              : "You left the ride";
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(
-          CustomWidgets.customSuccessSnackBar(
-            isHost ? "Ride cancelled" : "You left the ride",
-          ),
-        );
+        ..showSnackBar(CustomWidgets.customSuccessSnackBar(message));
       Navigator.of(context).maybePop();
     } catch (e) {
       if (!mounted) return;
@@ -279,18 +282,6 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
   }
 
   // ─── Action launches ────────────────────────────────────
-
-  /// Calls the driver. The button is hidden when there's no phone, so this
-  /// is only ever invoked with a non-null number — guard anyway.
-  Future<void> _callDriver(DriverInfo? driver) async {
-    final phone = driver?.phone;
-    if (phone == null || phone.isEmpty) {
-      _quickActionSnack("No phone number available for the driver");
-      return;
-    }
-    await _launch(Uri(scheme: 'tel', path: phone),
-        fallback: "Couldn't start the call");
-  }
 
   /// Emergency hotline (Pakistan Rescue 1122).
   Future<void> _emergencyCall() async {
@@ -318,38 +309,6 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
         ),
       ),
     );
-  }
-
-  /// External maps directions to the drop-off.
-  Future<void> _navigateToDrop(RideDetails ride) async {
-    final lat = ride.dropLat;
-    final lng = ride.dropLng;
-    if (lat == null || lng == null) {
-      _quickActionSnack("Drop-off location isn't available yet");
-      return;
-    }
-    final uri = Uri.parse(
-      "https://www.google.com/maps/dir/?api=1&destination=$lat,$lng",
-    );
-    await _launch(uri,
-        mode: LaunchMode.externalApplication,
-        fallback: "Couldn't open maps");
-  }
-
-  /// Shares the trip as text via the OS share sheet.
-  Future<void> _shareTrip(RideDetails ride) async {
-    final driverName = ride.driver?.displayName ?? "my driver";
-    final text =
-        "I'm on a SafeRide trip with $driverName.\n"
-        "From: ${ride.pickup}\n"
-        "To: ${ride.drop}";
-    try {
-      await SharePlus.instance.share(
-        ShareParams(text: text, subject: "My SafeRide trip"),
-      );
-    } catch (e) {
-      if (mounted) ErrorHandler.show(context, e);
-    }
   }
 
   /// Guarded `launchUrl` with a SnackBar fallback when the platform can't
@@ -384,25 +343,6 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
     }
   }
 
-  String get _ctaLabel {
-    switch (_phase) {
-      case _RidePhase.driverEnRoute:
-        return "Driver Arrived";
-      case _RidePhase.driverArrived:
-        return "I'm in the car";
-      case _RidePhase.inTransit:
-        return "I've Reached";
-      case _RidePhase.arrived:
-        return "Done";
-    }
-  }
-
-  /// True while the relevant focus location is the pickup. Switches to
-  /// the drop-off once the rider boards.
-  bool get _isPickupPhase =>
-      _phase == _RidePhase.driverEnRoute ||
-      _phase == _RidePhase.driverArrived;
-
   // ─── Build ───────────────────────────────────────────────
 
   @override
@@ -417,11 +357,34 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
       });
     }
 
-    // Real in-progress trip (ACCEPTED/STARTED) the passenger is on.
-    final ride = ref.watch(passengerActiveRideProvider).maybeWhen(
-          data: (rides) => rides.isNotEmpty ? rides.first : null,
-          orElse: () => null,
-        );
+    // Real in-progress trip (ACCEPTED/STARTED) the passenger is on. Use
+    // `.value` (not maybeWhen-data) so the screen keeps showing the trip
+    // during the 8s background refetch instead of flashing the empty state.
+    final activeRides =
+        ref.watch(passengerActiveRideProvider).value ?? const <RideDetails>[];
+    final ride = activeRides.isNotEmpty ? activeRides.first : null;
+
+    // When the active trip disappears after having STARTED, it just completed
+    // — prompt this passenger to rate the driver + co-passengers (once).
+    ref.listen<AsyncValue<List<RideDetails>>>(passengerActiveRideProvider,
+        (prev, next) {
+      final list = next.value;
+      if (list == null) return; // first load still in flight
+      final current = list.isNotEmpty ? list.first : null;
+      if (current != null) {
+        _lastActiveRide = current;
+        return;
+      }
+      final finished = _lastActiveRide;
+      _lastActiveRide = null;
+      if (finished == null || _ratedRides.contains(finished.id)) return;
+      // Only after a trip that actually started (not a cancelled-before-start).
+      if (finished.status != RideStatus.started) return;
+      _ratedRides.add(finished.id);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _promptRideRatings(finished);
+      });
+    });
 
     return Scaffold(
       backgroundColor: Consonants.scaffoldBackgroundColor,
@@ -429,9 +392,196 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
     );
   }
 
+  /// After a completed trip: rate the driver, then each co-passenger. Each
+  /// prompt is skippable; a failed submit is swallowed so one error doesn't
+  /// block the rest.
+  Future<void> _promptRideRatings(RideDetails ride) async {
+    if (ride.driver != null) {
+      final stars = await showRatingSheet(
+        context: context,
+        title: 'Rate your driver',
+        subtitle: 'How was your trip?',
+      );
+      if (stars != null) {
+        try {
+          await ref.read(rideServiceProvider).rateDriver(ride.id, stars);
+        } catch (_) {}
+      }
+    }
+    if (!mounted) return;
+    for (final c in ride.coPassengers) {
+      if (!mounted || c.id.isEmpty) continue;
+      final name = c.name.trim().isEmpty ? 'co-passenger' : c.name.trim();
+      final stars = await showRatingSheet(
+        context: context,
+        title: 'Rate $name',
+        subtitle: 'How was riding with them?',
+        avatarInitial: name[0].toUpperCase(),
+      );
+      if (stars != null) {
+        try {
+          await ref.read(rideServiceProvider).rateCoPassenger(ride.id, c.id, stars);
+        } catch (_) {}
+      }
+    }
+  }
+
+  // ─── Co-riders (matches the driver's remaining-passengers section) ──
+  Widget _coRidersHeader(int count) {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 4.w),
+      child: Row(
+        children: [
+          CustomWidgets.customText(
+              "CO-RIDERS", 10.sp, Consonants.greyColor, FontWeight.w800),
+          SizedBox(width: 6.w),
+          CustomWidgets.customText(
+              "($count)", 10.sp, Consonants.greyColor, FontWeight.w600),
+          SizedBox(width: 10.w),
+          Expanded(
+              child: Container(height: 1, color: Consonants.lightGreyColor)),
+        ],
+      ),
+    );
+  }
+
+  Widget _coRiderTile(RideCoPassenger c) {
+    final name = c.name.trim().isEmpty ? "Passenger" : c.name.trim();
+    final rating = (c.rating != null && c.rating! > 0)
+        ? c.rating!.toStringAsFixed(1)
+        : "New";
+    return GestureDetector(
+      onTap: () => _showCoRiderDetails(c),
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
+        decoration: BoxDecoration(
+          color: Consonants.whiteColor,
+          borderRadius: BorderRadius.circular(14.r),
+          border: Border.all(color: Consonants.lightGreyColor),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 36.w,
+              height: 36.w,
+              alignment: Alignment.center,
+              decoration: const BoxDecoration(
+                color: Consonants.primaryColor,
+                shape: BoxShape.circle,
+              ),
+              child: CustomWidgets.customText(name[0].toUpperCase(), 14.sp,
+                  Consonants.whiteColor, FontWeight.w800),
+            ),
+            SizedBox(width: 10.w),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  CustomWidgets.customText(
+                      name, 12.sp, Consonants.boldTextColor, FontWeight.w700,
+                      maxLines: 1),
+                  SizedBox(height: 2.h),
+                  Row(
+                    children: [
+                      Icon(Icons.star_rounded,
+                          size: 11.sp, color: const Color(0xffF5B800)),
+                      SizedBox(width: 4.w),
+                      CustomWidgets.customText(
+                          rating, 10.sp, Consonants.greyColor, FontWeight.w500),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(width: 8.w),
+            Icon(Icons.chevron_right_rounded,
+                size: 18.sp, color: Consonants.greyColor),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showCoRiderDetails(RideCoPassenger c) {
+    final name = c.name.trim().isEmpty ? "Passenger" : c.name.trim();
+    final rating = (c.rating != null && c.rating! > 0)
+        ? c.rating!.toStringAsFixed(1)
+        : "New";
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => Container(
+        decoration: BoxDecoration(
+          color: Consonants.whiteColor,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24.r)),
+        ),
+        padding: EdgeInsets.fromLTRB(20.w, 12.h, 20.w, 28.h),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Center(
+              child: Container(
+                height: 5.h,
+                width: 44.w,
+                decoration: BoxDecoration(
+                  color: Consonants.lightGreyColor,
+                  borderRadius: BorderRadius.circular(4.r),
+                ),
+              ),
+            ),
+            SizedBox(height: 18.h),
+            Row(
+              children: [
+                Container(
+                  width: 52.w,
+                  height: 52.w,
+                  alignment: Alignment.center,
+                  decoration: const BoxDecoration(
+                    color: Consonants.primaryColor,
+                    shape: BoxShape.circle,
+                  ),
+                  child: CustomWidgets.customText(name[0].toUpperCase(), 20.sp,
+                      Consonants.whiteColor, FontWeight.w800),
+                ),
+                SizedBox(width: 14.w),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      CustomWidgets.customText(name, 16.sp,
+                          Consonants.boldTextColor, FontWeight.w800,
+                          maxLines: 1),
+                      SizedBox(height: 4.h),
+                      Row(
+                        children: [
+                          Icon(Icons.star_rounded,
+                              size: 14.sp, color: const Color(0xffF5B800)),
+                          SizedBox(width: 4.w),
+                          CustomWidgets.customText(rating, 12.sp,
+                              Consonants.greyColor, FontWeight.w600),
+                          SizedBox(width: 8.w),
+                          CustomWidgets.customText("Co-rider", 10.sp,
+                              Consonants.primaryColor, FontWeight.w700),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // ─── Active ride layout ─────────────────────────────────
 
   Widget _activeRide(RideDetails ride) {
+    // Derive the passenger-facing phase from the authoritative ride status,
+    // so the banner/chip below track what the driver actually did.
+    _phase = _phaseFor(ride.status);
     final hasCoords = ride.pickupLat != null &&
         ride.pickupLng != null &&
         ride.dropLat != null &&
@@ -464,6 +614,10 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
                   pickup: pickupLL,
                   drop: dropLL,
                   myRole: 'PASSENGER',
+                  // Show the full multi-stop route (all co-passengers) in
+                  // shortest order, matching the driver's map.
+                  stops: ride.stops,
+                  hostId: ride.host.id,
                 )
               : _mapLoadingPlaceholder(),
         ),
@@ -506,13 +660,28 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
                     physics: const BouncingScrollPhysics(),
                     padding: EdgeInsets.symmetric(horizontal: 16.w),
                     children: [
+                      // Below-map layout mirrors the driver's active-ride
+                      // cockpit: status band → focus card → trip strip →
+                      // co-riders list. (The full route is on the map now, so
+                      // the old text route card is dropped — same as the driver.)
                       _statusBand(),
                       SizedBox(height: 12.h),
                       _driverCard(ride),
                       SizedBox(height: 12.h),
                       _tripStrip(ride, pickupLL, dropLL),
-                      SizedBox(height: 14.h),
-                      _routeCard(ride),
+                      if (ride.fare != null) ...[
+                        SizedBox(height: 12.h),
+                        _cashPaymentHint(ride),
+                      ],
+                      if (ride.coPassengers.isNotEmpty) ...[
+                        SizedBox(height: 18.h),
+                        _coRidersHeader(ride.coPassengers.length),
+                        SizedBox(height: 8.h),
+                        for (final c in ride.coPassengers) ...[
+                          _coRiderTile(c),
+                          SizedBox(height: 8.h),
+                        ],
+                      ],
                       SizedBox(height: 14.h),
                       _safetyTile(),
                       SizedBox(height: 16.h),
@@ -736,7 +905,6 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
   }
 
   Widget _driverDetails(RideDetails ride, DriverInfo driver) {
-    final hasPhone = driver.phone != null && driver.phone!.isNotEmpty;
     final carInfo = driver.carInfo?.trim() ?? '';
 
     return Column(
@@ -868,46 +1036,68 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
           ),
         ],
         SizedBox(height: 14.h),
+        // Message the driver, and call them directly when a phone is on file.
         Row(
           children: [
-            if (hasPhone) ...[
-              Expanded(
-                child: _quickAction(
-                  icon: Icons.phone_rounded,
-                  label: "Call",
-                  onTap: () => _callDriver(driver),
+            Expanded(
+              child: GestureDetector(
+                onTap: () => _openChat(ride),
+                child: Container(
+                  height: 46.h,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Consonants.primaryColor, Color(0xff5AC8FA)],
+                    ),
+                    borderRadius: BorderRadius.circular(12.r),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Consonants.primaryColor.withValues(alpha: 0.25),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.chat_bubble_outline_rounded,
+                          size: 16.sp, color: Consonants.whiteColor),
+                      SizedBox(width: 8.w),
+                      CustomWidgets.customText("Message driver", 13.sp,
+                          Consonants.whiteColor, FontWeight.w800),
+                    ],
+                  ),
                 ),
               ),
-              SizedBox(width: 8.w),
+            ),
+            if ((ride.driver?.phone ?? '').trim().isNotEmpty) ...[
+              SizedBox(width: 10.w),
+              GestureDetector(
+                onTap: () => _callDriver(ride.driver!.phone!),
+                child: Container(
+                  height: 46.h,
+                  width: 46.h,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: Consonants.primaryGreenColor,
+                    borderRadius: BorderRadius.circular(12.r),
+                  ),
+                  child: Icon(Icons.call_rounded,
+                      size: 20.sp, color: const Color(0xff15803D)),
+                ),
+              ),
             ],
-            Expanded(
-              child: _quickAction(
-                icon: Icons.chat_bubble_outline_rounded,
-                label: "Message",
-                onTap: () => _openChat(ride),
-              ),
-            ),
-            SizedBox(width: 8.w),
-            Expanded(
-              child: _quickAction(
-                icon: Icons.navigation_rounded,
-                label: "Navigate",
-                onTap: () => _navigateToDrop(ride),
-              ),
-            ),
-            SizedBox(width: 8.w),
-            Expanded(
-              child: _quickAction(
-                icon: Icons.ios_share_rounded,
-                label: "Share",
-                onTap: () => _shareTrip(ride),
-                primary: true,
-              ),
-            ),
           ],
         ),
       ],
     );
+  }
+
+  /// Dial the driver's phone (only shown when a number is on file).
+  Future<void> _callDriver(String phone) async {
+    await _launch(Uri(scheme: 'tel', path: phone.trim()),
+        fallback: "Couldn't start the call");
   }
 
   Widget _phaseChip() {
@@ -948,75 +1138,90 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
     );
   }
 
-  Widget _quickAction({
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-    bool primary = false,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: EdgeInsets.symmetric(vertical: 10.h),
-        decoration: BoxDecoration(
-          gradient: primary
-              ? const LinearGradient(
-                  colors: [Consonants.primaryColor, Color(0xff5AC8FA)],
-                )
-              : null,
-          color: primary ? null : Consonants.scaffoldBackgroundColor,
-          borderRadius: BorderRadius.circular(12.r),
-          boxShadow: primary
-              ? [
-                  BoxShadow(
-                    color: Consonants.primaryColor.withValues(alpha: 0.25),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ]
-              : null,
-        ),
-        child: Column(
-          children: [
-            Icon(
-              icon,
-              size: 18.sp,
-              color:
-                  primary ? Consonants.whiteColor : Consonants.boldTextColor,
-            ),
-            SizedBox(height: 4.h),
-            CustomWidgets.customText(
-              label,
-              10.sp,
-              primary ? Consonants.whiteColor : Consonants.boldTextColor,
-              FontWeight.w700,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   void _quickActionSnack(String message) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(CustomWidgets.customSuccessSnackBar(message));
   }
 
+  /// Cash-payment prompt: what this rider owes the driver, in cash. Payment is
+  /// settled in person; the driver confirms collection at the end of the trip.
+  Widget _cashPaymentHint(RideDetails ride) {
+    final fare = ride.fare!;
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
+      decoration: BoxDecoration(
+        color: const Color(0xffF0FDF4),
+        borderRadius: BorderRadius.circular(14.r),
+        border: Border.all(color: const Color(0xffBBF7D0)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.payments_rounded,
+              size: 20.sp, color: const Color(0xff15803D)),
+          SizedBox(width: 10.w),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                CustomWidgets.customText(
+                  "Pay ${fare.format(fare.perRider)} in cash",
+                  13.sp,
+                  const Color(0xff15803D),
+                  FontWeight.w800,
+                  maxLines: 1,
+                ),
+                SizedBox(height: 2.h),
+                CustomWidgets.customText(
+                  "Hand it to your driver at drop-off.",
+                  11.sp,
+                  Consonants.greyColor,
+                  FontWeight.w500,
+                  maxLines: 1,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _tripStrip(RideDetails ride, LatLng pickup, LatLng drop) {
-    // Real km + min from the routing provider, falling back to the static
-    // demo numbers while the request is loading or if it errors (mirrors
-    // _LiveDistanceStrip in rideScreen.dart).
     final fare = ride.fare;
     final fareValue = fare != null ? fare.format(fare.perRider) : "—";
 
     return Consumer(
       builder: (context, ref, _) {
-        String distanceValue = "12.4 km";
-        String durationValue = "32 min";
+        // Live ETA: measure from the driver's CURRENT position to the point
+        // that matters now — the pickup while they're on the way, the drop
+        // once the trip is rolling. Updates as the driver moves. Falls back to
+        // the static pickup→drop route until the driver's location is known.
+        final tracking = ref
+            .watch(rideTrackingProvider(RideTrackArgs(ride.id, 'PASSENGER')))
+            .asData
+            ?.value;
+        final driverPos = tracking?.driver?.position;
+        // With a live driver fix: measure from the driver to the point that
+        // matters now (pickup while en route, drop once rolling). WITHOUT one:
+        // fall back to the whole pickup→drop trip route — never pickup→pickup,
+        // which would show a meaningless "0.0 km / 0 min".
+        final LatLng origin;
+        final LatLng target;
+        if (driverPos != null) {
+          // Round to ~110 m so the route only refetches on meaningful movement.
+          origin = LatLng((driverPos.latitude * 1000).roundToDouble() / 1000,
+              (driverPos.longitude * 1000).roundToDouble() / 1000);
+          target = _phase == _RidePhase.inTransit ? drop : pickup;
+        } else {
+          origin = pickup;
+          target = drop;
+        }
 
+        String distanceValue = "—";
+        String durationValue = "—";
         final async = ref.watch(directionsProvider(
-          DirectionsRequest(origin: pickup, destination: drop),
+          DirectionsRequest(origin: origin, destination: target),
         ));
         async.whenData((r) {
           distanceValue = "${r.distanceKm.toStringAsFixed(1)} km";
@@ -1099,113 +1304,6 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
     );
   }
 
-  Widget _routeCard(RideDetails ride) {
-    final pickupAddr =
-        ride.pickup.trim().isEmpty ? "Pickup location" : ride.pickup.trim();
-    final dropAddr =
-        ride.drop.trim().isEmpty ? "Drop-off location" : ride.drop.trim();
-    return Container(
-      padding: EdgeInsets.all(14.w),
-      decoration: BoxDecoration(
-        color: Consonants.whiteColor,
-        borderRadius: BorderRadius.circular(16.r),
-        border: Border.all(color: Consonants.lightGreyColor),
-      ),
-      child: Column(
-        children: [
-          _routePoint(
-            icon: Icons.my_location_rounded,
-            iconColor: Consonants.primaryColor,
-            label: "PICKUP",
-            address: pickupAddr,
-            highlight: _isPickupPhase,
-          ),
-          Padding(
-            padding: EdgeInsets.only(left: 11.w, top: 4.h, bottom: 4.h),
-            child: Column(
-              children: List.generate(
-                4,
-                (i) => Padding(
-                  padding: EdgeInsets.symmetric(vertical: 1.h),
-                  child: Container(
-                    width: 2.w,
-                    height: 3.h,
-                    color: Consonants.lightGreyColor,
-                  ),
-                ),
-              ),
-            ),
-          ),
-          _routePoint(
-            icon: Icons.location_on_rounded,
-            iconColor: const Color(0xffEF4444),
-            label: "DROP-OFF",
-            address: dropAddr,
-            highlight: !_isPickupPhase,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _routePoint({
-    required IconData icon,
-    required Color iconColor,
-    required String label,
-    required String address,
-    required bool highlight,
-  }) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, size: 16.sp, color: iconColor),
-        SizedBox(width: 8.w),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  CustomWidgets.customText(
-                    label,
-                    9.sp,
-                    Consonants.greyColor,
-                    FontWeight.w800,
-                  ),
-                  if (highlight) ...[
-                    SizedBox(width: 6.w),
-                    Container(
-                      padding: EdgeInsets.symmetric(
-                          horizontal: 6.w, vertical: 2.h),
-                      decoration: BoxDecoration(
-                        color: Consonants.lightBlueColor,
-                        borderRadius: BorderRadius.circular(6.r),
-                      ),
-                      child: CustomWidgets.customText(
-                        "NOW",
-                        8.sp,
-                        Consonants.primaryColor,
-                        FontWeight.w800,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-              SizedBox(height: 2.h),
-              CustomWidgets.customText(
-                address,
-                12.sp,
-                Consonants.boldTextColor,
-                FontWeight.w700,
-                maxLines: 2,
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
   Widget _safetyTile() {
     return GestureDetector(
       onTap: () =>
@@ -1252,6 +1350,9 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
   }
 
   Widget _stickyCta(RideDetails ride, double bottomInset) {
+    // The passenger doesn't drive the trip — the driver does. So before the
+    // trip moves the only real action is cancelling; once it's underway
+    // (STARTED) we show a passive status instead of a fake button.
     final canCancel = _phase == _RidePhase.driverEnRoute ||
         _phase == _RidePhase.driverArrived;
     return Container(
@@ -1266,74 +1367,58 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
           ),
         ],
       ),
-      child: Row(
-        children: [
-          if (canCancel) ...[
-            GestureDetector(
+      child: canCancel
+          ? GestureDetector(
               onTap: _cancelling ? null : () => _confirmCancel(ride),
               child: Container(
                 height: 54.h,
-                width: 54.h,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: const Color(0xffFEE2E2),
                   borderRadius: BorderRadius.circular(40.r),
+                  border: Border.all(color: const Color(0xffFCA5A5)),
                 ),
-                child: Icon(Icons.close_rounded,
-                    size: 22.sp, color: const Color(0xffEF4444)),
-              ),
-            ),
-            SizedBox(width: 10.w),
-          ],
-          Expanded(
-            child: GestureDetector(
-              onTap: _advance,
-              child: Container(
-                height: 54.h,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Consonants.primaryColor, Color(0xff5AC8FA)],
-                  ),
-                  borderRadius: BorderRadius.circular(40.r),
-                  boxShadow: [
-                    BoxShadow(
-                      color:
-                          Consonants.primaryColor.withValues(alpha: 0.30),
-                      blurRadius: 12,
-                      offset: const Offset(0, 6),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.close_rounded,
+                        size: 20.sp, color: const Color(0xffEF4444)),
+                    SizedBox(width: 8.w),
+                    CustomWidgets.customText(
+                      _cancelling ? "Cancelling…" : "Cancel ride",
+                      14.sp,
+                      const Color(0xffEF4444),
+                      FontWeight.w800,
                     ),
                   ],
                 ),
-                child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 20.w),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Flexible(
-                        child: CustomWidgets.customText(
-                          _ctaLabel,
-                          14.sp,
-                          Consonants.whiteColor,
-                          FontWeight.w800,
-                          maxLines: 1,
-                        ),
-                      ),
-                      SizedBox(width: 8.w),
-                      Icon(
-                        _phase == _RidePhase.inTransit
-                            ? Icons.check_circle_rounded
-                            : Icons.arrow_forward_rounded,
-                        size: 18.sp,
-                        color: Consonants.whiteColor,
-                      ),
-                    ],
+              ),
+            )
+          : Container(
+              height: 54.h,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: Consonants.lightBlueColor,
+                borderRadius: BorderRadius.circular(40.r),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.directions_car_filled_rounded,
+                      size: 18.sp, color: Consonants.primaryColor),
+                  SizedBox(width: 8.w),
+                  Flexible(
+                    child: CustomWidgets.customText(
+                      "Trip in progress — enjoy your ride",
+                      13.sp,
+                      Consonants.primaryColor,
+                      FontWeight.w700,
+                      maxLines: 1,
+                    ),
                   ),
-                ),
+                ],
               ),
             ),
-          ),
-        ],
-      ),
     );
   }
 

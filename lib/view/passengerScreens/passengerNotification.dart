@@ -7,6 +7,8 @@ import 'package:go_router/go_router.dart';
 import 'package:ride_sharing/model/notificationModels.dart';
 import 'package:ride_sharing/provider/notificationProvider.dart';
 import 'package:ride_sharing/provider/providers.dart';
+import 'package:ride_sharing/provider/rideDetailsProvider.dart';
+import 'package:ride_sharing/provider/passengerActiveRideProvider.dart';
 import 'package:ride_sharing/view/bottomNavbar.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/consonants/errorHandler.dart';
@@ -33,7 +35,7 @@ class Passengernotification extends ConsumerStatefulWidget {
       _PassengernotificationState();
 }
 
-enum _NotifType { request, trip, rating, system }
+enum _NotifType { request, driverOffer, trip, rating, system }
 
 enum _Filter { all, unread, trips }
 
@@ -84,6 +86,16 @@ class _NotificationItem {
 
   /// True for a host's join request — renders the accept/decline card.
   bool get isJoinRequest =>
+      type == _NotifType.request &&
+      rideId != null &&
+      requestId != null &&
+      requestId!.isNotEmpty &&
+      subjectUserId != null;
+
+  /// True for a driver's offer to drive — renders the accept/decline card.
+  /// [requestId] carries the offer id.
+  bool get isDriverOffer =>
+      type == _NotifType.driverOffer &&
       rideId != null &&
       requestId != null &&
       requestId!.isNotEmpty &&
@@ -154,6 +166,7 @@ class _PassengernotificationState extends ConsumerState<Passengernotification> {
         id: n.id,
         type: switch (n.type) {
           NotifType.request => _NotifType.request,
+          NotifType.driverOffer => _NotifType.driverOffer,
           NotifType.trip => _NotifType.trip,
           NotifType.rating => _NotifType.rating,
           NotifType.system => _NotifType.system,
@@ -182,6 +195,11 @@ class _PassengernotificationState extends ConsumerState<Passengernotification> {
       } else {
         await service.declineJoinRequest(n.rideId!, n.requestId!);
       }
+      // Accepting added the requester to the ride (and decremented a seat);
+      // the cached ride details + the host's active-ride feed are now stale.
+      // Without this, opening the ride still shows "No one has joined yet".
+      ref.invalidate(rideDetailsProvider(n.rideId!));
+      ref.invalidate(passengerActiveRideProvider);
       if (!mounted) return;
       setState(() {
         _items = _items
@@ -194,6 +212,40 @@ class _PassengernotificationState extends ConsumerState<Passengernotification> {
         ..hideCurrentSnackBar()
         ..showSnackBar(CustomWidgets.customSuccessSnackBar(
             accept ? 'Passenger added to your ride' : 'Request declined'));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(CustomWidgets.customErrorSnackBar(ErrorHandler.message(e)));
+    }
+  }
+
+  /// Accept or decline a driver's offer from the notification card. Accepting
+  /// assigns that driver and moves the ride to ACCEPTED; the host's cached
+  /// ride details + active-ride feed are refreshed so the driver shows up.
+  Future<void> _respondToDriverOffer(_NotificationItem n, bool accept) async {
+    if (n.rideId == null || n.requestId == null) return;
+    try {
+      final service = ref.read(rideServiceProvider);
+      if (accept) {
+        await service.acceptDriverOffer(n.rideId!, n.requestId!);
+      } else {
+        await service.declineDriverOffer(n.rideId!, n.requestId!);
+      }
+      ref.invalidate(rideDetailsProvider(n.rideId!));
+      ref.invalidate(passengerActiveRideProvider);
+      if (!mounted) return;
+      setState(() {
+        _items = _items
+            .map((it) => it.id == n.id
+                ? it.copyWith(handledLabel: accept ? 'Accepted' : 'Declined')
+                : it)
+            .toList();
+      });
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(CustomWidgets.customSuccessSnackBar(
+            accept ? 'Driver assigned to your ride' : 'Driver declined'));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
@@ -774,13 +826,17 @@ class _PassengernotificationState extends ConsumerState<Passengernotification> {
 
   // ─── Join-request card (host: accept / decline) ─────────
 
-  Widget _joinRequestCard(_NotificationItem n) {
+  /// Rich accept/decline card for both a co-passenger's join request and a
+  /// driver's offer ([driverOffer] flips the copy + which respond handler /
+  /// endpoint is used).
+  Widget _joinRequestCard(_NotificationItem n, {bool driverOffer = false}) {
     final name = (n.subjectName ?? '').trim().isEmpty
-        ? 'Passenger'
+        ? (driverOffer ? 'Driver' : 'Passenger')
         : n.subjectName!.trim();
     final ratingLabel = (n.subjectRating != null && n.subjectRating! > 0)
         ? n.subjectRating!.toStringAsFixed(1)
         : '—';
+    final actionLabel = driverOffer ? 'offered to drive' : 'wants to join';
     final handled = n.handledLabel;
 
     return Padding(
@@ -846,7 +902,7 @@ class _PassengernotificationState extends ConsumerState<Passengernotification> {
                               size: 12.sp, color: const Color(0xffF5B800)),
                           SizedBox(width: 3.w),
                           CustomWidgets.customText(
-                            "$ratingLabel · wants to join",
+                            "$ratingLabel · $actionLabel",
                             11.sp,
                             Consonants.greyColor,
                             FontWeight.w600,
@@ -900,7 +956,9 @@ class _PassengernotificationState extends ConsumerState<Passengernotification> {
                 children: [
                   Expanded(
                     child: GestureDetector(
-                      onTap: () => _respondToJoinRequest(n, false),
+                      onTap: () => driverOffer
+                          ? _respondToDriverOffer(n, false)
+                          : _respondToJoinRequest(n, false),
                       child: Container(
                         padding: EdgeInsets.symmetric(vertical: 13.h),
                         alignment: Alignment.center,
@@ -925,7 +983,9 @@ class _PassengernotificationState extends ConsumerState<Passengernotification> {
                   Expanded(
                     flex: 2,
                     child: GestureDetector(
-                      onTap: () => _respondToJoinRequest(n, true),
+                      onTap: () => driverOffer
+                          ? _respondToDriverOffer(n, true)
+                          : _respondToJoinRequest(n, true),
                       child: Container(
                         padding: EdgeInsets.symmetric(vertical: 13.h),
                         alignment: Alignment.center,
@@ -993,8 +1053,10 @@ class _PassengernotificationState extends ConsumerState<Passengernotification> {
   // ─── Notification card ──────────────────────────────────
 
   Widget _notificationCard(_NotificationItem n) {
-    // A host's join request gets its own rich card with accept/decline.
+    // A host's join request / a driver's offer gets its own rich card with
+    // accept/decline actions.
     if (n.isJoinRequest) return _joinRequestCard(n);
+    if (n.isDriverOffer) return _joinRequestCard(n, driverOffer: true);
 
     final visuals = _visualsFor(n.type);
 
@@ -1193,6 +1255,12 @@ class _PassengernotificationState extends ConsumerState<Passengernotification> {
       case _NotifType.request:
         return _NotifVisuals(
           icon: Icons.directions_car_rounded,
+          fg: Consonants.primaryColor,
+          bg: Consonants.lightBlueColor,
+        );
+      case _NotifType.driverOffer:
+        return _NotifVisuals(
+          icon: Icons.local_taxi_rounded,
           fg: Consonants.primaryColor,
           bg: Consonants.lightBlueColor,
         );
