@@ -125,16 +125,32 @@ class Apiconsonants {
   /// "Nearest / under X km" sort & filter pills. When omitted, the
   /// backend leaves `distanceKm` null and the UI shows "—".
   static String availableRidesEndpoint(
-      {double? lat, double? lng, double? dropLat, double? dropLng}) {
+      {double? lat, double? lng, double? dropLat, double? dropLng, int? seats}) {
     if (lat == null || lng == null) return "$rideServicebaseUrl/available";
     final q = StringBuffer("$rideServicebaseUrl/available?lat=$lat&lng=$lng");
     // Destination lets the backend keep only rides going the same way and
-    // rank them by combined pickup + drop closeness (route overlap).
+    // rank them by combined pickup + drop closeness (route overlap). With
+    // seats too, "Your fare" becomes the true weighted preview.
     if (dropLat != null && dropLng != null) {
       q.write("&dropLat=$dropLat&dropLng=$dropLng");
     }
+    if (seats != null) q.write("&seats=$seats");
     return q.toString();
   }
+
+  /// `GET` the TRUE fare preview for joining a ride with your route + seats.
+  static String farePreviewEndpoint(String id,
+          {required double pickupLat,
+          required double pickupLng,
+          required double dropLat,
+          required double dropLng,
+          int seats = 1}) =>
+      "$rideServicebaseUrl/$id/fare-preview?pickupLat=$pickupLat&pickupLng=$pickupLng"
+      "&dropLat=$dropLat&dropLng=$dropLng&seats=$seats";
+
+  /// `GET` the host's before/after fare picture for a pending join request.
+  static String acceptFarePreviewEndpoint(String id, String requestId) =>
+      "$rideServicebaseUrl/$id/join-requests/$requestId/fare-preview";
 
   // ── driver ride-lifecycle endpoints ────────────────────────────
 
@@ -299,6 +315,11 @@ class Apiconsonants {
   /// rider who opens the app late sees the car before the next live frame).
   static String lastDriverLocationEndpoint(String rideId) =>
       "$messagingServicebaseUrl/track/$rideId/last";
+
+  /// `POST` a live position over REST — the driver's fallback publish path
+  /// when the STOMP WebSocket can't connect, so riders still see the car.
+  static String publishLocationEndpoint(String rideId) =>
+      "$messagingServicebaseUrl/track/$rideId";
 
   /// `GET` the passenger's in-progress trip (ACCEPTED/STARTED) for the live map.
   static String get myActiveTripEndpoint => "$rideServicebaseUrl/my/active";

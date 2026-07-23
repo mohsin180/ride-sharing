@@ -71,6 +71,8 @@ class RideTrackingSession {
       StreamController<RideTrackingState>.broadcast();
   final TrackingSocket _socket = TrackingSocket();
   StreamSubscription<Position>? _gpsSub;
+  Timer? _lastKnownTimer;
+  DateTime _lastRestPush = DateTime.fromMillisecondsSinceEpoch(0);
   RideTrackingState _state = const RideTrackingState();
   bool _disposed = false;
 
@@ -91,6 +93,13 @@ class RideTrackingSession {
     await _seedLastDriver();
     await _socket.connect(rideId: rideId, onPosition: _onIncoming);
     _startGps();
+    // Riders keep polling the driver's last-known spot so the car shows and
+    // moves even when the WebSocket can't connect (REST is the fallback
+    // transport both ways — the driver pushes it in _onMyPosition below).
+    if (myRole.toUpperCase() != 'DRIVER') {
+      _lastKnownTimer = Timer.periodic(
+          const Duration(seconds: 5), (_) => _seedLastDriver());
+    }
   }
 
   /// Pull the driver's last-known position up front so the marker is there
@@ -135,6 +144,26 @@ class RideTrackingSession {
       role: myRole,
       bearing: pos.heading,
     );
+    // Driver also publishes over REST (throttled) so the last-known position
+    // stays fresh for riders even when the WebSocket is down — this is what
+    // the riders' 5s poll reads.
+    if (myRole.toUpperCase() == 'DRIVER' &&
+        pos.latitude.isFinite &&
+        pos.longitude.isFinite) {
+      final now = DateTime.now();
+      if (now.difference(_lastRestPush).inSeconds >= 3) {
+        _lastRestPush = now;
+        _ref
+            .read(apiClientProvider)
+            .post(Apiconsonants.publishLocationEndpoint(rideId), {
+              'role': myRole,
+              'lat': pos.latitude,
+              'lng': pos.longitude,
+              if (pos.heading.isFinite) 'bearing': pos.heading,
+            })
+            .catchError((_) => null);
+      }
+    }
   }
 
   void _onIncoming(TrackPosition p) {
@@ -156,6 +185,7 @@ class RideTrackingSession {
 
   void dispose() {
     _disposed = true;
+    _lastKnownTimer?.cancel();
     _gpsSub?.cancel();
     _socket.dispose();
     _controller.close();

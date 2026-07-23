@@ -319,7 +319,9 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
     required String fallback,
   }) async {
     try {
-      if (await canLaunchUrl(uri) && await launchUrl(uri, mode: mode)) {
+      // Launch directly — canLaunchUrl false-negatives on Android 11+ unless
+      // every scheme is declared in the manifest; launchUrl reports failure.
+      if (await launchUrl(uri, mode: mode)) {
         return;
       }
     } catch (_) {
@@ -618,6 +620,9 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
                   // shortest order, matching the driver's map.
                   stops: ride.stops,
                   hostId: ride.host.id,
+                  // In transit, this rider moves WITH the car — let their own
+                  // GPS keep consuming the route if the driver's feed drops.
+                  consumeWithMyPosition: _phase == _RidePhase.inTransit,
                 )
               : _mapLoadingPlaceholder(),
         ),
@@ -1206,27 +1211,38 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
         // matters now (pickup while en route, drop once rolling). WITHOUT one:
         // fall back to the whole pickup→drop trip route — never pickup→pickup,
         // which would show a meaningless "0.0 km / 0 min".
-        final LatLng origin;
-        final LatLng target;
-        if (driverPos != null) {
-          // Round to ~110 m so the route only refetches on meaningful movement.
-          origin = LatLng((driverPos.latitude * 1000).roundToDouble() / 1000,
-              (driverPos.longitude * 1000).roundToDouble() / 1000);
-          target = _phase == _RidePhase.inTransit ? drop : pickup;
-        } else {
-          origin = pickup;
-          target = drop;
-        }
-
         String distanceValue = "—";
         String durationValue = "—";
-        final async = ref.watch(directionsProvider(
-          DirectionsRequest(origin: origin, destination: target),
-        ));
-        async.whenData((r) {
-          distanceValue = "${r.distanceKm.toStringAsFixed(1)} km";
-          durationValue = "${r.durationMinutes} min";
-        });
+        if (driverPos != null) {
+          // Live: from the driver's position to the point that matters now.
+          // Round to ~110 m so the route only refetches on real movement.
+          final origin = LatLng(
+              (driverPos.latitude * 1000).roundToDouble() / 1000,
+              (driverPos.longitude * 1000).roundToDouble() / 1000);
+          final target = _phase == _RidePhase.inTransit ? drop : pickup;
+          ref
+              .watch(directionsProvider(
+                  DirectionsRequest(origin: origin, destination: target)))
+              .whenData((r) {
+            distanceValue = "${r.distanceKm.toStringAsFixed(1)} km";
+            durationValue = "${r.durationMinutes} min";
+          });
+        } else if (ride.tripDistanceKm != null) {
+          // No live fix yet: show the FULL shared trip (through every rider's
+          // stops, recomputed by the backend) — grows as co-riders join.
+          distanceValue = "${ride.tripDistanceKm!.toStringAsFixed(1)} km";
+          durationValue = ride.tripDurationMin != null
+              ? "${ride.tripDurationMin} min"
+              : "—";
+        } else {
+          ref
+              .watch(directionsProvider(
+                  DirectionsRequest(origin: pickup, destination: drop)))
+              .whenData((r) {
+            distanceValue = "${r.distanceKm.toStringAsFixed(1)} km";
+            durationValue = "${r.durationMinutes} min";
+          });
+        }
 
         return Container(
           padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 12.h),

@@ -140,7 +140,11 @@ class _DriveryourrideState extends ConsumerState<Driveryourride>
       Color(0xffA78BFA),
     ];
     final fare = ride.fare;
-    final fareLabel = fare != null ? fare.format(fare.perRider) : "Rs —";
+    // Weighted pricing: each rider's own share (leg × seats) from the
+    // backend; fall back to the average only when a share is missing.
+    String shareLabel(double? share) => share != null
+        ? (fare?.format(share) ?? "Rs ${share.round()}")
+        : (fare != null ? fare.format(fare.perRider) : "Rs —");
 
     String nameOr(String raw) => raw.trim().isEmpty ? "Passenger" : raw.trim();
 
@@ -158,7 +162,7 @@ class _DriveryourrideState extends ConsumerState<Driveryourride>
       drop: ride.drop,
       distanceToPickup: "—",
       etaToPickup: "—",
-      fare: fareLabel,
+      fare: shareLabel(ride.host.fareShare),
       seats: 1,
       status: _statusFromWire(ride.host.pickupStatus, isFirst: true),
       isHost: true,
@@ -177,7 +181,7 @@ class _DriveryourrideState extends ConsumerState<Driveryourride>
         drop: ride.drop,
         distanceToPickup: "—",
         etaToPickup: "—",
-        fare: fareLabel,
+        fare: shareLabel(c.fareShare),
         seats: 1,
         status: _statusFromWire(c.pickupStatus, isFirst: false),
         phone: c.phone,
@@ -1109,19 +1113,18 @@ class _DriveryourrideState extends ConsumerState<Driveryourride>
       ..showSnackBar(CustomWidgets.customErrorSnackBar(message));
   }
 
-  /// Guarded external launch — checks `canLaunchUrl` first and falls back
-  /// to a SnackBar so a missing maps/dialer app never crashes the cockpit.
+  /// Guarded external launch — falls back to a SnackBar so a missing
+  /// maps/dialer app never crashes the cockpit.
   Future<void> _launch(Uri uri, {required String onFail}) async {
+    // Launch directly instead of gating on canLaunchUrl — the pre-check
+    // needs manifest <queries> to be exhaustive and false-negatives easily;
+    // launchUrl itself reports failure reliably.
     try {
-      if (await canLaunchUrl(uri)) {
-        final ok = await launchUrl(
-          uri,
-          mode: LaunchMode.externalApplication,
-        );
-        if (!ok) _actionError(onFail);
-      } else {
-        _actionError(onFail);
-      }
+      final ok = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+      if (!ok) _actionError(onFail);
     } catch (_) {
       _actionError(onFail);
     }
@@ -1178,6 +1181,17 @@ class _DriveryourrideState extends ConsumerState<Driveryourride>
           : "No destination coordinates for this ride");
       return;
     }
+    // Prefer Google Maps' turn-by-turn navigation mode (starts guiding
+    // immediately); fall back to the directions web URL, which Android
+    // resolves into the Maps app anyway.
+    final navUri = Uri.parse("google.navigation:q=$lat,$lng&mode=d");
+    try {
+      if (await launchUrl(navUri, mode: LaunchMode.externalApplication)) {
+        return;
+      }
+    } catch (_) {
+      // Google Maps app not installed — fall through to the web URL.
+    }
     final uri = Uri.parse(
       "https://www.google.com/maps/dir/?api=1&destination=$lat,$lng",
     );
@@ -1193,12 +1207,11 @@ class _DriveryourrideState extends ConsumerState<Driveryourride>
   }
 
   Widget _tripStrip(LatLng pickup, LatLng drop) {
-    // Total = the numeric per-rider fare × riders, straight from the fare
-    // model (no fragile string parsing).
+    // Total = the trip gross (what the driver collects), straight from the
+    // fare model — shares are weighted now, so × riders would be wrong.
     final fareModel = _ride?.fare;
-    final totalFareLabel = fareModel != null
-        ? fareModel.format(fareModel.perRider * _passengers.length)
-        : "—";
+    final totalFareLabel =
+        fareModel != null ? fareModel.format(fareModel.baseFare) : "—";
     return Consumer(
       builder: (context, ref, _) {
         // Live remaining distance/ETA from the driver's own current position
@@ -1213,21 +1226,37 @@ class _DriveryourrideState extends ConsumerState<Driveryourride>
                 .driver
                 ?.position
             : null;
-        final target = _isPickupPhase ? pickup : drop;
-        final origin = driverPos != null
-            ? LatLng((driverPos.latitude * 1000).roundToDouble() / 1000,
-                (driverPos.longitude * 1000).roundToDouble() / 1000)
-            : pickup;
-
         String distanceValue = "—";
         String durationValue = "—";
-        final async = ref.watch(directionsProvider(
-          DirectionsRequest(origin: origin, destination: target),
-        ));
-        async.whenData((r) {
-          distanceValue = "${r.distanceKm.toStringAsFixed(1)} km";
-          durationValue = "${r.durationMinutes} min";
-        });
+        if (driverPos != null) {
+          // Live: from the driver's own position to the current target.
+          final target = _isPickupPhase ? pickup : drop;
+          final origin = LatLng(
+              (driverPos.latitude * 1000).roundToDouble() / 1000,
+              (driverPos.longitude * 1000).roundToDouble() / 1000);
+          ref
+              .watch(directionsProvider(
+                  DirectionsRequest(origin: origin, destination: target)))
+              .whenData((r) {
+            distanceValue = "${r.distanceKm.toStringAsFixed(1)} km";
+            durationValue = "${r.durationMinutes} min";
+          });
+        } else if (_ride?.tripDistanceKm != null) {
+          // No GPS fix yet: the FULL shared trip (all riders' stops), which
+          // grows as co-passengers join.
+          distanceValue = "${_ride!.tripDistanceKm!.toStringAsFixed(1)} km";
+          durationValue = _ride!.tripDurationMin != null
+              ? "${_ride!.tripDurationMin} min"
+              : "—";
+        } else {
+          ref
+              .watch(directionsProvider(
+                  DirectionsRequest(origin: pickup, destination: drop)))
+              .whenData((r) {
+            distanceValue = "${r.distanceKm.toStringAsFixed(1)} km";
+            durationValue = "${r.durationMinutes} min";
+          });
+        }
 
         return Container(
           padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 12.h),
@@ -1614,8 +1643,7 @@ class _DriveryourrideState extends ConsumerState<Driveryourride>
   Future<void> _callRider(String phone) async {
     final uri = Uri(scheme: 'tel', path: phone.trim());
     try {
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri);
+      if (await launchUrl(uri)) {
         return;
       }
     } catch (_) {}

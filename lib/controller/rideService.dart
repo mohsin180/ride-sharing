@@ -157,10 +157,11 @@ class Rideservice {
     double? lng,
     double? dropLat,
     double? dropLng,
+    int? seats,
   }) async {
     final json = await apiclient.get(
       Apiconsonants.availableRidesEndpoint(
-          lat: lat, lng: lng, dropLat: dropLat, dropLng: dropLng),
+          lat: lat, lng: lng, dropLat: dropLat, dropLng: dropLng, seats: seats),
     );
     if (json is! List) return const [];
     return json
@@ -203,6 +204,32 @@ class Rideservice {
   /// for them on later polls.
   Future<void> driverDeclineRide(String id) async {
     await apiclient.post(Apiconsonants.driverDeclineRideEndpoint(id), const {});
+  }
+
+  /// TRUE fare preview for joining [id] with your own route + seats.
+  Future<JoinFarePreview> getJoinFarePreview(
+    String id, {
+    required double pickupLat,
+    required double pickupLng,
+    required double dropLat,
+    required double dropLng,
+    int seats = 1,
+  }) async {
+    final json = await apiclient.get(Apiconsonants.farePreviewEndpoint(id,
+        pickupLat: pickupLat,
+        pickupLng: pickupLng,
+        dropLat: dropLat,
+        dropLng: dropLng,
+        seats: seats));
+    return JoinFarePreview.fromJson(json as Map<String, dynamic>);
+  }
+
+  /// The host's before/after fare picture for a pending join request.
+  Future<HostAcceptFarePreview> getAcceptFarePreview(
+      String rideId, String requestId) async {
+    final json = await apiclient
+        .get(Apiconsonants.acceptFarePreviewEndpoint(rideId, requestId));
+    return HostAcceptFarePreview.fromJson(json as Map<String, dynamic>);
   }
 
   /// Assigned driver marks a rider as picked up (in the vehicle).

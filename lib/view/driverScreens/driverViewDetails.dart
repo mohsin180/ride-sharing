@@ -84,6 +84,11 @@ class DriverViewDetails extends ConsumerStatefulWidget {
 }
 
 class _DriverViewDetailsState extends ConsumerState<DriverViewDetails> {
+  static const _palette = [
+    Color(0xff60A5FA), Color(0xffF472B6), Color(0xffFBBF24),
+    Color(0xff34D399), Color(0xffA78BFA),
+  ];
+
   late List<Passenger> _passengers;
 
   /// True while the accept request is in flight, so the CTA can disable
@@ -93,16 +98,15 @@ class _DriverViewDetailsState extends ConsumerState<DriverViewDetails> {
   @override
   void initState() {
     super.initState();
-    // Pre-accept we only have the feed summary (host + route + fare), so
-    // the trip is shown as the single host rider. The full co-passenger
-    // list becomes available in the "Your Ride" tab once accepted.
+    // Seed with the feed summary (host only) so the screen renders instantly,
+    // then load the full ride — host + every co-passenger and their stops.
     final r = widget.ride;
     final name = r.hostName.trim().isEmpty ? "Passenger" : r.hostName.trim();
     _passengers = [
       Passenger(
         name: name,
         initial: name[0].toUpperCase(),
-        avatarColor: const Color(0xff60A5FA),
+        avatarColor: _palette[0],
         rating: r.hostRating != null ? r.hostRating!.toStringAsFixed(1) : "—",
         pickup: r.pickup,
         drop: r.drop,
@@ -115,6 +119,82 @@ class _DriverViewDetailsState extends ConsumerState<DriverViewDetails> {
         isHost: true,
       ),
     ];
+    _loadFullRide();
+  }
+
+  /// Fetch the full ride so the driver sees the host AND every co-passenger,
+  /// each with their own pickup/drop and a number to call.
+  Future<void> _loadFullRide() async {
+    try {
+      final d = await ref.read(rideServiceProvider).getRideDetails(widget.ride.id);
+      if (!mounted) return;
+      // Weighted pricing: each rider's own share from the backend.
+      String fareLabelFor(double? share) => share != null
+          ? (d.fare?.format(share) ?? "Rs ${share.round()}")
+          : (d.fare != null ? d.fare!.format(d.fare!.perRider) : "Rs —");
+      String nameOr(String raw) =>
+          raw.trim().isEmpty ? "Passenger" : raw.trim();
+
+      final list = <Passenger>[];
+      final hostName = nameOr(d.host.name);
+      list.add(Passenger(
+        userId: d.host.id,
+        name: hostName,
+        initial: hostName[0].toUpperCase(),
+        avatarColor: _palette[0],
+        rating: d.host.rating != null ? d.host.rating!.toStringAsFixed(1) : "—",
+        pickup: d.pickup,
+        drop: d.drop,
+        distanceToPickup: widget.ride.distanceKm != null
+            ? "${widget.ride.distanceKm!.toStringAsFixed(1)} km"
+            : "—",
+        etaToPickup:
+            widget.ride.etaMinutes != null ? "${widget.ride.etaMinutes} min" : "—",
+        fare: fareLabelFor(d.host.fareShare),
+        seats: 1,
+        status: PickupStatus.current,
+        isHost: true,
+        phone: d.host.phone,
+      ));
+      for (int i = 0; i < d.coPassengers.length; i++) {
+        final c = d.coPassengers[i];
+        final n = nameOr(c.name);
+        list.add(Passenger(
+          userId: c.id,
+          name: n,
+          initial: n[0].toUpperCase(),
+          avatarColor: _palette[(i + 1) % _palette.length],
+          rating: c.rating != null ? c.rating!.toStringAsFixed(1) : "—",
+          pickup: c.pickup ?? d.pickup,
+          drop: c.drop ?? d.drop,
+          distanceToPickup: "—",
+          etaToPickup: "—",
+          fare: fareLabelFor(c.fareShare),
+          seats: 1,
+          status: PickupStatus.upcoming,
+          phone: c.phone,
+        ));
+      }
+      setState(() => _passengers = list);
+    } catch (_) {
+      // Keep the host-only summary on failure — the screen still works.
+    }
+  }
+
+  /// Dial a number — opens the phone app with it pre-filled.
+  Future<void> _callNumber(String phone) async {
+    final uri = Uri(scheme: 'tel', path: phone.trim());
+    try {
+      if (await launchUrl(uri)) {
+        return;
+      }
+    } catch (_) {}
+    if (mounted) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+            CustomWidgets.customErrorSnackBar("Couldn't start the call"));
+    }
   }
 
   /// Open the ride's pickup in the external maps app (directions to it).
@@ -123,9 +203,12 @@ class _DriverViewDetailsState extends ConsumerState<DriverViewDetails> {
     final uri = Uri.parse(
       "https://www.google.com/maps/dir/?api=1&destination=${r.pickupLat},${r.pickupLng}",
     );
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } else if (mounted) {
+    try {
+      if (await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+        return;
+      }
+    } catch (_) {}
+    if (mounted) {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
@@ -687,6 +770,23 @@ class _DriverViewDetailsState extends ConsumerState<DriverViewDetails> {
                     ],
                   ),
                 ),
+                if ((p.phone ?? '').trim().isNotEmpty) ...[
+                  GestureDetector(
+                    onTap: () => _callNumber(p.phone!),
+                    child: Container(
+                      width: 34.w,
+                      height: 34.w,
+                      alignment: Alignment.center,
+                      decoration: const BoxDecoration(
+                        color: Consonants.primaryGreenColor,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(Icons.call_rounded,
+                          size: 16.sp, color: const Color(0xff15803D)),
+                    ),
+                  ),
+                  SizedBox(width: 8.w),
+                ],
                 _statusPill(p.status),
               ],
             ),

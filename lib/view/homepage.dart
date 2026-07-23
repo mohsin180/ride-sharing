@@ -67,7 +67,8 @@ class _HomepageState extends ConsumerState<Homepage> {
           prev?.isSuccess != true &&
           next.ride != null) {
         final ride = next.ride!;
-        ErrorHandler.success(context, "Ride requested. Finding drivers…");
+        ErrorHandler.success(
+            context, "Ride created — publish it to drivers when you're ready");
         context.push(
           Approutes.viewRequest,
           extra: <String, dynamic>{

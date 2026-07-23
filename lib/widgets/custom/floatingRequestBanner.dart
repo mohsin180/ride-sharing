@@ -8,6 +8,7 @@ import 'package:ride_sharing/provider/providers.dart';
 import 'package:ride_sharing/provider/rideDetailsProvider.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/consonants/errorHandler.dart';
+import 'package:ride_sharing/widgets/custom/acceptJoinDialog.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
 
 /// Floating, real-time request card shown over the ride page (inDrive style).
@@ -196,6 +197,14 @@ class _FloatingRequestBannerState extends ConsumerState<FloatingRequestBanner> {
 
   Future<void> _respond(AppNotification n, bool accept) async {
     if (n.rideId == null || n.requestId == null) return;
+    // Join requests: show the host the fare impact before committing.
+    if (accept && !n.isDriverOffer) {
+      final ok = await confirmAcceptJoin(context, ref,
+          rideId: n.rideId!,
+          requestId: n.requestId!,
+          requesterName: n.subjectName ?? 'this rider');
+      if (!ok) return;
+    }
     setState(() => _busy = true);
     try {
       final svc = ref.read(rideServiceProvider);

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
+import 'package:ride_sharing/widgets/custom/acceptJoinDialog.dart';
 import 'package:ride_sharing/model/notificationModels.dart';
 import 'package:ride_sharing/provider/notificationProvider.dart';
 import 'package:ride_sharing/provider/providers.dart';
@@ -188,6 +189,15 @@ class _PassengernotificationState extends ConsumerState<Passengernotification> {
   /// Accept or decline a host's join request from the notification card.
   Future<void> _respondToJoinRequest(_NotificationItem n, bool accept) async {
     if (n.rideId == null || n.requestId == null) return;
+    // Fare-aware confirm: show the host what accepting does to their fare
+    // (and what the requester pays) BEFORE committing.
+    if (accept) {
+      final ok = await confirmAcceptJoin(context, ref,
+          rideId: n.rideId!,
+          requestId: n.requestId!,
+          requesterName: n.subjectName ?? 'this rider');
+      if (!ok) return;
+    }
     try {
       final service = ref.read(rideServiceProvider);
       if (accept) {

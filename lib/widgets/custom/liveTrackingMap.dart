@@ -39,6 +39,12 @@ class LiveTrackingMap extends ConsumerStatefulWidget {
   /// pickup (start) and drop (end).
   final String hostId;
 
+  /// When true and no live driver fix is available, the route-consume anchor
+  /// falls back to THIS device's own GPS — used by rider screens once the
+  /// trip is in transit (the rider is travelling in the same car), so the
+  /// covered path keeps disappearing even if the driver's feed drops out.
+  final bool consumeWithMyPosition;
+
   const LiveTrackingMap({
     super.key,
     required this.rideId,
@@ -47,6 +53,7 @@ class LiveTrackingMap extends ConsumerStatefulWidget {
     required this.myRole,
     this.stops = const [],
     this.hostId = '',
+    this.consumeWithMyPosition = false,
   });
 
   @override
@@ -68,6 +75,52 @@ class _LiveTrackingMapState extends ConsumerState<LiveTrackingMap>
 
   final Map<String, _Track> _tracks = {};
   String? _myUserId;
+
+  // ─── Route-consume progress ─────────────────────────────
+  // As the driver travels the route, the covered part is trimmed away so
+  // only the remaining path stays drawn (both driver + rider screens).
+  /// Driver counts as ON the route when within this many metres of it.
+  static const double _onRouteThresholdM = 100.0;
+  final Distance _geo = const Distance();
+
+  /// Index of the route point the driver has reached — only ever advances,
+  /// so a route that loops near itself can't snap the car backwards.
+  int _routeProgress = 0;
+
+  /// True once the driver's live position is riding along the route.
+  bool _onRoute = false;
+
+  /// Cheap identity of the route we're tracking progress on; when the route
+  /// itself changes (refetch / stops changed), progress restarts.
+  int _routeSig = 0;
+
+  /// Advance [_routeProgress] to the route point nearest the driver
+  /// (forward-only), and flag whether they're actually on the route.
+  void _updateRouteProgress(List<LatLng> route, LatLng driverPos) {
+    final sig = route.length ^ route.first.hashCode ^ route.last.hashCode;
+    if (sig != _routeSig) {
+      _routeSig = sig;
+      _routeProgress = 0;
+      _onRoute = false;
+    }
+    int best = _routeProgress;
+    double bestD = double.infinity;
+    for (int i = _routeProgress; i < route.length; i++) {
+      final d = _geo.as(LengthUnit.Meter, route[i], driverPos);
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    }
+    if (bestD <= _onRouteThresholdM) {
+      _routeProgress = best;
+      _onRoute = true;
+    } else {
+      // Off the route (heading to the first pickup, GPS drift, a detour) —
+      // keep the progress we already made so covered path never reappears.
+      _onRoute = false;
+    }
+  }
 
   @override
   void initState() {
@@ -156,6 +209,57 @@ class _LiveTrackingMapState extends ConsumerState<LiveTrackingMap>
           );
     }
 
+    // Consume the route as the car travels: trim everything already covered
+    // so only the REMAINING path stays drawn, anchored at the car. Shared
+    // widget ⇒ the effect shows on driver AND rider screens. The consuming
+    // position is the car when we have it; on rider screens mid-trip it
+    // falls back to the rider's own GPS (they travel in the same vehicle).
+    final driver = tracking.driver;
+    LatLng? consumePos = driver?.position;
+    if (consumePos == null &&
+        widget.consumeWithMyPosition &&
+        _myUserId != null) {
+      consumePos = tracking.members[_myUserId]?.position;
+    }
+    List<LatLng> displayRoute = routePoints;
+    if (consumePos != null && routePoints.length >= 2) {
+      _updateRouteProgress(routePoints, consumePos);
+      if (_onRoute || _routeProgress > 0) {
+        final tail = _routeProgress + 1 < routePoints.length
+            ? routePoints.sublist(_routeProgress + 1)
+            : const <LatLng>[];
+        // Anchor the remaining path at the live position while on-route;
+        // during an off-route wobble, anchor at the last reached point.
+        final anchor = _onRoute ? consumePos : routePoints[_routeProgress];
+        displayRoute = <LatLng>[anchor, ...tail];
+      }
+    }
+
+    // Approach leg: from the driver's live position to the first pickup, so
+    // the driver AND every rider can watch the car closing in on the route.
+    // Hidden once the car is ON the route — from then on the (shrinking)
+    // route itself is the guidance.
+    List<LatLng> approachPoints = const [];
+    if (driver != null && !_onRoute) {
+      final firstStop = useMulti
+          ? LatLng(ordered.first.lat, ordered.first.lng)
+          : widget.pickup;
+      // Round the origin (~110 m) so the route only refetches when the car
+      // has meaningfully moved, not on every GPS tick.
+      final origin = LatLng(
+          (driver.position.latitude * 1000).roundToDouble() / 1000,
+          (driver.position.longitude * 1000).roundToDouble() / 1000);
+      approachPoints = ref
+          .watch(directionsProvider(
+              DirectionsRequest(origin: origin, destination: firstStop)))
+          .maybeWhen(
+            data: (r) => r.points.isNotEmpty
+                ? r.points
+                : <LatLng>[driver.position, firstStop],
+            orElse: () => <LatLng>[driver.position, firstStop],
+          );
+    }
+
     return FlutterMap(
       options: MapOptions(
         initialCenter: _initialCenter(),
@@ -176,11 +280,21 @@ class _LiveTrackingMapState extends ConsumerState<LiveTrackingMap>
         ),
         PolylineLayer(
           polylines: [
-            Polyline(
-              points: routePoints,
-              color: Consonants.primaryColor,
-              strokeWidth: 4,
-            ),
+            // Remaining trip route — shrinks behind the car as it travels.
+            if (displayRoute.length >= 2)
+              Polyline(
+                points: displayRoute,
+                color: Consonants.primaryColor,
+                strokeWidth: 4,
+              ),
+            // Driver's approach to the first pickup — green, matching the
+            // car marker, so it reads as "the car is on its way here".
+            if (approachPoints.length >= 2)
+              Polyline(
+                points: approachPoints,
+                color: const Color(0xff10B981),
+                strokeWidth: 3.5,
+              ),
           ],
         ),
         MarkerLayer(

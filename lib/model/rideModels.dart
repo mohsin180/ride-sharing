@@ -347,6 +347,9 @@ class RideHost {
   /// the trip starts.
   final String? pickupStatus;
 
+  /// This rider's weighted share of the trip fare (leg × seats model).
+  final double? fareShare;
+
   const RideHost({
     required this.id,
     required this.name,
@@ -356,6 +359,7 @@ class RideHost {
     this.gender,
     this.phone,
     this.pickupStatus,
+    this.fareShare,
   });
 
   /// "4.9 (12)" / "New" — rating with how many it's based on.
@@ -377,6 +381,9 @@ class RideHost {
         gender: json['gender'] as String?,
         phone: json['phone'] as String?,
         pickupStatus: json['pickupStatus'] as String?,
+        fareShare: json['fareShare'] is num
+            ? (json['fareShare'] as num).toDouble()
+            : null,
       );
 }
 
@@ -425,11 +432,19 @@ class RideCoPassenger {
   final int trips;
   final String? gender;
 
-  /// Contact number — present only for the assigned driver; null otherwise.
+  /// Contact number — present only for a driver viewing the ride; null otherwise.
   final String? phone;
+
+  /// This co-passenger's OWN pickup / drop-off address, so the driver can see
+  /// everyone's stops. Null on responses that don't carry per-rider routes.
+  final String? pickup;
+  final String? drop;
 
   /// Trip progress once STARTED: "WAITING" | "PICKED" | "DROPPED".
   final String? pickupStatus;
+
+  /// This rider's weighted share of the trip fare (leg × seats model).
+  final double? fareShare;
 
   const RideCoPassenger({
     required this.id,
@@ -439,7 +454,10 @@ class RideCoPassenger {
     this.ratingCount = 0,
     this.gender,
     this.phone,
+    this.pickup,
+    this.drop,
     this.pickupStatus,
+    this.fareShare,
   });
 
   /// "4.7 (8)" / "New" — rating with how many it's based on.
@@ -461,7 +479,12 @@ class RideCoPassenger {
             : 0,
         gender: json['gender'] as String?,
         phone: json['phone'] as String?,
+        pickup: json['pickup'] as String?,
+        drop: json['drop'] as String?,
         pickupStatus: json['pickupStatus'] as String?,
+        fareShare: json['fareShare'] is num
+            ? (json['fareShare'] as num).toDouble()
+            : null,
       );
 
   /// First letter of the name for the avatar circle. Falls back to "?"
@@ -622,6 +645,85 @@ class RidePaymentEntry {
   }
 }
 
+String _rsLabel(String currency, double amount) {
+  final symbol = currency == 'PKR' ? 'Rs' : currency == 'USD' ? '\$' : currency;
+  return '$symbol ${amount.round()}';
+}
+
+/// TRUE fare preview for joining a ride with your own route + seats — the
+/// weighted share of the simulated new trip (detour + headcount included).
+class JoinFarePreview {
+  final double yourShare;
+  final double hostShare;
+  final double gross;
+  final double tripKm;
+  final int tripMin;
+  final String currency;
+
+  const JoinFarePreview({
+    required this.yourShare,
+    required this.hostShare,
+    required this.gross,
+    required this.tripKm,
+    required this.tripMin,
+    required this.currency,
+  });
+
+  String get yourShareLabel => _rsLabel(currency, yourShare);
+
+  factory JoinFarePreview.fromJson(Map<String, dynamic> json) {
+    double d(String k) => json[k] is num ? (json[k] as num).toDouble() : 0.0;
+    return JoinFarePreview(
+      yourShare: d('yourShare'),
+      hostShare: d('hostShare'),
+      gross: d('gross'),
+      tripKm: d('tripKm'),
+      tripMin: json['tripMin'] is num ? (json['tripMin'] as num).toInt() : 0,
+      currency: (json['currency'] as String?) ?? 'PKR',
+    );
+  }
+}
+
+/// The host's before/after fare picture for a pending join request —
+/// shown before they accept, so they never approve blind.
+class HostAcceptFarePreview {
+  final double yourShareNow;
+  final double yourShareAfter;
+  final double requesterShare;
+  final double grossAfter;
+  final double tripKmAfter;
+  final int tripMinAfter;
+  final String currency;
+
+  const HostAcceptFarePreview({
+    required this.yourShareNow,
+    required this.yourShareAfter,
+    required this.requesterShare,
+    required this.grossAfter,
+    required this.tripKmAfter,
+    required this.tripMinAfter,
+    required this.currency,
+  });
+
+  String get nowLabel => _rsLabel(currency, yourShareNow);
+  String get afterLabel => _rsLabel(currency, yourShareAfter);
+  String get requesterLabel => _rsLabel(currency, requesterShare);
+
+  factory HostAcceptFarePreview.fromJson(Map<String, dynamic> json) {
+    double d(String k) => json[k] is num ? (json[k] as num).toDouble() : 0.0;
+    return HostAcceptFarePreview(
+      yourShareNow: d('yourShareNow'),
+      yourShareAfter: d('yourShareAfter'),
+      requesterShare: d('requesterShare'),
+      grossAfter: d('grossAfter'),
+      tripKmAfter: d('tripKmAfter'),
+      tripMinAfter:
+          json['tripMinAfter'] is num ? (json['tripMinAfter'] as num).toInt() : 0,
+      currency: (json['currency'] as String?) ?? 'PKR',
+    );
+  }
+}
+
 /// Outcome of cancelling a ride: the fee recorded (0 when inside the free
 /// window, before the driver arrived), its currency, and the rider's running
 /// count of fee-bearing cancellations.
@@ -732,6 +834,12 @@ class RideDetails {
   /// co-passenger's chosen seats for them. Null for a non-member browsing.
   final int? yourSeats;
 
+  /// FULL shared-route distance (km) + duration (min) through every rider's
+  /// stops — grows as co-passengers join, shrinks when they leave. Null on
+  /// legacy responses.
+  final double? tripDistanceKm;
+  final int? tripDurationMin;
+
   /// The driver assigned to this ride. Null while the ride is still
   /// PENDING (no driver has accepted yet).
   final DriverInfo? driver;
@@ -747,6 +855,8 @@ class RideDetails {
     required this.seatsAvailable,
     required this.coPassengers,
     this.yourSeats,
+    this.tripDistanceKm,
+    this.tripDurationMin,
     this.stops = const [],
     this.pickupLat,
     this.pickupLng,
@@ -825,6 +935,12 @@ class RideDetails {
           : 0,
       yourSeats: json['yourSeats'] is num
           ? (json['yourSeats'] as num).toInt()
+          : null,
+      tripDistanceKm: json['tripDistanceKm'] is num
+          ? (json['tripDistanceKm'] as num).toDouble()
+          : null,
+      tripDurationMin: json['tripDurationMin'] is num
+          ? (json['tripDurationMin'] as num).toInt()
           : null,
       coPassengers: co,
       stops: stops,

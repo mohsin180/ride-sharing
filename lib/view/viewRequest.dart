@@ -68,6 +68,21 @@ Future<void> _confirmCancelRide(
   }
 }
 
+/// TRUE joiner fare preview (weighted share of the simulated new trip),
+/// keyed by "rideId|pLat|pLng|dLat|dLng|seats" so identical params cache.
+final _joinPreviewProvider = FutureProvider.autoDispose
+    .family<JoinFarePreview, String>((ref, key) async {
+  final p = key.split('|');
+  return ref.read(rideServiceProvider).getJoinFarePreview(
+        p[0],
+        pickupLat: double.parse(p[1]),
+        pickupLng: double.parse(p[2]),
+        dropLat: double.parse(p[3]),
+        dropLng: double.parse(p[4]),
+        seats: int.parse(p[5]),
+      );
+});
+
 class Viewrequest extends ConsumerWidget {
   /// Backend id of the ride being viewed. When provided we fetch the
   /// real ride details (host, co-passengers, fare); when null we fall
@@ -118,6 +133,24 @@ class Viewrequest extends ConsumerWidget {
     // covers everything else. Seats = the VIEWER's own booking (yourSeats),
     // not the ride's total capacity, so the host sees the 2 they booked (not 4).
     final effSeats = details?.yourSeats ?? seats;
+
+    // TRUE joiner fare preview — for a searcher (not host, not yet joined)
+    // whose own route we know: their weighted share of the simulated new
+    // trip, including their detour + seats. This is what they'd really pay.
+    JoinFarePreview? joinPreview;
+    final hasJoined = details?.youHaveJoined ?? false;
+    if (rideId != null &&
+        !isHost &&
+        !hasJoined &&
+        pickupLatLng != null &&
+        dropLatLng != null) {
+      joinPreview = ref
+          .watch(_joinPreviewProvider(
+              '${rideId!}|${pickupLatLng!.latitude}|${pickupLatLng!.longitude}'
+              '|${dropLatLng!.latitude}|${dropLatLng!.longitude}|$seats'))
+          .asData
+          ?.value;
+    }
     final effPickupLatLng = (details?.pickupLat != null &&
             details?.pickupLng != null)
         ? LatLng(details!.pickupLat!, details.pickupLng!)
@@ -190,6 +223,10 @@ class Viewrequest extends ConsumerWidget {
                           seats: effSeats,
                           pickupLatLng: effPickupLatLng,
                           dropLatLng: effDropLatLng,
+                          // Backend's FULL shared-route numbers (all riders'
+                          // stops) — these grow as co-passengers join.
+                          tripKm: details?.tripDistanceKm,
+                          tripMin: details?.tripDurationMin,
                         ),
                         SizedBox(height: 12.h),
                         GestureDetector(
@@ -206,7 +243,7 @@ class Viewrequest extends ConsumerWidget {
                           ),
                         ),
                         SizedBox(height: 12.h),
-                        _fareCard(details?.fare),
+                        _fareCard(details?.fare, preview: joinPreview),
                       ],
                     ),
                   ),
@@ -278,6 +315,7 @@ class Viewrequest extends ConsumerWidget {
               child: _BottomBar(
                 rideId: rideId!,
                 fare: details?.fare,
+                previewShare: joinPreview?.yourShare,
                 isHost: isHost,
                 hasJoined: details?.youHaveJoined ?? false,
                 publishedToDrivers: details?.publishedToDrivers ?? false,
@@ -686,12 +724,20 @@ Widget _statsRow({
   required int seats,
   LatLng? pickupLatLng,
   LatLng? dropLatLng,
+  double? tripKm,
+  int? tripMin,
 }) {
   return Consumer(
     builder: (context, ref, _) {
       String duration = "—";
       String distance = "—";
-      if (pickupLatLng != null && dropLatLng != null) {
+      if (tripKm != null) {
+        // Prefer the backend's FULL shared-route numbers (host + every
+        // co-passenger's stops) — they grow as riders join. The client-side
+        // directions call below only knows the host's direct pickup→drop.
+        distance = "${tripKm.toStringAsFixed(1)} km";
+        duration = tripMin != null ? "$tripMin min" : "—";
+      } else if (pickupLatLng != null && dropLatLng != null) {
         ref
             .watch(directionsProvider(DirectionsRequest(
               origin: pickupLatLng,
@@ -935,13 +981,23 @@ Widget _stackedPassengerAvatars(List<RideCoPassenger> coPassengers) {
 /// ───────────────────── FARE CARD ─────────────────────
 /// Renders the fare breakdown coming from the backend. Falls back to
 /// "—" placeholders while loading so the card always has the same
-/// height and layout.
-Widget _fareCard(RideFareBreakdown? fare) {
-  final baseLabel = fare != null ? fare.format(fare.baseFare) : '—';
+/// height and layout. When a joiner [preview] is available it wins: the
+/// totals become the SIMULATED trip (their detour included) and "You'll
+/// pay" is their true weighted share.
+Widget _fareCard(RideFareBreakdown? fare, {JoinFarePreview? preview}) {
+  final baseLabel = preview != null
+      ? 'Rs ${preview.gross.round()}'
+      : fare != null
+          ? fare.format(fare.baseFare)
+          : '—';
   final discountLabel = fare != null
       ? '-${fare.format(fare.sharedDiscount)}'
       : '—';
-  final totalLabel = fare != null ? fare.format(fare.perRider) : '—';
+  final totalLabel = preview != null
+      ? preview.yourShareLabel
+      : fare != null
+          ? fare.format(fare.perRider)
+          : '—';
 
   return Container(
     padding: EdgeInsets.all(16.w),
@@ -1049,6 +1105,10 @@ Widget _fareRow(String label, String value, Color valueColor) {
 class _BottomBar extends ConsumerStatefulWidget {
   final String rideId;
   final RideFareBreakdown? fare;
+
+  /// The joiner's TRUE weighted share (from the fare preview) — wins over
+  /// [fare.perRider] in the confirm label when present.
+  final double? previewShare;
   final bool isHost;
   final bool hasJoined;
   final bool publishedToDrivers;
@@ -1058,6 +1118,7 @@ class _BottomBar extends ConsumerStatefulWidget {
   const _BottomBar({
     required this.rideId,
     required this.fare,
+    this.previewShare,
     required this.isHost,
     required this.hasJoined,
     required this.publishedToDrivers,
@@ -1394,9 +1455,13 @@ class _BottomBarState extends ConsumerState<_BottomBar> {
 
   Widget _confirmButton() {
     final fare = widget.fare;
-    final label = fare != null
-        ? "Confirm Ride · ${fare.format(fare.perRider)}"
-        : "Confirm Ride";
+    // Prefer the joiner's true weighted preview share over the generic
+    // per-rider average — this is what they'll actually be charged.
+    final label = widget.previewShare != null
+        ? "Confirm Ride · Rs ${widget.previewShare!.round()}"
+        : fare != null
+            ? "Confirm Ride · ${fare.format(fare.perRider)}"
+            : "Confirm Ride";
     return GestureDetector(
       onTap: _busy ? null : _onPrimaryTap,
       child: Container(

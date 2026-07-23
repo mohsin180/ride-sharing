@@ -63,5 +63,29 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!-- Package-visibility declarations for url_launcher on Android 11+.
+             Without these, canLaunchUrl() returns false for EVERY external
+             intent in a release build, silently breaking Navigate (maps),
+             the call buttons, and the emergency dialer. -->
+        <!-- Open web links (Google Maps directions fallback). -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
+        </intent>
+        <!-- Turn-by-turn navigation in the Google Maps app. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="google.navigation"/>
+        </intent>
+        <!-- Generic geo: links (any installed maps app). -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="geo"/>
+        </intent>
+        <!-- Phone dialer with the number pre-filled (call rider / driver / 1122). -->
+        <intent>
+            <action android:name="android.intent.action.DIAL"/>
+            <data android:scheme="tel"/>
+        </intent>
     </queries>
 </manifest>
