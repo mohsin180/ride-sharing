@@ -25,8 +25,10 @@ class Apiconsonants {
   static String isEmailVerifiedEndpoint(String userId) =>
       "$userServicebaseUrl/is-email-verified/$userId";
 
-  static String selectRoleEndpoint(String userId) =>
-      "$userServicebaseUrl/$userId/select-role";
+  /// `POST` to finish signup. Authorised by the onboarding token in the
+  /// `Authorization` header — the user id used to sit in this path, which let
+  /// anyone set a stranger's role.
+  static String get selectRoleEndpoint => "$userServicebaseUrl/select-role";
 
   // ── profile-service endpoints ──────────────────────────────────
   static String get profileServicebaseUrl => "$baseUrl/profile";
@@ -42,6 +44,16 @@ class Apiconsonants {
       "$profileServicebaseUrl/passenger";
   static String get updateDriverProfileEndpoint =>
       "$profileServicebaseUrl/driver";
+
+  // ── kyc endpoints (Didit identity verification) ────────────────
+  static String get kycServicebaseUrl => "$baseUrl/kyc";
+
+  /// `POST` to start a driver verification session. Response contract
+  /// documented on [KycStatusResponse] — carries the hosted Didit URL.
+  static String get kycStartEndpoint => "$kycServicebaseUrl/session";
+
+  /// `GET` the driver's current KYC status (backend polls Didit).
+  static String get kycStatusEndpoint => "$kycServicebaseUrl/status";
 
   // ── ride-service endpoints ─────────────────────────────────────
   static String get rideServicebaseUrl => "$baseUrl/rides";

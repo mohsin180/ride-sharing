@@ -8,6 +8,7 @@ import 'package:ride_sharing/model/appRoutes.dart';
 import 'package:ride_sharing/provider/authProvider.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/consonants/errorHandler.dart';
+import 'package:ride_sharing/widgets/consonants/tokenStorage.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
 import 'package:ride_sharing/widgets/custom/responsive.dart';
 
@@ -41,8 +42,11 @@ class _VerificationscreenState extends ConsumerState<Verificationscreen> {
 
   Future<void> _checkOnce() async {
     if (!mounted || _navigated || _checkInFlight) return;
-    final userId = ref.read(authControllerProvider).userId;
-    if (userId == null || userId.isEmpty) return;
+    // Fall back to the persisted id: after a cold start (common here, since
+    // the user leaves the app to open their email) the in-memory one is gone.
+    final userId = ref.read(authControllerProvider).userId ??
+        await Tokenstorage.getPendingUserId();
+    if (userId == null || userId.isEmpty || !mounted) return;
 
     _checkInFlight = true;
     try {

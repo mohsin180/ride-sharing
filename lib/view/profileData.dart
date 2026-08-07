@@ -76,7 +76,7 @@ class _PassengerProfileDataState extends ConsumerState<PassengerProfileData> {
         // left over from a previous session. Mirrors what the driver
         // onboarding flow already does in [driverVehicleDetails].
         ref.invalidate(passengerProfileProvider);
-        context.go(Approutes.bottomNavbar);
+        context.go(Approutes.passengerKyc);
       }
     });
 

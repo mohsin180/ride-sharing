@@ -6,6 +6,7 @@ import 'package:ride_sharing/view/driverScreens/driverNotification.dart';
 import 'package:ride_sharing/view/driverScreens/driverProfileData.dart';
 import 'package:ride_sharing/view/driverScreens/driverVehicleDetails.dart';
 import 'package:ride_sharing/view/homepage.dart';
+import 'package:ride_sharing/view/kycScreen.dart';
 import 'package:ride_sharing/view/loginScreen.dart';
 import 'package:ride_sharing/view/newPassword.dart';
 import 'package:ride_sharing/view/passengerScreens/passengerMessages.dart';
@@ -30,6 +31,8 @@ class Approutes {
   static const String passengerProfileData = "/passenger";
   static const String driverProfileData = "/driver";
   static const String driverVehicleDetails = "/driver/vehicle";
+  static const String driverKyc = "/driver/kyc";
+  static const String passengerKyc = "/passenger/kyc";
   static const String viewRequest = "/viewRequest";
   static const String driverNotification = "/driver-notification";
   static const String driverMessages = "/driver-messages";
@@ -95,6 +98,14 @@ final appRouter = GoRouter(
     GoRoute(
       path: Approutes.driverVehicleDetails,
       builder: (context, state) => const DriverVehicleDetails(),
+    ),
+    GoRoute(
+      path: Approutes.driverKyc,
+      builder: (context, state) => const KycScreen(isDriver: true),
+    ),
+    GoRoute(
+      path: Approutes.passengerKyc,
+      builder: (context, state) => const KycScreen(isDriver: false),
     ),
     GoRoute(
       path: Approutes.bottomNavbar,

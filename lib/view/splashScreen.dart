@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
 import 'package:ride_sharing/model/appRoutes.dart';
+import 'package:ride_sharing/provider/authProvider.dart';
+import 'package:ride_sharing/provider/providers.dart';
 import 'package:ride_sharing/provider/sessionRouter.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/consonants/jwtUtils.dart';
@@ -111,7 +113,7 @@ class _SplashscreenState extends ConsumerState<Splashscreen>
         if (token != null && token.isNotEmpty) {
           await Tokenstorage.deleteToken();
         }
-        return Approutes.login;
+        return await _resumeOnboardingOrLogin();
       }
       final role = JwtUtils.extractRole(token);
       // Authenticated but no role yet (rare) → let login drive role selection
@@ -123,6 +125,32 @@ class _SplashscreenState extends ConsumerState<Splashscreen>
       return await resolveHomeRouteForRole(ref, role!);
     } catch (_) {
       return Approutes.login;
+    }
+  }
+
+  /// With no usable session, pick up an interrupted signup rather than
+  /// dumping the user on the login screen. Registration issues no token, so
+  /// an app killed while the user was off verifying their email used to land
+  /// here with no way back to role selection — the account was stranded.
+  Future<String> _resumeOnboardingOrLogin() async {
+    final userId = await Tokenstorage.getPendingUserId();
+    final onboardingToken = await Tokenstorage.getOnboardingToken();
+    if (userId == null || userId.isEmpty ||
+        onboardingToken == null || onboardingToken.isEmpty) {
+      return Approutes.login;
+    }
+    // Re-seed the in-memory state the onboarding screens read from.
+    ref.read(authControllerProvider.notifier).restorePendingSignup(userId);
+    try {
+      final verified = await ref
+          .read(authServiceProvider)
+          .isEmailVerified(userId)
+          .timeout(const Duration(seconds: 8));
+      return verified ? Approutes.roleSection : Approutes.verification;
+    } catch (_) {
+      // Can't tell yet — the verification screen polls, so it recovers on its
+      // own once the network is back.
+      return Approutes.verification;
     }
   }
 

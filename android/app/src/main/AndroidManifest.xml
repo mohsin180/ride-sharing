@@ -13,6 +13,12 @@
          Android 9+ doesn't block requests to http://192.168.x.x. -->
     <uses-permission android:name="android.permission.INTERNET"/>
 
+    <!-- Camera is used only by the Didit KYC SDK (CNIC scan + selfie
+         liveness). Declared optional so the app still installs on devices
+         without one — everything except identity verification works. -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <uses-feature android:name="android.hardware.camera" android:required="false"/>
+
     <application
         android:label="ride_sharing"
         android:name="${applicationName}"

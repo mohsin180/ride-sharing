@@ -110,7 +110,7 @@ class _DriverVehicleDetailsState extends ConsumerState<DriverVehicleDetails> {
         // extra round-trip.
         ref.read(driverOnboardingProvider.notifier).clear();
         ref.invalidate(driverProfileProvider);
-        context.go(Approutes.bottomNavbar);
+        context.go(Approutes.driverKyc);
       }
     });
 
@@ -296,7 +296,7 @@ class _DriverVehicleDetailsState extends ConsumerState<DriverVehicleDetails> {
           ),
           SizedBox(width: 5.w),
           CustomWidgets.customText(
-            "Step 2 of 2 · the vehicle you'll drive",
+            "Step 2 of 3 · the vehicle you'll drive",
             9.sp,
             Consonants.primaryColor,
             FontWeight.w700,

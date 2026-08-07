@@ -69,10 +69,14 @@ class Authservice {
     return false;
   }
 
-  Future<LoginResponse> assignRole(String userId, String role) async {
+  /// Finishes signup. The backend identifies the user from
+  /// [onboardingToken] (issued by register, or by a login that reported
+  /// `roleRequired`) rather than from a user id in the URL.
+  Future<LoginResponse> assignRole(String onboardingToken, String role) async {
     final json = await apiclient.post(
-      Apiconsonants.selectRoleEndpoint(userId),
+      Apiconsonants.selectRoleEndpoint,
       {"role": role},
+      token: onboardingToken,
     );
     return LoginResponse.fromJson(json as Map<String, dynamic>);
   }

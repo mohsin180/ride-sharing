@@ -24,18 +24,10 @@ class _RoleselectionState extends ConsumerState<Roleselection> {
       return;
     }
 
-    final userId = ref.read(authControllerProvider).userId;
-    if (userId == null || userId.isEmpty) {
-      ErrorHandler.show(
-        context,
-        "Your session expired. Please sign in again.",
-      );
-      return;
-    }
-
-    await ref
-        .read(roleProvider.notifier)
-        .selectRole(userId, selectedRole);
+    // The user is identified by the stored onboarding token, not by an id
+    // held in memory — that used to vanish whenever the app was killed
+    // between registering and verifying the email.
+    await ref.read(roleProvider.notifier).selectRole(selectedRole);
   }
 
   @override

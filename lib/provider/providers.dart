@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ride_sharing/controller/apiClient.dart';
 import 'package:ride_sharing/controller/authService.dart';
+import 'package:ride_sharing/controller/kycService.dart';
 import 'package:ride_sharing/controller/messagingService.dart';
 import 'package:ride_sharing/controller/notificationService.dart';
 import 'package:ride_sharing/controller/profileService.dart';
@@ -26,4 +27,8 @@ final notificationServiceProvider = Provider<Notificationservice>((ref) {
 final messagingServiceProvider = Provider<Messagingservice>((ref) {
   final apiClient = ref.read(apiClientProvider);
   return Messagingservice(apiclient: apiClient);
+});
+final kycServiceProvider = Provider<Kycservice>((ref) {
+  final apiClient = ref.read(apiClientProvider);
+  return Kycservice(apiclient: apiClient);
 });

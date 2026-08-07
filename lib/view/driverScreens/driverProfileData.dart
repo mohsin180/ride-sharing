@@ -85,7 +85,7 @@ class _DriverProfileDataState extends ConsumerState<DriverProfileData> {
         Padding(
           padding: EdgeInsets.symmetric(horizontal: 30.w),
           child: CustomWidgets.customText(
-            "Step 1 of 2 · we'll ask about your vehicle next",
+            "Step 1 of 3 · we'll ask about your vehicle next",
             10.sp,
             Consonants.greyColor,
             FontWeight.w500,

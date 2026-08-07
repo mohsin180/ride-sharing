@@ -143,6 +143,11 @@ class _LoginscreenState extends ConsumerState<Loginscreen> {
     ref.listen<AuthState>(authControllerProvider, (previous, next) {
       if (next.error != null && next.error != previous?.error) {
         ErrorHandler.show(context, next.error);
+      } else if (next.roleRequired && previous?.roleRequired != true) {
+        // Right password, unfinished signup: send them to role selection
+        // rather than showing an error they can do nothing about.
+        ErrorHandler.success(context, "Almost there — pick how you'll ride");
+        context.go(Approutes.roleSection);
       } else if (next.isLoggedIn && previous?.isLoggedIn != true) {
         ErrorHandler.success(context, "Logged in successfully");
         _routeAfterLogin(next.role);

@@ -36,7 +36,28 @@ class Authprovider extends StateNotifier<AuthState> {
     state = state.copyWith(isloading: true, error: null, isLoggedIn: false);
     try {
       final response = await authservice.login(request);
+
+      if (response.roleRequired) {
+        // Credentials were fine — signup was just never finished. Stash what
+        // the role screen needs and let the login screen route there. This is
+        // the rescue path for an account whose app died mid-signup.
+        await Tokenstorage.saveOnboarding(
+          userId: response.userId,
+          onboardingToken: response.onboardingToken,
+        );
+        state = state.copyWith(
+          isloading: false,
+          error: null,
+          isLoggedIn: false,
+          roleRequired: true,
+          userId: response.userId,
+          email: request.email,
+        );
+        return response;
+      }
+
       await Tokenstorage.saveToken(response.token);
+      await Tokenstorage.clearOnboarding();
       // Pull role + userId out of the freshly-issued JWT so the login
       // screen can route into the right bottom-navbar variant without
       // an extra round-trip.
@@ -46,6 +67,7 @@ class Authprovider extends StateNotifier<AuthState> {
         isloading: false,
         error: null,
         isLoggedIn: true,
+        roleRequired: false,
         role: role,
         userId: userId,
       );
@@ -64,6 +86,13 @@ class Authprovider extends StateNotifier<AuthState> {
     state = state.copyWith(isloading: true, error: null, isRegistered: false);
     try {
       final response = await authservice.register(request);
+      // Persist before touching state: registration issues no real token, so
+      // without this the id is lost the moment the OS kills the app — which it
+      // routinely does while the user is off opening the verification email.
+      await Tokenstorage.saveOnboarding(
+        userId: response.id,
+        onboardingToken: response.onboardingToken,
+      );
       state = state.copyWith(
         isloading: false,
         error: null,
@@ -80,6 +109,12 @@ class Authprovider extends StateNotifier<AuthState> {
       );
       rethrow;
     }
+  }
+
+  /// Puts a persisted, unfinished signup back into memory after a cold start,
+  /// so the verification and role screens have the id they poll with.
+  void restorePendingSignup(String userId) {
+    state = state.copyWith(userId: userId, isRegistered: true);
   }
 
   Future<void> verifyEmail(String token) async {
@@ -182,6 +217,11 @@ class AuthState {
   /// — or null if the user logged in before completing role selection.
   final String? role;
 
+  /// True when login succeeded on credentials but the account never finished
+  /// signup. The login screen sends these users to role selection instead of
+  /// showing an error.
+  final bool roleRequired;
+
   AuthState({
     required this.isloading,
     this.error,
@@ -192,6 +232,7 @@ class AuthState {
     this.isSuccess,
     this.email,
     this.role,
+    this.roleRequired = false,
   });
 
   AuthState copyWith({
@@ -204,6 +245,7 @@ class AuthState {
     bool? isSuccess,
     String? email,
     String? role,
+    bool? roleRequired,
   }) {
     return AuthState(
       isloading: isloading ?? this.isloading,
@@ -216,6 +258,7 @@ class AuthState {
       isSuccess: isSuccess ?? this.isSuccess,
       email: email ?? this.email,
       role: role ?? this.role,
+      roleRequired: roleRequired ?? this.roleRequired,
     );
   }
 }
@@ -277,11 +320,22 @@ class RoleNotifier extends StateNotifier<RoleState> {
   final Authservice authservice;
   RoleNotifier({required this.authservice}) : super(RoleState());
 
-  Future<void> selectRole(String userId, String role) async {
+  /// Finishes signup using the stored onboarding token. On success the
+  /// account finally has a real token, so the onboarding leftovers go away.
+  Future<void> selectRole(String role) async {
     try {
       state = state.copyWith(isLoading: true, error: null);
-      final response = await authservice.assignRole(userId, role);
+      final onboardingToken = await Tokenstorage.getOnboardingToken();
+      if (onboardingToken == null || onboardingToken.isEmpty) {
+        state = state.copyWith(
+          isLoading: false,
+          error: "Your signup session expired. Please log in to continue.",
+        );
+        return;
+      }
+      final response = await authservice.assignRole(onboardingToken, role);
       await Tokenstorage.saveToken(response.token);
+      await Tokenstorage.clearOnboarding();
       state = state.copyWith(isLoading: false, response: response);
     } catch (e) {
       state = state.copyWith(isLoading: false, error: ErrorHandler.message(e));

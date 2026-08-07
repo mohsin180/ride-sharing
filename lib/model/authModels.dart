@@ -21,16 +21,26 @@ class RegisterResponse {
   final String id;
   final String email;
 
-  RegisterResponse({required this.id, required this.email});
+  /// Authorises the later `/select-role` call. Persisted so signup survives
+  /// the app being killed while the user verifies their email.
+  final String onboardingToken;
+
+  RegisterResponse({
+    required this.id,
+    required this.email,
+    required this.onboardingToken,
+  });
 
   factory RegisterResponse.fromJson(Map<String, dynamic> json) {
     return RegisterResponse(
       id: (json['id'] ?? '').toString(),
       email: (json['email'] ?? '').toString(),
+      onboardingToken: (json['onboardingToken'] ?? '').toString(),
     );
   }
 
-  Map<String, dynamic> toJson() => {"id": id, "email": email};
+  Map<String, dynamic> toJson() =>
+      {"id": id, "email": email, "onboardingToken": onboardingToken};
 }
 
 // login Models
@@ -44,15 +54,39 @@ class LoginRequest {
 }
 
 class LoginResponse {
+  /// Empty when the account still has no role — see [roleRequired].
   final String token;
 
-  LoginResponse({required this.token});
+  /// True when the credentials were correct but signup was never finished.
+  /// The app then sends the user to role selection instead of showing an
+  /// error, which is the only way to rescue an account whose app was killed
+  /// mid-signup.
+  final bool roleRequired;
+  final String userId;
+  final String onboardingToken;
+
+  LoginResponse({
+    required this.token,
+    this.roleRequired = false,
+    this.userId = '',
+    this.onboardingToken = '',
+  });
 
   factory LoginResponse.fromJson(Map<String, dynamic> json) {
-    return LoginResponse(token: (json['token'] ?? '').toString());
+    return LoginResponse(
+      token: (json['token'] ?? '').toString(),
+      roleRequired: json['roleRequired'] == true,
+      userId: (json['userId'] ?? '').toString(),
+      onboardingToken: (json['onboardingToken'] ?? '').toString(),
+    );
   }
 
-  Map<String, dynamic> toJson() => {"token": token};
+  Map<String, dynamic> toJson() => {
+    "token": token,
+    "roleRequired": roleRequired,
+    "userId": userId,
+    "onboardingToken": onboardingToken,
+  };
 }
 
 // reset Password

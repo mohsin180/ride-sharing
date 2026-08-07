@@ -35,6 +35,23 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+
+    packaging {
+        resources {
+            // The Didit KYC SDK pulls in bouncycastle + jspecify, which each
+            // ship the same multi-release metadata files. Without this the
+            // merge task fails with "3 files found with path
+            // 'META-INF/versions/9/OSGI-INF/MANIFEST.MF'". These are build
+            // metadata only — dropping the duplicates is safe.
+            excludes += setOf(
+                "META-INF/versions/9/OSGI-INF/MANIFEST.MF",
+                "META-INF/LICENSE*",
+                "META-INF/NOTICE*",
+                "META-INF/DEPENDENCIES",
+                "META-INF/INDEX.LIST",
+            )
+        }
+    }
 }
 
 kotlin {
