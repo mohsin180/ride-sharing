@@ -7,6 +7,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:ride_sharing/model/placeModels.dart';
 import 'package:ride_sharing/provider/mapProvider.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
+import 'package:ride_sharing/widgets/custom/appComponents.dart';
 
 /// Drop-in replacement for `GooglePlaceAutoCompleteTextField`.
 ///
@@ -184,16 +185,59 @@ class _PlaceSearchFieldState extends ConsumerState<PlaceSearchField> {
               controller: widget.controller,
               focusNode: _focusNode,
               onChanged: _onChanged,
-              style: widget.textStyle,
-              decoration: widget.inputDecoration.copyWith(
-                hintText: widget.inputDecoration.hintText ?? widget.hint,
-              ),
+              cursorColor: Consonants.violet,
+              style: widget.textStyle ??
+                  AppText.rowLabel(color: Consonants.headingInk)
+                      .copyWith(fontSize: 15.sp),
+              decoration: _decoration(),
             ),
           ),
         ),
       ),
     );
   }
+
+  /// The caller's decoration wins wherever it says something; anything it
+  /// leaves unset falls back to the design system's input — r16, 17/18
+  /// padding, resting [Consonants.border], violet on focus. Callers that
+  /// draw their own chrome (the booking sheet, the ride screen) pass
+  /// `InputBorder.none` and keep it.
+  InputDecoration _decoration() {
+    final d = widget.inputDecoration;
+    return d.copyWith(
+      hintText: d.hintText ?? widget.hint,
+      hintStyle: d.hintStyle ??
+          AppText.rowLabel(color: Consonants.textMuted)
+              .copyWith(fontSize: 15.sp),
+      contentPadding: d.contentPadding ??
+          EdgeInsets.symmetric(vertical: 17.h, horizontal: 18.w),
+      prefixIcon: d.prefixIcon ??
+          (d.border == InputBorder.none
+              ? null
+              : Padding(
+                  padding: EdgeInsets.only(left: 18.w, right: 12.w),
+                  child: Icon(
+                    Icons.search_rounded,
+                    size: 20.sp,
+                    color: Consonants.iconInk,
+                  ),
+                )),
+      prefixIconConstraints: d.prefixIconConstraints ??
+          const BoxConstraints(minWidth: 0, minHeight: 0),
+      border: d.border ?? _fieldBorder(Consonants.border),
+      enabledBorder:
+          d.enabledBorder ?? d.border ?? _fieldBorder(Consonants.border),
+      focusedBorder: d.focusedBorder ??
+          d.border ??
+          _fieldBorder(Consonants.violet, width: 1.8),
+    );
+  }
+
+  OutlineInputBorder _fieldBorder(Color colour, {double width = 1.2}) =>
+      OutlineInputBorder(
+        borderRadius: BorderRadius.circular(Consonants.rInput.r),
+        borderSide: BorderSide(color: colour, width: width),
+      );
 
   Widget _buildOverlay(BuildContext context) {
     // leaderSize comes from the LayerLink and is null on the first frame
@@ -212,19 +256,24 @@ class _PlaceSearchFieldState extends ConsumerState<PlaceSearchField> {
         // don't fire `onTapOutside` and dismiss the dropdown.
         child: TapRegion(
           groupId: _tapRegionGroup,
-          child: Material(
-            color: Consonants.whiteColor,
-            elevation: 8,
-            borderRadius: BorderRadius.circular(14.r),
-            clipBehavior: Clip.antiAlias,
-            shadowColor: Colors.black.withValues(alpha: 0.30),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(maxHeight: 240.h),
-              child: _DropdownContent(
-                loading: _loading,
-                suggestions: _suggestions,
-                hasSearched: _hasSearched,
-                onTap: _select,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(Consonants.rCard.r),
+              boxShadow: Consonants.cardLift,
+            ),
+            child: Material(
+              color: Consonants.surface,
+              elevation: 0,
+              borderRadius: BorderRadius.circular(Consonants.rCard.r),
+              clipBehavior: Clip.antiAlias,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: 240.h),
+                child: _DropdownContent(
+                  loading: _loading,
+                  suggestions: _suggestions,
+                  hasSearched: _hasSearched,
+                  onTap: _select,
+                ),
               ),
             ),
           ),
@@ -251,27 +300,22 @@ class _DropdownContent extends StatelessWidget {
   Widget build(BuildContext context) {
     if (loading) {
       return Padding(
-        padding: EdgeInsets.symmetric(vertical: 16.h),
+        padding: EdgeInsets.symmetric(vertical: 18.h),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             SizedBox(
-              width: 14.w,
-              height: 14.w,
+              width: 15.w,
+              height: 15.w,
               child: const CircularProgressIndicator(
                 strokeWidth: 2,
-                color: Consonants.primaryColor,
+                color: Consonants.violet,
               ),
             ),
             SizedBox(width: 10.w),
             Text(
               'Searching…',
-              style: TextStyle(
-                fontFamily: Consonants.fontFamily,
-                fontSize: 11.sp,
-                color: Consonants.greyColor,
-                fontWeight: FontWeight.w500,
-              ),
+              style: AppText.caption().copyWith(fontSize: 12.5.sp),
             ),
           ],
         ),
@@ -283,16 +327,11 @@ class _DropdownContent extends StatelessWidget {
       // — avoids flashing it on the first focus before any typing.
       if (!hasSearched) return const SizedBox.shrink();
       return Padding(
-        padding: EdgeInsets.symmetric(vertical: 16.h, horizontal: 12.w),
+        padding: EdgeInsets.symmetric(vertical: 18.h, horizontal: 16.w),
         child: Center(
           child: Text(
             'No matching places',
-            style: TextStyle(
-              fontFamily: Consonants.fontFamily,
-              fontSize: 11.sp,
-              color: Consonants.greyColor,
-              fontWeight: FontWeight.w500,
-            ),
+            style: AppText.caption().copyWith(fontSize: 12.5.sp),
           ),
         ),
       );
@@ -303,16 +342,16 @@ class _DropdownContent extends StatelessWidget {
     // void) AND scroll when the content overflows the ConstrainedBox
     // maxHeight. ListView's default NeverScrollable behaviour under
     // shrinkWrap is what blocks scroll without the explicit physics.
+    // Results are a list, not a stack of cards: one 1px rule between rows,
+    // inset past the icon column so the rule starts at the text.
     return ListView.separated(
-      padding: EdgeInsets.symmetric(vertical: 4.h),
+      padding: EdgeInsets.symmetric(vertical: 6.h),
       itemCount: suggestions.length,
       shrinkWrap: true,
       physics: const ClampingScrollPhysics(),
-      separatorBuilder: (_, __) => Divider(
-        height: 1,
-        color: Consonants.lightGreyColor,
-        indent: 14.w,
-        endIndent: 14.w,
+      separatorBuilder: (_, __) => Padding(
+        padding: EdgeInsets.only(left: 48.w, right: 16.w),
+        child: const AppDivider(),
       ),
       itemBuilder: (context, i) {
         final s = suggestions[i];
@@ -320,19 +359,27 @@ class _DropdownContent extends StatelessWidget {
           onTap: () => onTap(s),
           // Slight pressed-state colour gives feedback even though the
           // Material above already does the ink ripple.
-          highlightColor: Consonants.lightBlueColor,
-          splashColor: Consonants.lightBlueColor,
+          highlightColor: Consonants.indigoWash,
+          splashColor: Consonants.indigoWash,
           child: Padding(
-            padding:
-                EdgeInsets.symmetric(horizontal: 14.w, vertical: 10.h),
+            padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 11.h),
             child: Row(
               children: [
-                Icon(
-                  Icons.place_rounded,
-                  size: 16.sp,
-                  color: Consonants.primaryColor,
+                Container(
+                  width: 26.w,
+                  height: 26.w,
+                  alignment: Alignment.center,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Consonants.chipBg,
+                  ),
+                  child: Icon(
+                    Icons.place_outlined,
+                    size: 15.sp,
+                    color: Consonants.iconInk,
+                  ),
                 ),
-                SizedBox(width: 10.w),
+                SizedBox(width: 12.w),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -341,12 +388,9 @@ class _DropdownContent extends StatelessWidget {
                         s.name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontFamily: Consonants.fontFamily,
-                          fontSize: 12.sp,
-                          fontWeight: FontWeight.w700,
-                          color: Consonants.boldTextColor,
-                        ),
+                        style: AppText.rowLabel(color: Consonants.headingInk)
+                            .copyWith(
+                                fontSize: 14.sp, fontWeight: FontWeight.w600),
                       ),
                       if (s.formatted.isNotEmpty) ...[
                         SizedBox(height: 2.h),
@@ -354,12 +398,7 @@ class _DropdownContent extends StatelessWidget {
                           s.formatted,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontFamily: Consonants.fontFamily,
-                            fontSize: 10.sp,
-                            color: Consonants.greyColor,
-                            fontWeight: FontWeight.w500,
-                          ),
+                          style: AppText.caption().copyWith(fontSize: 11.5.sp),
                         ),
                       ],
                     ],

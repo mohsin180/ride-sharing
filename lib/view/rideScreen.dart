@@ -13,6 +13,7 @@ import 'package:ride_sharing/provider/rideRequestProvider.dart';
 import 'package:ride_sharing/view/nearbyRidesMap.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/consonants/errorHandler.dart';
+import 'package:ride_sharing/widgets/custom/appComponents.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
 import 'package:ride_sharing/widgets/custom/floatingRequestBanner.dart';
 import 'package:ride_sharing/widgets/maps/placeSearchField.dart';
@@ -29,18 +30,6 @@ class Ridescreen extends ConsumerStatefulWidget {
 /// what the backend returns.
 const double _kRadiusKm = 5.0;
 
-enum _RideSort { best, nearest, cheapest, soonest, topRated }
-
-extension _RideSortLabel on _RideSort {
-  String get label => switch (this) {
-        _RideSort.best => 'Best match',
-        _RideSort.nearest => 'Nearest',
-        _RideSort.cheapest => 'Cheapest',
-        _RideSort.soonest => 'Soonest',
-        _RideSort.topRated => 'Top rated',
-      };
-}
-
 class _RidescreenState extends ConsumerState<Ridescreen> {
   late final TextEditingController _pickupController;
   late final TextEditingController _dropController;
@@ -48,35 +37,6 @@ class _RidescreenState extends ConsumerState<Ridescreen> {
   /// Rides the user dismissed ("not interested") this session — filtered out
   /// so they don't keep reappearing on refresh.
   final Set<String> _dismissed = {};
-
-  /// How the results list is ordered. "Best match" keeps the backend's
-  /// route-overlap ranking; the rest sort client-side.
-  _RideSort _sort = _RideSort.best;
-
-  List<AvailableRide> _sortRides(List<AvailableRide> rides) {
-    final list = [...rides];
-    switch (_sort) {
-      case _RideSort.best:
-        break; // keep backend order (route-overlap / nearest-first)
-      case _RideSort.nearest:
-        list.sort((a, b) =>
-            (a.distanceKm ?? 1e9).compareTo(b.distanceKm ?? 1e9));
-      case _RideSort.cheapest:
-        list.sort((a, b) =>
-            (a.fareForRider ?? 1e9).compareTo(b.fareForRider ?? 1e9));
-      case _RideSort.soonest:
-        list.sort((a, b) {
-          // Scheduled rides ordered by departure; on-demand ("now") first.
-          final at = a.departureTime?.millisecondsSinceEpoch ?? 0;
-          final bt = b.departureTime?.millisecondsSinceEpoch ?? 0;
-          return at.compareTo(bt);
-        });
-      case _RideSort.topRated:
-        list.sort((a, b) =>
-            (b.hostRating ?? 0).compareTo(a.hostRating ?? 0));
-    }
-    return list;
-  }
 
   /// Keeps rides with enough seats for the party and drops any the user
   /// dismissed. The backend (PostGIS) already bounded the list to within
@@ -252,7 +212,7 @@ class _RidescreenState extends ConsumerState<Ridescreen> {
       children: [
         SafeArea(
           child: RefreshIndicator(
-        color: Consonants.primaryColor,
+        color: Consonants.indigo,
         onRefresh: () async {
           // Refresh both: myRides decides which view shows, availableRides
           // is the find list. Await myRides so the spinner reflects the
@@ -265,7 +225,7 @@ class _RidescreenState extends ConsumerState<Ridescreen> {
           physics: const AlwaysScrollableScrollPhysics(
             parent: BouncingScrollPhysics(),
           ),
-          padding: EdgeInsets.only(bottom: 24.h),
+          padding: EdgeInsets.only(bottom: Consonants.navClearance.h),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -274,7 +234,6 @@ class _RidescreenState extends ConsumerState<Ridescreen> {
                 matchCount: committed ? myRides.length : filtered.length,
                 isMyRidesTab: committed,
               ),
-              SizedBox(height: 14.h),
               // No manual tab toggle: the view is decided by whether the
               // passenger is already in a ride. Committed (host OR
               // co-passenger) → "Your Rides" only; otherwise → "Find Rides".
@@ -287,13 +246,12 @@ class _RidescreenState extends ConsumerState<Ridescreen> {
               else ...[
                 _searchForm(),
                 if (hasSearch) ...[
-                  SizedBox(height: 12.h),
+                  SizedBox(height: 14.h),
                   _radiusCaption(),
                 ],
-                SizedBox(height: 14.h),
+                SizedBox(height: 24.h),
                 _buildBody(async, rides, filtered, hasSearch),
               ],
-              SizedBox(height: 14.h),
             ],
           ),
         ),
@@ -343,7 +301,7 @@ class _RidescreenState extends ConsumerState<Ridescreen> {
             onViewRequest: () => _onViewMyRide(rides[i]),
             onDecline: () => _onDeclineMyRide(rides[i]),
           ),
-          if (i != rides.length - 1) SizedBox(height: 14.h),
+          if (i != rides.length - 1) SizedBox(height: Consonants.gapTiles.h),
         ],
       ],
     );
@@ -365,42 +323,14 @@ class _RidescreenState extends ConsumerState<Ridescreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       barrierDismissible: true,
-      builder: (dialogCtx) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20.r),
-        ),
-        title: CustomWidgets.customText(
-          "Leave this ride?",
-          15.sp,
-          Consonants.boldTextColor,
-          FontWeight.w800,
-        ),
-        content: CustomWidgets.customText(
-          "You'll be removed from this trip and can find another ride afterward.",
-          12.sp,
-          Consonants.greyColor,
-          FontWeight.w500,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogCtx).pop(false),
-            child: CustomWidgets.customText(
-              "Keep",
-              12.sp,
-              Consonants.boldTextColor,
-              FontWeight.w700,
-            ),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(dialogCtx).pop(true),
-            child: CustomWidgets.customText(
-              "Leave ride",
-              12.sp,
-              const Color(0xffEF4444),
-              FontWeight.w800,
-            ),
-          ),
-        ],
+      barrierColor: Consonants.scrim,
+      builder: (dialogCtx) => _confirmDialog(
+        dialogCtx,
+        icon: Icons.logout_rounded,
+        title: "Leave this ride?",
+        body:
+            "You'll be removed from this trip and can find another ride afterward.",
+        confirmLabel: "Leave ride",
       ),
     );
 
@@ -428,42 +358,14 @@ class _RidescreenState extends ConsumerState<Ridescreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       barrierDismissible: true,
-      builder: (dialogCtx) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20.r),
-        ),
-        title: CustomWidgets.customText(
-          "Cancel this ride?",
-          15.sp,
-          Consonants.boldTextColor,
-          FontWeight.w800,
-        ),
-        content: CustomWidgets.customText(
-          "Any passengers who've joined will be notified. You can publish a new ride afterward.",
-          12.sp,
-          Consonants.greyColor,
-          FontWeight.w500,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogCtx).pop(false),
-            child: CustomWidgets.customText(
-              "Keep",
-              12.sp,
-              Consonants.boldTextColor,
-              FontWeight.w700,
-            ),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(dialogCtx).pop(true),
-            child: CustomWidgets.customText(
-              "Cancel ride",
-              12.sp,
-              const Color(0xffEF4444),
-              FontWeight.w800,
-            ),
-          ),
-        ],
+      barrierColor: Consonants.scrim,
+      builder: (dialogCtx) => _confirmDialog(
+        dialogCtx,
+        icon: Icons.event_busy_outlined,
+        title: "Cancel this ride?",
+        body:
+            "Any passengers who've joined will be notified. You can publish a new ride afterward.",
+        confirmLabel: "Cancel ride",
       ),
     );
 
@@ -507,22 +409,103 @@ class _RidescreenState extends ConsumerState<Ridescreen> {
   /// rule visually so an empty result set doesn't feel like a bug.
   Widget _radiusCaption() {
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 22.w),
+      padding: EdgeInsets.symmetric(horizontal: Consonants.gutter.w),
       child: Row(
         children: [
           Icon(
-            Icons.adjust_rounded,
-            size: 12.sp,
-            color: Consonants.primaryColor,
+            Icons.adjust_outlined,
+            size: 15.sp,
+            color: Consonants.iconInk,
           ),
-          SizedBox(width: 6.w),
-          CustomWidgets.customText(
+          SizedBox(width: 8.w),
+          Text(
             "Within ${_kRadiusKm.round()} km of your pickup",
-            10.sp,
-            Consonants.greyColor,
-            FontWeight.w600,
+            style: AppText.caption().copyWith(fontSize: 12.5.sp),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Shared chrome for the two irreversible confirmations on this screen.
+  /// Red is reserved for exactly this kind of action.
+  Widget _confirmDialog(
+    BuildContext dialogCtx, {
+    required IconData icon,
+    required String title,
+    required String body,
+    required String confirmLabel,
+  }) {
+    return Dialog(
+      backgroundColor: Consonants.surface,
+      insetPadding: EdgeInsets.symmetric(horizontal: 32.w),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(Consonants.rHero.r),
+      ),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(22.w, 26.h, 22.w, 20.h),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 60.w,
+              height: 60.w,
+              alignment: Alignment.center,
+              decoration: const BoxDecoration(
+                color: Consonants.dangerWash,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, size: 26.sp, color: Consonants.danger),
+            ),
+            SizedBox(height: 18.h),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: AppText.sectionHeading().copyWith(fontSize: 19.sp),
+            ),
+            SizedBox(height: 8.h),
+            Text(
+              body,
+              textAlign: TextAlign.center,
+              style: AppText.paragraph().copyWith(fontSize: 15.sp),
+            ),
+            SizedBox(height: 24.h),
+            Row(
+              children: [
+                Expanded(
+                  child: AppButton(
+                    label: "Keep",
+                    kind: AppButtonKind.neutral,
+                    onPressed: () => Navigator.of(dialogCtx).pop(false),
+                  ),
+                ),
+                SizedBox(width: Consonants.gapButtons.w),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => Navigator.of(dialogCtx).pop(true),
+                    child: Container(
+                      alignment: Alignment.center,
+                      padding:
+                          EdgeInsets.symmetric(vertical: 17.h, horizontal: 12.w),
+                      decoration: BoxDecoration(
+                        color: Consonants.danger,
+                        borderRadius:
+                            BorderRadius.circular(Consonants.rButton.r),
+                      ),
+                      child: Text(
+                        confirmLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppText.button(color: Consonants.surface)
+                            .copyWith(fontSize: 16.sp),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -549,25 +532,24 @@ class _RidescreenState extends ConsumerState<Ridescreen> {
     }
     if (filtered.isEmpty) return const _NoNearbyState();
 
-    final sorted = _sortRides(filtered);
+    // Backend order is route-overlap / nearest-first, which is what we show.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Row(
           children: [
-            Expanded(child: _sortBar()),
-            SizedBox(width: 8.w),
-            _mapButton(sorted),
-            SizedBox(width: 20.w),
+            const Spacer(),
+            _mapButton(filtered),
+            SizedBox(width: Consonants.gutter.w),
           ],
         ),
-        SizedBox(height: 12.h),
-        for (int i = 0; i < sorted.length; i++) ...[
+        SizedBox(height: 18.h),
+        for (int i = 0; i < filtered.length; i++) ...[
           _FeaturedRideCard(
-            ride: sorted[i],
-            onViewRequest: () => _onJoinRide(sorted[i]),
+            ride: filtered[i],
+            onViewRequest: () => _onJoinRide(filtered[i]),
             onDecline: () {
-              setState(() => _dismissed.add(sorted[i].id));
+              setState(() => _dismissed.add(filtered[i].id));
               ScaffoldMessenger.of(context)
                 ..hideCurrentSnackBar()
                 ..showSnackBar(
@@ -575,7 +557,7 @@ class _RidescreenState extends ConsumerState<Ridescreen> {
                 );
             },
           ),
-          if (i != sorted.length - 1) SizedBox(height: 14.h),
+          if (i != filtered.length - 1) SizedBox(height: Consonants.gapTiles.h),
         ],
       ],
     );
@@ -592,218 +574,121 @@ class _RidescreenState extends ConsumerState<Ridescreen> {
         ),
       )),
       child: Container(
-        height: 34.h,
-        padding: EdgeInsets.symmetric(horizontal: 12.w),
+        height: 38.h,
+        padding: EdgeInsets.symmetric(horizontal: 14.w),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: Consonants.primaryColor,
-          borderRadius: BorderRadius.circular(20.r),
+          color: Consonants.chipBg,
+          borderRadius: BorderRadius.circular(Consonants.rPill.r),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.map_rounded, size: 14.sp, color: Consonants.whiteColor),
-            SizedBox(width: 5.w),
-            CustomWidgets.customText(
-                'Map', 11.sp, Consonants.whiteColor, FontWeight.w700),
+            Icon(Icons.map_outlined, size: 16.sp, color: Consonants.iconInk),
+            SizedBox(width: 6.w),
+            Text(
+              'Map',
+              style: AppText.navLabel(color: Consonants.iconInk)
+                  .copyWith(fontSize: 13.sp),
+            ),
           ],
         ),
       ),
     );
   }
 
-  /// Horizontal chip row to reorder the results.
-  Widget _sortBar() {
-    return SizedBox(
-      height: 34.h,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: EdgeInsets.symmetric(horizontal: 20.w),
-        itemCount: _RideSort.values.length,
-        separatorBuilder: (_, __) => SizedBox(width: 8.w),
-        itemBuilder: (_, i) {
-          final s = _RideSort.values[i];
-          final selected = s == _sort;
-          return GestureDetector(
-            onTap: () => setState(() => _sort = s),
-            child: Container(
-              alignment: Alignment.center,
-              padding: EdgeInsets.symmetric(horizontal: 14.w),
-              decoration: BoxDecoration(
-                color: selected
-                    ? Consonants.primaryColor
-                    : Consonants.whiteColor,
-                borderRadius: BorderRadius.circular(20.r),
-                border: Border.all(
-                  color: selected
-                      ? Consonants.primaryColor
-                      : Consonants.lightGreyColor,
-                ),
-              ),
-              child: CustomWidgets.customText(
-                s.label,
-                11.sp,
-                selected ? Consonants.whiteColor : Consonants.greyColor,
-                FontWeight.w700,
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
   // ─────────────────────── SEARCH FORM ───────────────────────
   Widget _searchForm() {
-    return Container(
-      margin: EdgeInsets.symmetric(horizontal: 20.w),
-      padding: EdgeInsets.all(16.w),
-      decoration: BoxDecoration(
-        color: Consonants.whiteColor,
-        borderRadius: BorderRadius.circular(20.r),
-        boxShadow: [
-          BoxShadow(
-            color: Consonants.primaryColor.withValues(alpha: 0.08),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          // ─── Pickup field ───
-          Row(
-            children: [
-              Container(
-                width: 14.w,
-                height: 14.w,
-                decoration: BoxDecoration(
-                  color: Consonants.whiteColor,
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: Consonants.primaryColor,
-                    width: 3,
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: Consonants.gutter.w),
+      child: AppCard(
+        padding: EdgeInsets.fromLTRB(18.w, 6.h, 18.w, 18.h),
+        child: Column(
+          children: [
+            // ─── Pickup field ───
+            Row(
+              children: [
+                Container(
+                  width: 14.w,
+                  height: 14.w,
+                  decoration: BoxDecoration(
+                    color: Consonants.surface,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Consonants.indigo, width: 3),
                   ),
                 ),
-              ),
-              SizedBox(width: 12.w),
-              Expanded(
-                child: _placesField(
-                  controller: _pickupController,
-                  hint: "Pickup location",
-                  onPicked: (description, latLng) {
-                    ref.read(rideRequestProvider.notifier).setPickup(
-                          description,
-                          latLng: latLng,
-                        );
-                  },
+                SizedBox(width: 14.w),
+                Expanded(
+                  child: _placesField(
+                    controller: _pickupController,
+                    hint: "Pickup location",
+                    onPicked: (description, latLng) {
+                      ref.read(rideRequestProvider.notifier).setPickup(
+                            description,
+                            latLng: latLng,
+                          );
+                    },
+                  ),
                 ),
-              ),
-            ],
-          ),
-          Padding(
-            padding: EdgeInsets.symmetric(vertical: 8.h),
-            child: Container(
-              height: 1,
-              color: Consonants.lightGreyColor,
+              ],
             ),
-          ),
-          // ─── Destination field ───
-          Row(
-            children: [
-              Icon(
-                Icons.location_on_rounded,
-                size: 18.sp,
-                color: const Color(0xffEF4444),
-              ),
-              SizedBox(width: 8.w),
-              Expanded(
-                child: _placesField(
-                  controller: _dropController,
-                  hint: "Where are you going?",
-                  onPicked: (description, latLng) {
-                    ref.read(rideRequestProvider.notifier).setDrop(
-                          description,
-                          latLng: latLng,
-                        );
-                  },
-                ),
-              ),
-            ],
-          ),
-          Padding(
-            padding: EdgeInsets.symmetric(vertical: 8.h),
-            child: Container(
-              height: 1,
-              color: Consonants.lightGreyColor,
+            Padding(
+              padding: EdgeInsets.symmetric(vertical: 12.h),
+              child: const AppDivider(),
             ),
-          ),
-          // ─── Seats counter ───
-          Row(
-            children: [
-              Icon(
-                Icons.event_seat_rounded,
-                size: 16.sp,
-                color: Consonants.primaryColor,
-              ),
-              SizedBox(width: 10.w),
-              CustomWidgets.customText(
-                "Seats needed",
-                12.sp,
-                Consonants.boldTextColor,
-                FontWeight.w600,
-              ),
-              const Spacer(),
-              _seatStepper(),
-            ],
-          ),
-          SizedBox(height: 14.h),
-          // ─── Save button ───
-          GestureDetector(
-            onTap: _onSaveTap,
-            child: Container(
-              width: double.infinity,
-              height: 46.h,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(14.r),
-                gradient: const LinearGradient(
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
-                  colors: [
-                    Consonants.primaryColor,
-                    Color(0xff5AC8FA),
-                  ],
+            // ─── Destination field ───
+            Row(
+              children: [
+                Icon(
+                  Icons.location_on_outlined,
+                  size: 19.sp,
+                  color: Consonants.iconInk,
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color:
-                        Consonants.primaryColor.withValues(alpha: 0.30),
-                    blurRadius: 12,
-                    offset: const Offset(0, 6),
+                SizedBox(width: 10.w),
+                Expanded(
+                  child: _placesField(
+                    controller: _dropController,
+                    hint: "Where are you going?",
+                    onPicked: (description, latLng) {
+                      ref.read(rideRequestProvider.notifier).setDrop(
+                            description,
+                            latLng: latLng,
+                          );
+                    },
                   ),
-                ],
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.bookmark_added_rounded,
-                    size: 16.sp,
-                    color: Consonants.whiteColor,
-                  ),
-                  SizedBox(width: 6.w),
-                  CustomWidgets.customText(
-                    "Save",
-                    13.sp,
-                    Consonants.whiteColor,
-                    FontWeight.w800,
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ),
-        ],
+            Padding(
+              padding: EdgeInsets.symmetric(vertical: 12.h),
+              child: const AppDivider(),
+            ),
+            // ─── Seats counter ───
+            Row(
+              children: [
+                Icon(
+                  Icons.event_seat_outlined,
+                  size: 19.sp,
+                  color: Consonants.iconInk,
+                ),
+                SizedBox(width: 10.w),
+                Text(
+                  "Seats needed",
+                  style: AppText.rowLabel().copyWith(fontSize: 15.5.sp),
+                ),
+                const Spacer(),
+                _seatStepper(),
+              ],
+            ),
+            SizedBox(height: 20.h),
+            // ─── Save button ───
+            AppButton(
+              label: "Save",
+              icon: Icons.bookmark_added_outlined,
+              onPressed: _onSaveTap,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -822,22 +707,14 @@ class _RidescreenState extends ConsumerState<Ridescreen> {
       hint: hint,
       inputDecoration: InputDecoration(
         hintText: hint,
-        hintStyle: TextStyle(
-          fontSize: 12.sp,
-          color: Consonants.greyColor,
-          fontWeight: FontWeight.w500,
-          fontFamily: Consonants.fontFamily,
-        ),
+        hintStyle: AppText.rowLabel(color: Consonants.textMuted)
+            .copyWith(fontSize: 15.5.sp),
         border: InputBorder.none,
         isCollapsed: true,
-        contentPadding: EdgeInsets.symmetric(vertical: 4.h),
+        contentPadding: EdgeInsets.symmetric(vertical: 6.h),
       ),
-      textStyle: TextStyle(
-        fontSize: 12.sp,
-        color: Consonants.boldTextColor,
-        fontWeight: FontWeight.w700,
-        fontFamily: Consonants.fontFamily,
-      ),
+      textStyle: AppText.rowLabel(color: Consonants.headingInk)
+          .copyWith(fontSize: 15.5.sp, fontWeight: FontWeight.w600),
       onPicked: (s) => onPicked(s.formatted, s.coords),
     );
   }
@@ -846,10 +723,10 @@ class _RidescreenState extends ConsumerState<Ridescreen> {
     final seats = ref.watch(rideRequestProvider.select((s) => s.seats));
     final notifier = ref.read(rideRequestProvider.notifier);
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 4.h),
+      padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 5.h),
       decoration: BoxDecoration(
-        color: Consonants.lightBlueColor,
-        borderRadius: BorderRadius.circular(20.r),
+        color: Consonants.chipBg,
+        borderRadius: BorderRadius.circular(Consonants.rPill.r),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -859,19 +736,17 @@ class _RidescreenState extends ConsumerState<Ridescreen> {
             enabled: seats > 1,
             onTap: () => notifier.setSeats(seats - 1),
           ),
-          SizedBox(width: 12.w),
+          SizedBox(width: 14.w),
           SizedBox(
-            width: 14.w,
+            width: 16.w,
             child: Center(
-              child: CustomWidgets.customText(
+              child: Text(
                 "$seats",
-                13.sp,
-                Consonants.boldTextColor,
-                FontWeight.w800,
+                style: AppText.amount().copyWith(fontSize: 16.sp),
               ),
             ),
           ),
-          SizedBox(width: 12.w),
+          SizedBox(width: 14.w),
           _seatButton(
             Icons.add_rounded,
             enabled: seats < 4,
@@ -890,19 +765,17 @@ class _RidescreenState extends ConsumerState<Ridescreen> {
     return GestureDetector(
       onTap: enabled ? onTap : null,
       child: Container(
-        width: 24.w,
-        height: 24.w,
+        width: 28.w,
+        height: 28.w,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: enabled
-              ? Consonants.primaryColor
-              : Consonants.lightGreyColor,
+          color: enabled ? Consonants.indigo : Consonants.border,
           shape: BoxShape.circle,
         ),
         child: Icon(
           icon,
-          size: 14.sp,
-          color: enabled ? Consonants.whiteColor : Consonants.greyColor,
+          size: 16.sp,
+          color: enabled ? Consonants.surface : Consonants.textMuted,
         ),
       ),
     );
@@ -923,45 +796,14 @@ class _ScreenHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Subtitle is context-aware on three axes:
-    //   1. which tab is active (find rides vs your rides)
-    //   2. for find rides: whether the user has saved a search
-    //   3. for either: zero / one / many results
-    final subtitle = isMyRidesTab
-        ? (matchCount == 0
-            ? "You're not in a ride right now"
-            : "Your active ride — manage it below")
-        : (!hasSearch
-            ? "Set pickup & destination to find nearby rides"
-            : matchCount == 0
-                ? "No nearby rides match your search"
-                : matchCount == 1
-                    ? "1 nearby ride matches your search"
-                    : "$matchCount nearby rides match your search");
+    // The only subtitle worth showing is the match count — the prompt /
+    // empty / error states below already say everything else.
+    final subtitle = (!isMyRidesTab && hasSearch && matchCount > 0)
+        ? (matchCount == 1 ? "1 nearby ride" : "$matchCount nearby rides")
+        : null;
     final title = isMyRidesTab ? "Your Rides" : "Available Rides";
 
-    return Padding(
-      padding: EdgeInsets.fromLTRB(20.w, 14.h, 20.w, 10.h),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          CustomWidgets.customText(
-            title,
-            18.sp,
-            Consonants.boldTextColor,
-            FontWeight.w700,
-          ),
-          SizedBox(height: 2.h),
-          CustomWidgets.customText(
-            subtitle,
-            11.sp,
-            Consonants.greyColor,
-            FontWeight.w500,
-            maxLines: 1,
-          ),
-        ],
-      ),
-    );
+    return AppHeader(title: title, subtitle: subtitle);
   }
 }
 
@@ -976,39 +818,27 @@ class _LoadingState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: EdgeInsets.symmetric(horizontal: 20.w),
-      padding: EdgeInsets.symmetric(vertical: 40.h, horizontal: 20.w),
-      decoration: BoxDecoration(
-        color: Consonants.whiteColor,
-        borderRadius: BorderRadius.circular(20.r),
-        border: Border.all(color: Consonants.lightGreyColor, width: 1.2),
-      ),
-      child: Column(
-        children: [
-          SizedBox(
-            width: 28.w,
-            height: 28.w,
-            child: const CircularProgressIndicator(
-              strokeWidth: 2.5,
-              color: Consonants.primaryColor,
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: Consonants.gutter.w),
+      child: AppCard(
+        padding: EdgeInsets.symmetric(vertical: 44.h, horizontal: 20.w),
+        child: Column(
+          children: [
+            SizedBox(
+              width: 28.w,
+              height: 28.w,
+              child: const CircularProgressIndicator(
+                strokeWidth: 2.4,
+                color: Consonants.indigo,
+              ),
             ),
-          ),
-          SizedBox(height: 14.h),
-          CustomWidgets.customText(
-            "Finding rides near you…",
-            13.sp,
-            Consonants.boldTextColor,
-            FontWeight.w700,
-          ),
-          SizedBox(height: 4.h),
-          CustomWidgets.customText(
-            "Just a moment",
-            11.sp,
-            Consonants.greyColor,
-            FontWeight.w500,
-          ),
-        ],
+            SizedBox(height: 18.h),
+            Text(
+              "Finding rides near you…",
+              style: AppText.sectionHeading().copyWith(fontSize: 17.sp),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1024,84 +854,18 @@ class _ErrorState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: EdgeInsets.symmetric(horizontal: 20.w),
-      padding: EdgeInsets.symmetric(vertical: 32.h, horizontal: 20.w),
-      decoration: BoxDecoration(
-        color: Consonants.whiteColor,
-        borderRadius: BorderRadius.circular(20.r),
-        border: Border.all(color: Consonants.lightGreyColor, width: 1.2),
-      ),
-      child: Column(
-        children: [
-          Container(
-            width: 64.w,
-            height: 64.w,
-            alignment: Alignment.center,
-            decoration: const BoxDecoration(
-              color: Color(0xffFEE2E2),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              Icons.cloud_off_rounded,
-              size: 28.sp,
-              color: const Color(0xffEF4444),
-            ),
-          ),
-          SizedBox(height: 12.h),
-          CustomWidgets.customText(
-            "Couldn't load rides",
-            13.sp,
-            Consonants.boldTextColor,
-            FontWeight.w700,
-          ),
-          SizedBox(height: 4.h),
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 10.w),
-            child: CustomWidgets.customText(
-              message,
-              11.sp,
-              Consonants.greyColor,
-              FontWeight.w500,
-              textAlign: TextAlign.center,
-              maxLines: 3,
-            ),
-          ),
-          SizedBox(height: 16.h),
-          GestureDetector(
-            onTap: onRetry,
-            child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 10.h),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Consonants.primaryColor, Color(0xff5AC8FA)],
-                ),
-                borderRadius: BorderRadius.circular(40.r),
-                boxShadow: [
-                  BoxShadow(
-                    color: Consonants.primaryColor.withValues(alpha: 0.30),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.refresh_rounded,
-                      size: 13.sp, color: Consonants.whiteColor),
-                  SizedBox(width: 6.w),
-                  CustomWidgets.customText(
-                    "Try again",
-                    11.sp,
-                    Consonants.whiteColor,
-                    FontWeight.w700,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
+    return _emptyStateShell(
+      icon: Icons.cloud_off_outlined,
+      title: "Couldn't load rides",
+      subtitle: message,
+      iconBg: Consonants.dangerWash,
+      iconColour: Consonants.danger,
+      action: AppButton(
+        label: "Try again",
+        icon: Icons.refresh_rounded,
+        kind: AppButtonKind.secondary,
+        expand: false,
+        onPressed: onRetry,
       ),
     );
   }
@@ -1119,10 +883,9 @@ class _SearchPrompt extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _emptyStateShell(
-      icon: Icons.travel_explore_rounded,
-      title: "Tell us where you're going",
-      subtitle:
-          "Pick your pickup and destination above, then tap Save to see rides within ${_kRadiusKm.round()} km.",
+      icon: Icons.travel_explore_outlined,
+      title:
+          "Set pickup and destination to see rides within ${_kRadiusKm.round()} km",
     );
   }
 }
@@ -1136,11 +899,9 @@ class _NoNearbyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _emptyStateShell(
-      icon: Icons.location_off_rounded,
+      icon: Icons.location_off_outlined,
       title:
           "No rides within ${_kRadiusKm.round()} km of your pickup",
-      subtitle:
-          "Try a different pickup, or pull down to refresh in a moment.",
     );
   }
 }
@@ -1154,10 +915,8 @@ class _NoMyRidesState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _emptyStateShell(
-      icon: Icons.workspace_premium_rounded,
+      icon: Icons.workspace_premium_outlined,
       title: "You haven't created any rides yet",
-      subtitle:
-          "Head back to the home tab and tap Book to publish a ride others can join.",
     );
   }
 }
@@ -1168,55 +927,48 @@ class _NoMyRidesState extends StatelessWidget {
 Widget _emptyStateShell({
   required IconData icon,
   required String title,
-  required String subtitle,
+  String? subtitle,
   Widget? action,
+  Color iconBg = Consonants.indigoWash,
+  Color iconColour = Consonants.indigo,
 }) {
-  return Container(
-    margin: EdgeInsets.symmetric(horizontal: 20.w),
-    padding: EdgeInsets.symmetric(vertical: 32.h, horizontal: 20.w),
-    decoration: BoxDecoration(
-      color: Consonants.whiteColor,
-      borderRadius: BorderRadius.circular(20.r),
-      border: Border.all(color: Consonants.lightGreyColor, width: 1.2),
-    ),
-    child: Column(
-      children: [
-        Container(
-          width: 64.w,
-          height: 64.w,
-          alignment: Alignment.center,
-          decoration: const BoxDecoration(
-            color: Consonants.lightBlueColor,
-            shape: BoxShape.circle,
+  return Padding(
+    padding: EdgeInsets.symmetric(horizontal: Consonants.gutter.w),
+    child: AppCard(
+      padding: EdgeInsets.symmetric(vertical: 36.h, horizontal: 22.w),
+      child: Column(
+        children: [
+          Container(
+            width: 68.w,
+            height: 68.w,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(color: iconBg, shape: BoxShape.circle),
+            child: Icon(icon, size: 30.sp, color: iconColour),
           ),
-          child: Icon(icon, size: 28.sp, color: Consonants.primaryColor),
-        ),
-        SizedBox(height: 12.h),
-        CustomWidgets.customText(
-          title,
-          13.sp,
-          Consonants.boldTextColor,
-          FontWeight.w700,
-          textAlign: TextAlign.center,
-          maxLines: 2,
-        ),
-        SizedBox(height: 4.h),
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: 10.w),
-          child: CustomWidgets.customText(
-            subtitle,
-            11.sp,
-            Consonants.greyColor,
-            FontWeight.w500,
+          SizedBox(height: 18.h),
+          Text(
+            title,
             textAlign: TextAlign.center,
-            maxLines: 3,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: AppText.sectionHeading().copyWith(fontSize: 17.sp),
           ),
-        ),
-        if (action != null) ...[
-          SizedBox(height: 16.h),
-          action,
+          if (subtitle != null) ...[
+            SizedBox(height: 8.h),
+            Text(
+              subtitle,
+              textAlign: TextAlign.center,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: AppText.paragraph().copyWith(fontSize: 15.sp),
+            ),
+          ],
+          if (action != null) ...[
+            SizedBox(height: 22.h),
+            action,
+          ],
         ],
-      ],
+      ),
     ),
   );
 }
@@ -1287,6 +1039,9 @@ class _FeaturedRideCard extends StatelessWidget {
     final chips = <Widget>[];
     if (ride.isScheduled) {
       chips.add(_metaChip(Icons.schedule_rounded, _scheduledLabel, accent: true));
+    } else if (ride.isDeparted) {
+      // Its slot has passed — saying "Leave now" here would be a lie.
+      chips.add(_metaChip(Icons.history_rounded, 'Departed $_scheduledLabel'));
     } else {
       chips.add(_metaChip(Icons.bolt_rounded, 'Leave now'));
     }
@@ -1308,22 +1063,24 @@ class _FeaturedRideCard extends StatelessWidget {
   }
 
   Widget _metaChip(IconData icon, String label, {bool accent = false}) {
-    final fg = accent ? Consonants.primaryColor : Consonants.greyColor;
+    final fg = accent ? Consonants.indigo : Consonants.textMuted;
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 6.h),
+      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 7.h),
       decoration: BoxDecoration(
-        color: accent
-            ? Consonants.lightBlueColor
-            : Consonants.scaffoldBackgroundColor,
-        borderRadius: BorderRadius.circular(20.r),
+        color: accent ? Consonants.indigoWash : Consonants.chipBg,
+        borderRadius: BorderRadius.circular(Consonants.rPill.r),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 13.sp, color: fg),
-          SizedBox(width: 4.w),
-          CustomWidgets.customText(
-              label, 10.5.sp, fg, FontWeight.w700, maxLines: 1),
+          Icon(icon, size: 14.sp, color: fg),
+          SizedBox(width: 6.w),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppText.navLabel(color: fg).copyWith(fontSize: 12.5.sp),
+          ),
         ],
       ),
     );
@@ -1331,304 +1088,209 @@ class _FeaturedRideCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: EdgeInsets.symmetric(horizontal: 20.w),
-      decoration: BoxDecoration(
-        color: Consonants.whiteColor,
-        borderRadius: BorderRadius.circular(22.r),
-        boxShadow: [
-          BoxShadow(
-            color: Consonants.primaryColor.withValues(alpha: 0.10),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          _hostStrip(),
-          Padding(
-            padding: EdgeInsets.fromLTRB(16.w, 14.h, 16.w, 16.h),
-            child: Column(
-              children: [
-                _statsPills(),
-                _metaRow(),
-                SizedBox(height: 16.h),
-                _actionButtons(),
-              ],
-            ),
-          ),
-        ],
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: Consonants.gutter.w),
+      child: AppCard(
+        padding: EdgeInsets.all(18.w),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _hostStrip(),
+            SizedBox(height: 20.h),
+            _statsPills(),
+            _metaRow(),
+            SizedBox(height: 20.h),
+            _actionButtons(),
+          ],
+        ),
       ),
     );
   }
 
-  // ─── Host strip (gradient top section) ──────────────────
+  // ─── Host row ───────────────────────────────────────────
   Widget _hostStrip() {
     final initial =
         name.trim().isNotEmpty ? name.trim()[0].toUpperCase() : "?";
-    return Container(
-      padding: EdgeInsets.all(14.w),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22.r)),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Consonants.primaryColor, Color(0xff5AC8FA)],
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 48.w,
-            height: 48.w,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: Consonants.whiteColor,
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.40),
-                width: 2,
-              ),
-            ),
-            child: Text(
-              initial,
-              style: TextStyle(
-                color: Consonants.primaryColor,
-                fontSize: 20.sp,
-                fontWeight: FontWeight.w800,
-                fontFamily: Consonants.fontFamily,
-              ),
-            ),
+    return Row(
+      children: [
+        Container(
+          width: 48.w,
+          height: 48.w,
+          alignment: Alignment.center,
+          decoration: const BoxDecoration(
+            color: Consonants.indigoWash,
+            shape: BoxShape.circle,
           ),
-          SizedBox(width: 12.w),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          child: Text(
+            initial,
+            style: AppText.amount(color: Consonants.indigo)
+                .copyWith(fontSize: 19.sp),
+          ),
+        ),
+        SizedBox(width: 14.w),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppText.rowLabel(color: Consonants.headingInk)
+                          .copyWith(fontSize: 16.5.sp,
+                              fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  SizedBox(width: 5.w),
+                  Icon(
+                    Icons.verified_outlined,
+                    size: 15.sp,
+                    color: Consonants.iconInk,
+                  ),
+                ],
+              ),
+              SizedBox(height: 4.h),
+              Row(
+                children: [
+                  Icon(
+                    Icons.star_outline_rounded,
+                    size: 14.sp,
+                    color: Consonants.textMuted,
+                  ),
+                  SizedBox(width: 4.w),
+                  Flexible(
+                    child: Text(
+                      "$rating  ·  $trips trips  ·  Trip host",
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppText.caption().copyWith(fontSize: 12.5.sp),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        if (hostGender == 'FEMALE' || hostGender == 'MALE') ...[
+          SizedBox(width: 10.w),
+          Container(
+            padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 6.h),
+            decoration: BoxDecoration(
+              color: Consonants.chipBg,
+              borderRadius: BorderRadius.circular(Consonants.rPill.r),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Row(
-                  children: [
-                    CustomWidgets.customText(
-                      "Trip Host",
-                      9.sp,
-                      Consonants.whiteColor.withValues(alpha: 0.85),
-                      FontWeight.w700,
-                    ),
-                    SizedBox(width: 6.w),
-                    Container(
-                      padding: EdgeInsets.symmetric(
-                          horizontal: 6.w, vertical: 2.h),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.25),
-                        borderRadius: BorderRadius.circular(20.r),
-                      ),
-                      child: CustomWidgets.customText(
-                        "Created the ride",
-                        8.sp,
-                        Consonants.whiteColor,
-                        FontWeight.w700,
-                      ),
-                    ),
-                  ],
+                Icon(
+                  hostGender == 'FEMALE'
+                      ? Icons.female_outlined
+                      : Icons.male_outlined,
+                  size: 13.sp,
+                  color: Consonants.iconInk,
                 ),
-                SizedBox(height: 4.h),
-                Row(
-                  children: [
-                    Flexible(
-                      child: CustomWidgets.customText(
-                        name,
-                        14.sp,
-                        Consonants.whiteColor,
-                        FontWeight.w800,
-                      ),
-                    ),
-                    SizedBox(width: 5.w),
-                    Icon(Icons.verified_rounded,
-                        size: 14.sp, color: Consonants.whiteColor),
-                  ],
-                ),
-                SizedBox(height: 3.h),
-                Row(
-                  children: [
-                    Icon(Icons.star_rounded,
-                        size: 12.sp, color: const Color(0xffFFD54F)),
-                    SizedBox(width: 3.w),
-                    CustomWidgets.customText(
-                      "$rating  ·  $trips trips",
-                      10.sp,
-                      Consonants.whiteColor.withValues(alpha: 0.95),
-                      FontWeight.w600,
-                    ),
-                  ],
+                SizedBox(width: 4.w),
+                Text(
+                  hostGender == 'FEMALE' ? 'Female' : 'Male',
+                  style: AppText.navLabel(color: Consonants.iconInk)
+                      .copyWith(fontSize: 12.sp),
                 ),
               ],
             ),
           ),
-          if (hostGender == 'FEMALE' || hostGender == 'MALE')
-            Container(
-              padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
-              decoration: BoxDecoration(
-                color: Consonants.whiteColor,
-                borderRadius: BorderRadius.circular(20.r),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    hostGender == 'FEMALE'
-                        ? Icons.female_rounded
-                        : Icons.male_rounded,
-                    size: 11.sp,
-                    color: hostGender == 'FEMALE'
-                        ? const Color(0xffEC4899)
-                        : Consonants.primaryColor,
-                  ),
-                  SizedBox(width: 3.w),
-                  CustomWidgets.customText(
-                    hostGender == 'FEMALE' ? 'Female' : 'Male',
-                    9.sp,
-                    Consonants.boldTextColor,
-                    FontWeight.w700,
-                  ),
-                ],
-              ),
-            ),
         ],
-      ),
+      ],
     );
   }
 
-  // ─── Stats: your fare / avg rating / riders ─────────────
+  // ─── The fare, and the two facts that qualify it ────────
+  /// Money is the largest thing on the card it belongs to; the rating and
+  /// rider count sit beside it as supporting detail, not as equals.
   Widget _statsPills() {
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         Expanded(
-          child: _statTile(
-            icon: Icons.payments_rounded,
-            value: yourFare,
-            label: "Your fare",
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                "Your fare",
+                style: AppText.caption().copyWith(fontSize: 12.5.sp),
+              ),
+              SizedBox(height: 6.h),
+              Text(
+                yourFare,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppText.figure().copyWith(fontSize: 32.sp),
+              ),
+            ],
           ),
         ),
-        SizedBox(width: 8.w),
-        Expanded(
-          child: _statTile(
-            icon: Icons.star_rounded,
-            value: avgRating,
-            label: "Avg rating",
-            iconColor: const Color(0xffF5B800),
-          ),
-        ),
-        SizedBox(width: 8.w),
-        Expanded(
-          child: _statTile(
-            icon: Icons.people_alt_rounded,
-            value: "$riders",
-            label: "Riders",
-          ),
+        SizedBox(width: 12.w),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            _fact(Icons.star_outline_rounded, "$avgRating rating"),
+            SizedBox(height: 8.h),
+            _fact(Icons.people_outline_rounded, "$riders riders"),
+          ],
         ),
       ],
     );
   }
 
-  Widget _statTile({
-    required IconData icon,
-    required String value,
-    required String label,
-    Color? iconColor,
-  }) {
-    return Container(
-      padding: EdgeInsets.symmetric(vertical: 10.h, horizontal: 6.w),
-      decoration: BoxDecoration(
-        color: Consonants.lightBlueColor,
-        borderRadius: BorderRadius.circular(12.r),
-      ),
-      child: Column(
-        children: [
-          Icon(icon,
-              size: 16.sp, color: iconColor ?? Consonants.primaryColor),
-          SizedBox(height: 4.h),
-          CustomWidgets.customText(
-            value,
-            12.sp,
-            Consonants.boldTextColor,
-            FontWeight.w800,
-          ),
-          CustomWidgets.customText(
-            label,
-            9.sp,
-            Consonants.greyColor,
-            FontWeight.w500,
-          ),
-        ],
-      ),
+  Widget _fact(IconData icon, String label) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 15.sp, color: Consonants.iconInk),
+        SizedBox(width: 6.w),
+        Text(label, style: AppText.caption().copyWith(fontSize: 13.sp)),
+      ],
     );
   }
 
   // ─── Action buttons (Decline + View Request) ───────────
   Widget _actionButtons() {
+    final declineLabel =
+        isMyRide ? (ride.youAreHost ? "Cancel" : "Leave") : "Decline";
     return Row(
       children: [
         Expanded(
           child: GestureDetector(
             onTap: onDecline,
             child: Container(
-              padding: EdgeInsets.symmetric(vertical: 13.h),
+              padding: EdgeInsets.symmetric(vertical: 17.h, horizontal: 8.w),
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: Consonants.whiteColor,
-                borderRadius: BorderRadius.circular(14.r),
+                borderRadius: BorderRadius.circular(Consonants.rButton.r),
                 border: Border.all(
-                  color: Consonants.lightGreyColor,
                   width: 1.5,
+                  color: isMyRide ? Consonants.danger : Consonants.border,
                 ),
               ),
-              child: CustomWidgets.customText(
-                isMyRide ? (ride.youAreHost ? "Cancel" : "Leave") : "Decline",
-                12.sp,
-                isMyRide
-                    ? const Color(0xffEF4444)
-                    : Consonants.boldTextColor,
-                FontWeight.w700,
+              child: Text(
+                declineLabel,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppText.button(
+                  color: isMyRide ? Consonants.danger : Consonants.bodyInk,
+                ).copyWith(fontSize: 16.sp),
               ),
             ),
           ),
         ),
-        SizedBox(width: 10.w),
+        SizedBox(width: Consonants.gapButtons.w),
         Expanded(
           flex: 2,
-          child: GestureDetector(
-            onTap: onViewRequest,
-            child: Container(
-              padding: EdgeInsets.symmetric(vertical: 13.h),
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Consonants.primaryColor, Color(0xff5AC8FA)],
-                ),
-                borderRadius: BorderRadius.circular(14.r),
-                boxShadow: [
-                  BoxShadow(
-                    color: Consonants.primaryColor.withValues(alpha: 0.30),
-                    blurRadius: 12,
-                    offset: const Offset(0, 6),
-                  ),
-                ],
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CustomWidgets.customText(
-                    "View Request",
-                    12.sp,
-                    Consonants.whiteColor,
-                    FontWeight.w800,
-                  ),
-                  SizedBox(width: 6.w),
-                  Icon(Icons.arrow_forward_rounded,
-                      size: 14.sp, color: Consonants.whiteColor),
-                ],
-              ),
-            ),
+          child: AppButton(
+            label: "View Request",
+            onPressed: onViewRequest,
           ),
         ),
       ],

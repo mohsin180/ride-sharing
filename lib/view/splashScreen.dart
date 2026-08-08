@@ -140,7 +140,12 @@ class _SplashscreenState extends ConsumerState<Splashscreen>
       return Approutes.login;
     }
     // Re-seed the in-memory state the onboarding screens read from.
-    ref.read(authControllerProvider.notifier).restorePendingSignup(userId);
+    // Restore the address too, so the verification screen can name it
+    // instead of falling back to "your email".
+    final pendingEmail = await Tokenstorage.getPendingEmail();
+    ref
+        .read(authControllerProvider.notifier)
+        .restorePendingSignup(userId, email: pendingEmail);
     try {
       final verified = await ref
           .read(authServiceProvider)
@@ -187,8 +192,6 @@ class _SplashscreenState extends ConsumerState<Splashscreen>
                       slide: _titleSlide.value,
                       fade: _titleFade.value,
                     ),
-                    SizedBox(height: 10.h),
-                    _Tagline(fade: _taglineFade.value),
                     const Spacer(flex: 5),
                     _LoadingDots(
                       fade: _dotsFade.value,
@@ -215,19 +218,10 @@ class _GradientBackdrop extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // The splash is the app's single hero surface — the brand gradient owns
+    // the whole canvas, so nothing else here carries one.
     return const DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xff0596D1),
-            Consonants.primaryColor,
-            Color(0xff5AC8FA),
-          ],
-          stops: [0.0, 0.55, 1.0],
-        ),
-      ),
+      decoration: BoxDecoration(gradient: Consonants.surfaceGradient),
     );
   }
 }
@@ -271,7 +265,7 @@ class _BlobsPainter extends CustomPainter {
         size.height * (0.22 + 0.03 * math.cos(t)),
       ),
       size.width * 0.55,
-      const Color(0xffB7E8FF),
+      const Color(0xffC8B4FF),
     );
     drawBlob(
       Offset(
@@ -279,7 +273,7 @@ class _BlobsPainter extends CustomPainter {
         size.height * (0.78 + 0.03 * math.sin(t * 0.8)),
       ),
       size.width * 0.55,
-      const Color(0xff6FCBFF),
+      Consonants.violet,
     );
   }
 
@@ -311,8 +305,8 @@ class _Logo extends StatelessWidget {
       child: Transform.scale(
         scale: scale,
         child: SizedBox(
-          width: 200.w,
-          height: 200.w,
+          width: 250.w,
+          height: 250.w,
           child: Stack(
             alignment: Alignment.center,
             children: [
@@ -320,8 +314,8 @@ class _Logo extends StatelessWidget {
               Transform.scale(
                 scale: ringScale + 0.05 * pulse,
                 child: Container(
-                  width: 200.w,
-                  height: 200.w,
+                  width: 250.w,
+                  height: 250.w,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: Colors.white.withValues(alpha: 0.06),
@@ -336,8 +330,8 @@ class _Logo extends StatelessWidget {
               Transform.scale(
                 scale: ringScale - 0.05 + 0.04 * pulse,
                 child: Container(
-                  width: 160.w,
-                  height: 160.w,
+                  width: 200.w,
+                  height: 200.w,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: Colors.white.withValues(alpha: 0.12),
@@ -350,15 +344,15 @@ class _Logo extends StatelessWidget {
               ),
               // Solid logo badge.
               Container(
-                width: 110.w,
-                height: 110.w,
+                width: 172.w,
+                height: 172.w,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: Colors.white,
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xff0596D1).withValues(alpha: 0.35),
+                      color: Consonants.indigo.withValues(alpha: 0.38),
                       blurRadius: 28,
                       offset: const Offset(0, 12),
                     ),
@@ -369,20 +363,15 @@ class _Logo extends StatelessWidget {
                     ),
                   ],
                 ),
-                child: ShaderMask(
-                  shaderCallback: (rect) => const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Color(0xff0596D1),
-                      Consonants.primaryColor,
-                      Color(0xff5AC8FA),
-                    ],
-                  ).createShader(rect),
-                  child: Icon(
-                    Icons.directions_car_filled_rounded,
-                    size: 60.sp,
-                    color: Colors.white,
+                // The cropped mark, not the raw export: the original sits in a
+                // 1536x1024 canvas where the artwork itself is only ~27% wide,
+                // so drawing it directly would render tiny inside this badge.
+                child: Padding(
+                  padding: EdgeInsets.all(10.w),
+                  child: Image.asset(
+                    'assets/rideLogoMark.png',
+                    fit: BoxFit.contain,
+                    filterQuality: FilterQuality.medium,
                   ),
                 ),
               ),
@@ -394,7 +383,7 @@ class _Logo extends StatelessWidget {
   }
 }
 
-// ─────────────────────── Title + tagline ───────────────────────
+// ─────────────────────── Title ───────────────────────
 
 class _Title extends StatelessWidget {
   final double slide;
@@ -408,20 +397,17 @@ class _Title extends StatelessWidget {
       opacity: fade,
       child: Transform.translate(
         offset: Offset(0, slide),
+        // The wordmark is an identity moment, so it carries Fraunces.
         child: RichText(
           textAlign: TextAlign.center,
           text: TextSpan(
-            style: TextStyle(
-              fontFamily: Consonants.fontFamily,
-              fontSize: 34.sp,
-              fontWeight: FontWeight.w800,
-              color: Colors.white,
-              letterSpacing: 0.5,
+            style: AppText.display(color: Consonants.surface).copyWith(
+              fontSize: 42.sp,
               shadows: [
                 Shadow(
-                  color: const Color(0xff0596D1).withValues(alpha: 0.40),
-                  blurRadius: 18,
-                  offset: const Offset(0, 6),
+                  color: Consonants.indigo.withValues(alpha: 0.45),
+                  blurRadius: 22,
+                  offset: const Offset(0, 8),
                 ),
               ],
             ),
@@ -430,37 +416,10 @@ class _Title extends StatelessWidget {
               TextSpan(
                 text: "Ride",
                 style: TextStyle(
-                  fontWeight: FontWeight.w900,
-                  color: Colors.white.withValues(alpha: 0.92),
+                  color: Colors.white.withValues(alpha: 0.86),
                 ),
               ),
             ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _Tagline extends StatelessWidget {
-  final double fade;
-  const _Tagline({required this.fade});
-
-  @override
-  Widget build(BuildContext context) {
-    return Opacity(
-      opacity: fade,
-      child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: 36.w),
-        child: Text(
-          "Share the ride. Save the day.",
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontFamily: Consonants.fontFamily,
-            fontSize: 12.sp,
-            fontWeight: FontWeight.w500,
-            color: Colors.white.withValues(alpha: 0.85),
-            letterSpacing: 0.4,
           ),
         ),
       ),
@@ -520,13 +479,9 @@ class _Footer extends StatelessWidget {
       child: Text(
         "v1.0  ·  © SafeRide",
         textAlign: TextAlign.center,
-        style: TextStyle(
-          fontFamily: Consonants.fontFamily,
-          fontSize: 9.sp,
-          fontWeight: FontWeight.w500,
-          letterSpacing: 0.6,
+        style: AppText.caption(
           color: Colors.white.withValues(alpha: 0.55),
-        ),
+        ).copyWith(fontSize: 12.sp, letterSpacing: 0.6),
       ),
     );
   }

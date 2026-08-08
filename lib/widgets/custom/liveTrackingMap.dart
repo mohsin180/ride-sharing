@@ -317,8 +317,10 @@ class _LiveTrackingMapState extends ConsumerState<LiveTrackingMap>
                 point: widget.pickup,
                 width: 26,
                 height: 26,
+                // Origin and destination are the two ends of the brand ramp.
+                // Red stays reserved for money out and destructive actions.
                 child: const _PinMarker(
-                  color: Color(0xff2196F3),
+                  color: Consonants.indigo,
                   icon: Icons.my_location_rounded,
                 ),
               ),
@@ -327,7 +329,7 @@ class _LiveTrackingMapState extends ConsumerState<LiveTrackingMap>
                 width: 26,
                 height: 26,
                 child: const _PinMarker(
-                  color: Color(0xffEF4444),
+                  color: Consonants.violet,
                   icon: Icons.location_on_rounded,
                 ),
               ),
@@ -403,7 +405,7 @@ class _StopMarker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = isPickup ? Consonants.primaryColor : const Color(0xffEF4444);
+    final color = isPickup ? Consonants.indigo : Consonants.violet;
     return Container(
       alignment: Alignment.center,
       decoration: BoxDecoration(

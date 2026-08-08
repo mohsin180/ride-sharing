@@ -18,6 +18,10 @@ class ResponsiveAuthScaffold extends StatelessWidget {
   final GlobalKey<FormState>? formKey;
   final bool useSafeArea;
 
+  /// Pinned above the centred body — for a back action or screen title.
+  /// Sits outside the scroll area so it stays put as the form moves.
+  final Widget? header;
+
   const ResponsiveAuthScaffold({
     super.key,
     required this.body,
@@ -26,6 +30,7 @@ class ResponsiveAuthScaffold extends StatelessWidget {
     this.bodyPadding,
     this.formKey,
     this.useSafeArea = true,
+    this.header,
   });
 
   @override
@@ -50,6 +55,7 @@ class ResponsiveAuthScaffold extends StatelessWidget {
 
     Widget content = Column(
       children: [
+        if (header != null) header!,
         Expanded(child: scrollable),
         if (bottomBar != null) bottomBar!,
       ],

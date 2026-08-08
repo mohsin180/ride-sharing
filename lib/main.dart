@@ -32,10 +32,25 @@ class MyApp extends StatelessWidget {
           routerConfig: appRouter,
           theme: ThemeData(
             useMaterial3: true,
-            scaffoldBackgroundColor: Consonants.scaffoldBackgroundColor,
-            fontFamily: Consonants.fontFamily,
-            textTheme: GoogleFonts.poppinsTextTheme(baseTextTheme),
-            primaryTextTheme: GoogleFonts.poppinsTextTheme(baseTextTheme),
+            scaffoldBackgroundColor: Consonants.canvas,
+            // Inter carries everything inside the app; Fraunces is applied
+            // per-widget on onboarding and identity moments only.
+            textTheme: GoogleFonts.interTextTheme(baseTextTheme),
+            primaryTextTheme: GoogleFonts.interTextTheme(baseTextTheme),
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: Consonants.indigo,
+              primary: Consonants.indigo,
+              secondary: Consonants.violet,
+              surface: Consonants.surface,
+            ),
+            dividerColor: Consonants.divider,
+            // Text selection / cursors pick up the focus hue rather than
+            // Material's default teal.
+            textSelectionTheme: const TextSelectionThemeData(
+              cursorColor: Consonants.violet,
+              selectionHandleColor: Consonants.violet,
+            ),
+            splashFactory: InkRipple.splashFactory,
           ),
         );
       },

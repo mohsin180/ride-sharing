@@ -9,7 +9,7 @@ import 'package:ride_sharing/provider/authProvider.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/consonants/errorHandler.dart';
 import 'package:ride_sharing/widgets/consonants/tokenStorage.dart';
-import 'package:ride_sharing/widgets/custom/customWidgets.dart';
+import 'package:ride_sharing/widgets/custom/appComponents.dart';
 import 'package:ride_sharing/widgets/custom/responsive.dart';
 
 /// Polls the backend every [_pollInterval] for email-verification status.
@@ -86,66 +86,193 @@ class _VerificationscreenState extends ConsumerState<Verificationscreen> {
       authControllerProvider.select((s) => s.email),
     );
 
-    return ResponsiveAuthScaffold(
+    return PopScope(
+      // The hardware back key gets the same treatment as the on-screen one:
+      // leaving here has to tidy up, so it can't be a plain pop.
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _confirmStartOver();
+      },
+      child: ResponsiveAuthScaffold(
+      header: Padding(
+        padding: EdgeInsets.fromLTRB(Consonants.gutter.w, 8.h, Consonants.gutter.w, 0),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: AppIconButton(
+            icon: Icons.arrow_back_rounded,
+            onTap: _confirmStartOver,
+          ),
+        ),
+      ),
+      bodyPadding: EdgeInsets.symmetric(vertical: 28.h),
       body: [
-        CustomWidgets.customText(
-          'Verify Your Email',
-          17.sp,
-          Colors.black,
-          FontWeight.bold,
-        ),
-        SizedBox(height: 5.h),
-        CustomWidgets.customText(
-          'Click the link sent to',
-          10.sp,
-          Consonants.greyColor,
-          FontWeight.normal,
-        ),
-        SizedBox(height: 2.h),
-        CustomWidgets.customText(
-          email ?? 'your email',
-          10.sp,
-          Consonants.boldTextColor,
-          FontWeight.bold,
-          maxLines: 1,
-        ),
-        SizedBox(height: 30.h),
-        Card(
-          color: Consonants.whiteColor,
-          elevation: 10,
-          shape: BeveledRectangleBorder(
-            borderRadius: BorderRadius.circular(20.r),
-          ),
-          child: Image.asset(
-            "assets/gmail.png",
-            fit: BoxFit.contain,
-            height: 200.h,
-            width: 200.w,
+        // The illustration is the focal point; it sits on a lifted white card
+        // rather than a Material Card so it matches every other surface.
+        const _MailCard(),
+        SizedBox(height: 32.h),
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: Consonants.gutter.w),
+          child: Text(
+            'Verify Your Email',
+            textAlign: TextAlign.center,
+            style: AppText.displayXs().copyWith(fontSize: 32.sp),
           ),
         ),
-        SizedBox(height: 16.h),
+        SizedBox(height: 10.h),
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: Consonants.gutter.w),
+          child: Text(
+            'Click the link sent to',
+            textAlign: TextAlign.center,
+            style: AppText.paragraph().copyWith(fontSize: 15.5.sp),
+          ),
+        ),
+        SizedBox(height: 12.h),
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: Consonants.gutter.w),
+          child: Center(
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 9.h),
+              decoration: BoxDecoration(
+                color: Consonants.chipBg,
+                borderRadius: BorderRadius.circular(Consonants.rPill.r),
+              ),
+              child: Text(
+                email ?? 'your email',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppText.rowLabel(color: Consonants.headingInk)
+                    .copyWith(fontSize: 15.sp, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ),
+        ),
+        SizedBox(height: 26.h),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             SizedBox(
-              width: 12.w,
-              height: 12.w,
-              child: CircularProgressIndicator(
+              width: 15.w,
+              height: 15.w,
+              child: const CircularProgressIndicator(
                 strokeWidth: 2,
-                color: Consonants.primaryColor,
+                color: Consonants.violet,
               ),
             ),
-            SizedBox(width: 8.w),
-            CustomWidgets.customText(
+            SizedBox(width: 10.w),
+            Text(
               'Waiting for verification…',
-              10.sp,
-              Consonants.greyColor,
-              FontWeight.w500,
+              style: AppText.caption().copyWith(fontSize: 13.sp),
             ),
           ],
         ),
       ],
       bottomBar: const VerificationContainer(),
+      ),
+    );
+  }
+
+  /// Leaving this screen means abandoning the sign-up, so it asks first and
+  /// then clears up after itself.
+  ///
+  /// Just navigating away wouldn't be enough: registration persists a pending
+  /// user id and onboarding token, and the splash screen resumes from those —
+  /// so the next launch would drop the user straight back here, still waiting
+  /// on the address they were trying to escape.
+  Future<void> _confirmStartOver() async {
+    _timer?.cancel();
+    final startOver = await showDialog<bool>(
+      context: context,
+      barrierColor: Consonants.scrim,
+      builder: (ctx) => Dialog(
+        backgroundColor: Consonants.surface,
+        insetPadding: EdgeInsets.symmetric(horizontal: 32.w),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(Consonants.rHero.r),
+        ),
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(22.w, 26.h, 22.w, 20.h),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 60.w,
+                height: 60.w,
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(
+                  color: Consonants.indigoWash,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.alternate_email_rounded,
+                  size: 26.sp,
+                  color: Consonants.indigo,
+                ),
+              ),
+              SizedBox(height: 18.h),
+              Text(
+                'Use a different email?',
+                style: AppText.sectionHeading().copyWith(fontSize: 19.sp),
+              ),
+              SizedBox(height: 8.h),
+              Text(
+                "You'll go back and sign up again with the right address.",
+                textAlign: TextAlign.center,
+                style: AppText.paragraph().copyWith(fontSize: 15.sp),
+              ),
+              SizedBox(height: 24.h),
+              // Stacked, not side by side: at the button's 24px horizontal
+              // padding these labels don't fit two-up in a dialog and were
+              // being ellipsed to "Keep ..." / "Sign u...".
+              AppButton(
+                label: 'Sign up again',
+                onPressed: () => Navigator.pop(ctx, true),
+              ),
+              SizedBox(height: 10.h),
+              AppButton(
+                label: 'Keep waiting',
+                kind: AppButtonKind.neutral,
+                onPressed: () => Navigator.pop(ctx, false),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (startOver != true) {
+      // Resume polling — they're still waiting on the original address.
+      if (mounted && !_navigated) {
+        _timer = Timer.periodic(_pollInterval, (_) => _checkOnce());
+      }
+      return;
+    }
+
+    _navigated = true;
+    await Tokenstorage.clearOnboarding();
+    if (!mounted) return;
+    context.go(Approutes.register);
+  }
+}
+
+/// The inbox illustration on a lifted white card — the focal point of both
+/// verification states.
+class _MailCard extends StatelessWidget {
+  const _MailCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 216.w,
+      height: 216.w,
+      alignment: Alignment.center,
+      padding: EdgeInsets.all(20.w),
+      decoration: BoxDecoration(
+        color: Consonants.surface,
+        borderRadius: BorderRadius.circular(Consonants.rHero.r),
+        boxShadow: Consonants.cardLift,
+      ),
+      child: Image.asset("assets/gmail.png", fit: BoxFit.contain),
     );
   }
 }
@@ -158,43 +285,37 @@ class VerificationContainer extends ConsumerWidget {
     final isLoading = ref.watch(
       authControllerProvider.select((s) => s.isloading),
     );
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: Consonants.whiteColor,
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(24.r),
-          topRight: Radius.circular(24.r),
-        ),
+    // Nothing on this screen is a primary action — the user finishes in their
+    // inbox — so the resend sits as an outline button, no gradient.
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        Consonants.gutter.w,
+        12.h,
+        Consonants.gutter.w,
+        22.h,
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          SizedBox(height: 40.h),
-          GestureDetector(
-            onTap: isLoading
-                ? null
-                : () async {
-                    await ref
-                        .read(authControllerProvider.notifier)
-                        .resendVerification();
-                    if (!context.mounted) return;
-                    // Errors surface via the parent's ref.listen; only the
-                    // success path needs a confirmation here.
-                    if (ref.read(authControllerProvider).error == null) {
-                      ErrorHandler.success(
-                        context,
-                        "Verification email re-sent. Check your inbox.",
-                      );
-                    }
-                  },
-            child: CustomWidgets.customText(
-              isLoading ? 'Sending…' : 'Resend Code',
-              10.sp,
-              Consonants.primaryColor,
-              FontWeight.w600,
-            ),
+          AppButton(
+            label: isLoading ? 'Sending…' : 'Resend Code',
+            kind: AppButtonKind.secondary,
+            isLoading: isLoading,
+            onPressed: () async {
+              await ref
+                  .read(authControllerProvider.notifier)
+                  .resendVerification();
+              if (!context.mounted) return;
+              // Errors surface via the parent's ref.listen; only the
+              // success path needs a confirmation here.
+              if (ref.read(authControllerProvider).error == null) {
+                ErrorHandler.success(
+                  context,
+                  "Verification email re-sent. Check your inbox.",
+                );
+              }
+            },
           ),
-          SizedBox(height: 20.h),
         ],
       ),
     );
@@ -231,14 +352,16 @@ class _VerificationSucceedState extends ConsumerState<VerificationSucceed> {
     final token = widget.token;
     if (token == null || token.isEmpty) {
       return Scaffold(
-        backgroundColor: Consonants.scaffoldBackgroundColor,
+        backgroundColor: Consonants.canvas,
         body: SafeArea(
           child: Center(
-            child: CustomWidgets.customText(
-              "Invalid or missing verification token.",
-              14.sp,
-              Consonants.boldTextColor,
-              FontWeight.w600,
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: Consonants.gutter.w),
+              child: Text(
+                "Invalid or missing verification token.",
+                textAlign: TextAlign.center,
+                style: AppText.sectionHeading().copyWith(fontSize: 18.sp),
+              ),
             ),
           ),
         ),
@@ -248,54 +371,74 @@ class _VerificationSucceedState extends ConsumerState<VerificationSucceed> {
     final authState = ref.watch(authControllerProvider);
 
     return ResponsiveAuthScaffold(
+      bodyPadding: EdgeInsets.symmetric(vertical: 28.h),
       body: [
-        Card(
-          color: Consonants.whiteColor,
-          elevation: 10,
-          shape: BeveledRectangleBorder(
-            borderRadius: BorderRadius.circular(20.r),
-          ),
-          child: Image.asset(
-            "assets/gmail.png",
-            fit: BoxFit.contain,
-            height: 200.h,
-            width: 200.w,
-          ),
-        ),
-        SizedBox(height: 10.h),
+        const _MailCard(),
+        SizedBox(height: 32.h),
         if (authState.isloading) ...[
-          CircularProgressIndicator(color: Consonants.primaryColor),
-          SizedBox(height: 12.h),
+          SizedBox(
+            width: 26.w,
+            height: 26.w,
+            child: const CircularProgressIndicator(
+              strokeWidth: 2.4,
+              color: Consonants.violet,
+            ),
+          ),
+          SizedBox(height: 18.h),
           Padding(
-            padding: EdgeInsets.symmetric(horizontal: 20.w),
-            child: CustomWidgets.customText(
+            padding: EdgeInsets.symmetric(horizontal: Consonants.gutter.w),
+            child: Text(
               "Verifying your email…",
-              12.sp,
-              Consonants.greyColor,
-              FontWeight.w500,
               textAlign: TextAlign.center,
+              style: AppText.paragraph().copyWith(fontSize: 15.5.sp),
             ),
           ),
         ] else if (authState.error != null) ...[
+          Container(
+            width: 56.w,
+            height: 56.w,
+            alignment: Alignment.center,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              color: Consonants.dangerWash,
+            ),
+            child: Icon(
+              Icons.error_outline_rounded,
+              size: 27.sp,
+              color: Consonants.danger,
+            ),
+          ),
+          SizedBox(height: 18.h),
           Padding(
-            padding: EdgeInsets.symmetric(horizontal: 20.w),
-            child: CustomWidgets.customText(
+            padding: EdgeInsets.symmetric(horizontal: Consonants.gutter.w),
+            child: Text(
               authState.error!,
-              12.sp,
-              Consonants.boldTextColor,
-              FontWeight.w600,
               textAlign: TextAlign.center,
+              style: AppText.sectionHeading().copyWith(fontSize: 18.sp),
             ),
           ),
         ] else ...[
+          Container(
+            width: 56.w,
+            height: 56.w,
+            alignment: Alignment.center,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              color: Consonants.indigoWash,
+            ),
+            child: Icon(
+              Icons.check_rounded,
+              size: 28.sp,
+              color: Consonants.indigo,
+            ),
+          ),
+          SizedBox(height: 18.h),
           Padding(
-            padding: EdgeInsets.symmetric(horizontal: 20.w),
-            child: CustomWidgets.customText(
+            padding: EdgeInsets.symmetric(horizontal: Consonants.gutter.w),
+            child: Text(
               "Your email was verified successfully.",
-              12.sp,
-              Consonants.boldTextColor,
-              FontWeight.w600,
               textAlign: TextAlign.center,
+              style: AppText.sectionHeading().copyWith(fontSize: 18.sp),
             ),
           ),
         ],

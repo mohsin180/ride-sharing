@@ -4,7 +4,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:ride_sharing/provider/mapProvider.dart';
 import 'package:ride_sharing/provider/rideRequestProvider.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
-import 'package:ride_sharing/widgets/custom/customWidgets.dart';
+import 'package:ride_sharing/widgets/custom/appComponents.dart';
 import 'package:ride_sharing/widgets/maps/placeSearchField.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -13,13 +13,11 @@ import 'package:ride_sharing/widgets/maps/placeSearchField.dart';
 
 class RideOption {
   final String title;
-  
   final IconData icon;
   final Color color;
 
   const RideOption({
     required this.title,
-    
     required this.icon,
     required this.color,
   });
@@ -28,15 +26,13 @@ class RideOption {
 const List<RideOption> kRideOptions = [
   RideOption(
     title: 'Economy',
-    
-    icon: Icons.directions_car_filled_rounded,
-    color: Consonants.lightBlueColor,
+    icon: Icons.directions_car_outlined,
+    color: Consonants.indigoWash,
   ),
   RideOption(
     title: 'Premium',
-     
-    icon: Icons.car_rental_rounded,
-    color: Consonants.primaryGreenColor,
+    icon: Icons.local_taxi_outlined,
+    color: Consonants.chipBg,
   ),
 ];
 
@@ -47,7 +43,8 @@ const List<RideOption> kRideOptions = [
 /// Draggable bottom sheet containing the pickup/drop-off inputs,
 /// quick-action chips, ride option cards and the sticky CTA.
 ///
-/// Size bounds adapt to orientation via [MediaQuery].
+/// Size bounds adapt to orientation via [MediaQuery], capped at the system's
+/// 82% sheet ceiling so the map is never fully covered.
 class HomeBookingSheet extends StatelessWidget {
   /// Called when the user taps Book. Pass `null` to disable the CTA
   /// (e.g. while a request is in flight). The future is awaited so
@@ -72,7 +69,7 @@ class HomeBookingSheet extends StatelessWidget {
     return DraggableScrollableSheet(
       initialChildSize: isLandscape ? 0.55 : 0.42,
       minChildSize: 0.25,
-      maxChildSize: isLandscape ? 0.9 : 0.85,
+      maxChildSize: 0.82,
       builder: (context, scrollController) {
         return _SheetBody(
           scrollController: scrollController,
@@ -99,15 +96,10 @@ class _SheetBody extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: Consonants.whiteColor,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28.r)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
-            blurRadius: 24,
-            offset: const Offset(0, -6),
-          ),
-        ],
+        color: Consonants.surface,
+        borderRadius:
+            BorderRadius.vertical(top: Radius.circular(Consonants.rSheet.r)),
+        boxShadow: Consonants.sheetLift,
       ),
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -118,32 +110,32 @@ class _SheetBody extends StatelessWidget {
                 child: SingleChildScrollView(
                   controller: scrollController,
                   physics: const ClampingScrollPhysics(),
-                  padding: EdgeInsets.fromLTRB(20.w, 8.h, 20.w, 16.h),
+                  padding: EdgeInsets.fromLTRB(
+                      Consonants.gutter.w, 0, Consonants.gutter.w, 8.h),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      CustomWidgets.customText(
+                      Text(
                         'Where are you going?',
-                        15.sp,
-                        Consonants.boldTextColor,
-                        FontWeight.w700,
+                        style:
+                            AppText.sectionHeading().copyWith(fontSize: 18.sp),
                       ),
-                      SizedBox(height: 14.h),
+                      SizedBox(height: 16.h),
                       const _LocationFields(),
-                      SizedBox(height: 18.h),
+                      SizedBox(height: 24.h),
                       const _SeatsPicker(),
-                      SizedBox(height: 18.h),
+                      SizedBox(height: 22.h),
                       const _SchedulePicker(),
-                      SizedBox(height: 18.h),
-                      CustomWidgets.customText(
+                      SizedBox(height: 24.h),
+                      Text(
                         'Choose a ride',
-                        13.sp,
-                        Consonants.boldTextColor,
-                        FontWeight.w700,
+                        style: AppText.rowLabel(color: Consonants.headingInk)
+                            .copyWith(
+                                fontSize: 15.sp, fontWeight: FontWeight.w600),
                       ),
-                      SizedBox(height: 10.h),
-                      _RideOptionsList(availableWidth: constraints.maxWidth),
                       SizedBox(height: 12.h),
+                      _RideOptionsList(availableWidth: constraints.maxWidth),
+                      SizedBox(height: 8.h),
                     ],
                   ),
                 ),
@@ -165,14 +157,15 @@ class _DragHandle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 44x5 grabber with 14px of air under it — the system's sheet header.
     return Padding(
-      padding: EdgeInsets.only(top: 10.h, bottom: 6.h),
+      padding: EdgeInsets.only(top: 16.h, bottom: 14.h),
       child: Container(
         height: 5.h,
         width: 44.w,
         decoration: BoxDecoration(
-          color: Consonants.lightGreyColor,
-          borderRadius: BorderRadius.circular(4.r),
+          color: const Color(0xFFD6D6E2),
+          borderRadius: BorderRadius.circular(Consonants.rPill.r),
         ),
       ),
     );
@@ -190,21 +183,55 @@ class _LocationFields extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 14.w),
+      padding: EdgeInsets.symmetric(horizontal: 16.w),
       decoration: BoxDecoration(
-        color: Consonants.scaffoldBackgroundColor,
-        borderRadius: BorderRadius.circular(16.r),
+        color: Consonants.canvas,
+        borderRadius: BorderRadius.circular(Consonants.rInput.r),
       ),
       child: Column(
         children: [
           const _PickupRow(),
-          Divider(
-            height: 1,
-            color: Consonants.lightGreyColor,
-            indent: 30.w,
+          Padding(
+            padding: EdgeInsets.only(left: 32.w),
+            child: const AppDivider(),
           ),
           const _DropoffRow(),
         ],
+      ),
+    );
+  }
+}
+
+/// The leading slot of a location row. A hollow indigo ring marks where the
+/// trip starts, a solid violet square where it ends — same 20px column so the
+/// two labels stay on one optical line.
+class _RouteMarker extends StatelessWidget {
+  final bool isOrigin;
+
+  const _RouteMarker({required this.isOrigin});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 20.w,
+      child: Center(
+        child: isOrigin
+            ? Container(
+                width: 11.w,
+                height: 11.w,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Consonants.indigo, width: 3),
+                ),
+              )
+            : Container(
+                width: 10.w,
+                height: 10.w,
+                decoration: BoxDecoration(
+                  color: Consonants.violet,
+                  borderRadius: BorderRadius.circular(3.r),
+                ),
+              ),
       ),
     );
   }
@@ -238,26 +265,18 @@ class _PickupRow extends ConsumerWidget {
           );
 
     return Padding(
-      padding: EdgeInsets.symmetric(vertical: 14.h),
+      padding: EdgeInsets.symmetric(vertical: 15.h),
       child: Row(
         children: [
-          Icon(
-            Icons.my_location_rounded,
-            color: Consonants.primaryColor,
-            size: 18.sp,
-          ),
-          SizedBox(width: 10.w),
+          const _RouteMarker(isOrigin: true),
+          SizedBox(width: 12.w),
           Expanded(
             child: Text(
               label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontFamily: Consonants.fontFamily,
-                fontSize: 13.sp,
-                fontWeight: FontWeight.w600,
-                color: Consonants.boldTextColor,
-              ),
+              style: AppText.rowLabel(color: Consonants.headingInk)
+                  .copyWith(fontSize: 15.sp, fontWeight: FontWeight.w600),
             ),
           ),
         ],
@@ -309,12 +328,8 @@ class _DropoffRowState extends ConsumerState<_DropoffRow> {
 
     return Row(
       children: [
-        Icon(
-          Icons.location_on_rounded,
-          color: Colors.redAccent,
-          size: 18.sp,
-        ),
-        SizedBox(width: 10.w),
+        const _RouteMarker(isOrigin: false),
+        SizedBox(width: 12.w),
         Expanded(
           child: PlaceSearchField(
             controller: _controller,
@@ -323,21 +338,13 @@ class _DropoffRowState extends ConsumerState<_DropoffRow> {
             inputDecoration: InputDecoration(
               isDense: true,
               hintText: 'Where to?',
-              hintStyle: TextStyle(
-                fontFamily: Consonants.fontFamily,
-                fontSize: 12.sp,
-                color: Consonants.greyColor,
-                fontWeight: FontWeight.w500,
-              ),
+              hintStyle: AppText.rowLabel(color: Consonants.textMuted)
+                  .copyWith(fontSize: 15.sp),
               border: InputBorder.none,
-              contentPadding: EdgeInsets.symmetric(vertical: 14.h),
+              contentPadding: EdgeInsets.symmetric(vertical: 15.h),
             ),
-            textStyle: TextStyle(
-              fontFamily: Consonants.fontFamily,
-              fontSize: 13.sp,
-              fontWeight: FontWeight.w600,
-              color: Consonants.boldTextColor,
-            ),
+            textStyle: AppText.rowLabel(color: Consonants.headingInk)
+                .copyWith(fontSize: 15.sp, fontWeight: FontWeight.w600),
             onPicked: (s) {
               ref
                   .read(rideRequestProvider.notifier)
@@ -401,46 +408,64 @@ class _SchedulePicker extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheduled = ref.watch(scheduledDepartureProvider);
+    final isSet = scheduled != null;
+
     return Row(
       children: [
-        Icon(Icons.schedule_rounded, size: 18.sp, color: Consonants.greyColor),
-        SizedBox(width: 8.w),
-        CustomWidgets.customText(
+        Icon(Icons.schedule_outlined, size: 18.sp, color: Consonants.iconInk),
+        SizedBox(width: 10.w),
+        Text(
           'Departure',
-          13.sp,
-          Consonants.boldTextColor,
-          FontWeight.w700,
+          style: AppText.rowLabel(color: Consonants.headingInk)
+              .copyWith(fontSize: 15.sp, fontWeight: FontWeight.w600),
         ),
-        const Spacer(),
-        if (scheduled != null) ...[
-          GestureDetector(
-            onTap: () => ref.read(scheduledDepartureProvider.notifier).clear(),
-            child: Icon(Icons.close_rounded,
-                size: 16.sp, color: Consonants.greyColor),
-          ),
-          SizedBox(width: 8.w),
-        ],
-        GestureDetector(
-          onTap: () => _pick(context, ref),
-          child: Container(
-            padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 8.h),
-            decoration: BoxDecoration(
-              color: scheduled != null
-                  ? Consonants.lightBlueColor
-                  : Consonants.scaffoldBackgroundColor,
-              borderRadius: BorderRadius.circular(20.r),
-              border: Border.all(
-                color: scheduled != null
-                    ? Consonants.primaryColor
-                    : Consonants.lightGreyColor,
+        SizedBox(width: 12.w),
+        // The pill takes whatever's left and right-aligns inside it, so a
+        // long scheduled label never fights the row for space.
+        Expanded(
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              if (isSet) ...[
+                GestureDetector(
+                  onTap: () =>
+                      ref.read(scheduledDepartureProvider.notifier).clear(),
+                  behavior: HitTestBehavior.opaque,
+                  child: Padding(
+                    padding: EdgeInsets.all(4.w),
+                    child: Icon(Icons.close_rounded,
+                        size: 16.sp, color: Consonants.textMuted),
+                  ),
+                ),
+                SizedBox(width: 6.w),
+              ],
+              Flexible(
+                child: GestureDetector(
+                  onTap: () => _pick(context, ref),
+                  child: Container(
+                    padding:
+                        EdgeInsets.symmetric(horizontal: 14.w, vertical: 9.h),
+                    decoration: BoxDecoration(
+                      color: isSet ? Consonants.indigoWash : Consonants.canvas,
+                      borderRadius:
+                          BorderRadius.circular(Consonants.rPill.r),
+                      border: Border.all(
+                        color: isSet ? Consonants.indigo : Consonants.border,
+                        width: isSet ? 1.5 : 1,
+                      ),
+                    ),
+                    child: Text(
+                      isSet ? _label(scheduled) : 'Leave now',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppText.caption(
+                        color: isSet ? Consonants.indigo : Consonants.textMuted,
+                      ).copyWith(fontSize: 12.5.sp, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ),
               ),
-            ),
-            child: CustomWidgets.customText(
-              scheduled != null ? _label(scheduled) : 'Leave now',
-              12.sp,
-              scheduled != null ? Consonants.primaryColor : Consonants.greyColor,
-              FontWeight.w700,
-            ),
+            ],
           ),
         ),
       ],
@@ -464,25 +489,23 @@ class _SeatsPicker extends ConsumerWidget {
       children: [
         Row(
           children: [
-            Icon(Icons.event_seat_rounded,
-                size: 14.sp, color: Consonants.primaryColor),
-            SizedBox(width: 6.w),
-            CustomWidgets.customText(
-              "How many seats?",
-              13.sp,
-              Consonants.boldTextColor,
-              FontWeight.w700,
+            Icon(Icons.event_seat_outlined,
+                size: 18.sp, color: Consonants.iconInk),
+            SizedBox(width: 10.w),
+            Text(
+              'How many seats?',
+              style: AppText.rowLabel(color: Consonants.headingInk)
+                  .copyWith(fontSize: 15.sp, fontWeight: FontWeight.w600),
             ),
-            SizedBox(width: 6.w),
-            CustomWidgets.customText(
-              selectedSeats == 1 ? "1 seat" : "$selectedSeats seats",
-              11.sp,
-              Consonants.primaryColor,
-              FontWeight.w700,
+            const Spacer(),
+            Text(
+              selectedSeats == 1 ? '1 seat' : '$selectedSeats seats',
+              style: AppText.caption(color: Consonants.indigo)
+                  .copyWith(fontSize: 12.5.sp, fontWeight: FontWeight.w600),
             ),
           ],
         ),
-        SizedBox(height: 10.h),
+        SizedBox(height: 12.h),
         Row(
           children: [
             for (int i = 0; i < _options.length; i++) ...[
@@ -495,7 +518,7 @@ class _SeatsPicker extends ConsumerWidget {
                       .setSeats(_options[i]),
                 ),
               ),
-              if (i != _options.length - 1) SizedBox(width: 8.w),
+              if (i != _options.length - 1) SizedBox(width: 10.w),
             ],
           ],
         ),
@@ -504,6 +527,8 @@ class _SeatsPicker extends ConsumerWidget {
   }
 }
 
+/// Selection reads as an indigo wash behind an indigo rule — the action
+/// gradient is reserved for the Book button at the bottom of the sheet.
 class _SeatChip extends StatelessWidget {
   final int count;
   final bool isSelected;
@@ -517,6 +542,8 @@ class _SeatChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ink = isSelected ? Consonants.indigo : Consonants.textMuted;
+
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
@@ -524,47 +551,23 @@ class _SeatChip extends StatelessWidget {
         height: 56.h,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          gradient: isSelected
-              ? const LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [Consonants.primaryColor, Color(0xff5AC8FA)],
-                )
-              : null,
-          color: isSelected ? null : Consonants.scaffoldBackgroundColor,
-          borderRadius: BorderRadius.circular(14.r),
+          color: isSelected ? Consonants.indigoWash : Consonants.canvas,
+          borderRadius: BorderRadius.circular(Consonants.rCard.r),
           border: Border.all(
-            color: isSelected
-                ? Colors.transparent
-                : Consonants.lightGreyColor,
-            width: 1,
+            color: isSelected ? Consonants.indigo : Consonants.border,
+            width: isSelected ? 1.5 : 1,
           ),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: Consonants.primaryColor.withValues(alpha: 0.30),
-                    blurRadius: 12,
-                    offset: const Offset(0, 6),
-                  ),
-                ]
-              : null,
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.person_rounded,
-              size: 14.sp,
-              color: isSelected
-                  ? Consonants.whiteColor
-                  : Consonants.primaryColor,
-            ),
+            Icon(Icons.person_outline_rounded, size: 15.sp, color: ink),
             SizedBox(height: 2.h),
-            CustomWidgets.customText(
-              "$count",
-              14.sp,
-              isSelected ? Consonants.whiteColor : Consonants.boldTextColor,
-              FontWeight.w800,
+            Text(
+              '$count',
+              style: AppText.amount(
+                color: isSelected ? Consonants.indigo : Consonants.headingInk,
+              ).copyWith(fontSize: 15.sp),
             ),
           ],
         ),
@@ -595,7 +598,7 @@ class _RideOptionsList extends ConsumerWidget {
             Expanded(
               child: Padding(
                 padding: EdgeInsets.only(
-                  right: i == kRideOptions.length - 1 ? 0 : 10.w,
+                  right: i == kRideOptions.length - 1 ? 0 : Consonants.gapTiles.w,
                 ),
                 child: _RideCard(
                   option: kRideOptions[i],
@@ -629,7 +632,8 @@ class _RideOptionsList extends ConsumerWidget {
                       ref.read(selectedRideIndexProvider.notifier).select(i),
                 ),
               ),
-              if (i != kRideOptions.length - 1) SizedBox(width: 10.w),
+              if (i != kRideOptions.length - 1)
+                SizedBox(width: Consonants.gapTiles.w),
             ],
           ],
         ),
@@ -655,46 +659,60 @@ class _RideCard extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16.r),
+        borderRadius: BorderRadius.circular(Consonants.rCard.r),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
-          padding: EdgeInsets.all(12.r),
+          padding: EdgeInsets.all(14.r),
           decoration: BoxDecoration(
-            color: selected
-                ? Consonants.primaryColor.withValues(alpha: 0.08)
-                : Consonants.scaffoldBackgroundColor,
-            borderRadius: BorderRadius.circular(16.r),
+            color: selected ? Consonants.indigoWash : Consonants.canvas,
+            borderRadius: BorderRadius.circular(Consonants.rCard.r),
             border: Border.all(
-              color: selected ? Consonants.primaryColor : Colors.transparent,
-              width: 1.5,
+              color: selected ? Consonants.indigo : Consonants.border,
+              width: selected ? 1.5 : 1,
             ),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                padding: EdgeInsets.all(8.r),
-                decoration: BoxDecoration(
-                  color: option.color,
-                  borderRadius: BorderRadius.circular(10.r),
-                ),
-                child: Icon(
-                  option.icon,
-                  color: Consonants.boldTextColor,
-                  size: 18.sp,
-                ),
+              Row(
+                children: [
+                  Container(
+                    width: 38.w,
+                    height: 38.w,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: selected ? Consonants.surface : option.color,
+                      borderRadius: BorderRadius.circular(12.r),
+                    ),
+                    child: Icon(
+                      option.icon,
+                      color: Consonants.iconInk,
+                      size: 20.sp,
+                    ),
+                  ),
+                  const Spacer(),
+                  // A quiet tick rather than a second gradient.
+                  AnimatedOpacity(
+                    opacity: selected ? 1 : 0,
+                    duration: const Duration(milliseconds: 160),
+                    child: Icon(
+                      Icons.check_circle_rounded,
+                      size: 18.sp,
+                      color: Consonants.indigo,
+                    ),
+                  ),
+                ],
               ),
-              SizedBox(height: 8.h),
-              CustomWidgets.customText(
+              SizedBox(height: 12.h),
+              Text(
                 option.title,
-                12.sp,
-                Consonants.boldTextColor,
-                FontWeight.w700,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppText.rowLabel(
+                  color: selected ? Consonants.indigo : Consonants.headingInk,
+                ).copyWith(fontSize: 14.5.sp, fontWeight: FontWeight.w600),
               ),
-              SizedBox(height: 2.h),
-              
-              
             ],
           ),
         ),
@@ -720,20 +738,32 @@ class _StickyCta extends ConsumerWidget {
     final selected = kRideOptions[selectedIndex];
     final seatLabel = seats == 1 ? '1 seat' : '$seats seats';
 
-    return SafeArea(
-      top: false,
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(20.w, 8.h, 20.w, 14.h),
-        child: _PressableButton(
-          label: 'Book ${selected.title} · $seatLabel ',
-          onPressed: onPressed,
-          isLoading: isLoading,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Hairline so the CTA reads as a floor to the scrolling content
+        // rather than the last item in it.
+        const AppDivider(),
+        SafeArea(
+          top: false,
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+                Consonants.gutter.w, 16.h, Consonants.gutter.w, 16.h),
+            child: _PressableButton(
+              label: 'Book ${selected.title} · $seatLabel',
+              onPressed: onPressed,
+              isLoading: isLoading,
+            ),
+          ),
         ),
-      ),
+      ],
     );
   }
 }
 
+/// The one gradient on the sheet. Kept as a hand-rolled button rather than
+/// [AppButton] purely for the press-scale — everything else (fill, radius,
+/// type) is the system's primary spec.
 class _PressableButton extends StatefulWidget {
   final String label;
   final Future<void> Function()? onPressed;
@@ -764,58 +794,54 @@ class _PressableButtonState extends State<_PressableButton> {
       child: AnimatedScale(
         scale: _pressed ? 0.97 : 1,
         duration: const Duration(milliseconds: 120),
-        child: Container(
-          height: 54.h,
-          width: double.infinity,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: disabled
-                ? Consonants.primaryColor.withValues(alpha: 0.7)
-                : Consonants.primaryColor,
-            borderRadius: BorderRadius.circular(16.r),
-            boxShadow: [
-              BoxShadow(
-                color: Consonants.primaryColor.withValues(alpha: 0.35),
-                blurRadius: 16,
-                offset: const Offset(0, 8),
-              ),
-            ],
-          ),
-          child: widget.isLoading
-              ? SizedBox(
-                  height: 22.h,
-                  width: 22.h,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.5,
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      Consonants.whiteColor,
-                    ),
-                  ),
-                )
-              : Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.local_taxi_rounded,
-                      color: Consonants.whiteColor,
-                      size: 18.sp,
-                    ),
-                    SizedBox(width: 8.w),
-                    Flexible(
-                      child: Text(
-                        widget.label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontFamily: Consonants.fontFamily,
-                          fontSize: 14.sp,
-                          fontWeight: FontWeight.w700,
-                          color: Consonants.whiteColor,
-                        ),
+        child: Opacity(
+          opacity: disabled ? 0.55 : 1,
+          child: Container(
+            height: 56.h,
+            width: double.infinity,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              gradient: Consonants.actionGradient,
+              borderRadius: BorderRadius.circular(Consonants.rButton.r),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x3DA044FF),
+                  blurRadius: 24,
+                  offset: Offset(0, 10),
+                ),
+              ],
+            ),
+            child: widget.isLoading
+                ? SizedBox(
+                    height: 22.h,
+                    width: 22.h,
+                    child: const CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        Consonants.surface,
                       ),
                     ),
-                  ],
-                ),
+                  )
+                : Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.local_taxi_rounded,
+                        color: Consonants.surface,
+                        size: 19.sp,
+                      ),
+                      SizedBox(width: 10.w),
+                      Flexible(
+                        child: Text(
+                          widget.label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppText.button().copyWith(fontSize: 16.sp),
+                        ),
+                      ),
+                    ],
+                  ),
+          ),
         ),
       ),
     );

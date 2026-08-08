@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 
 class CustomWidgets {
@@ -18,49 +19,12 @@ class CustomWidgets {
       maxLines: maxLines,
       overflow: overflow ?? (maxLines != null ? TextOverflow.ellipsis : null),
       textAlign: textAlign,
-      style: TextStyle(
+      // Inter comes from google_fonts; naming the family as a string would
+      // silently fall back to the platform face since it isn't a bundled asset.
+      style: GoogleFonts.inter(
         fontSize: fontSize,
         color: color,
         fontWeight: fontWeight,
-        fontFamily: Consonants.fontFamily,
-      ),
-    );
-  }
-
-  static Widget customButton(
-    String text,
-    Future<void> Function()? onPressed, {
-    bool isLoading = false,
-  }) {
-    return ElevatedButton(
-      onPressed: isLoading ? null : onPressed,
-      style: ElevatedButton.styleFrom(
-        maximumSize: Size(300.w, 56.h),
-        minimumSize: Size(200.w, 40.h),
-        backgroundColor: Consonants.primaryColor,
-        disabledBackgroundColor: Consonants.primaryColor.withValues(alpha: 0.7),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(40.r),
-        ),
-      ),
-      child: Center(
-        child: isLoading
-            ? SizedBox(
-                height: 20.h,
-                width: 20.h,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.5,
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    Consonants.whiteColor,
-                  ),
-                ),
-              )
-            : CustomWidgets.customText(
-                text,
-                14.sp,
-                Consonants.whiteColor,
-                FontWeight.w600,
-              ),
       ),
     );
   }
@@ -70,8 +34,8 @@ class CustomWidgets {
       message: message,
       title: "Something went wrong",
       icon: Icons.priority_high_rounded,
-      accent: const Color(0xffEF4444),
-      accentBg: const Color(0xffFEE2E2),
+      accent: Consonants.danger,
+      accentBg: Consonants.dangerWash,
     );
   }
 
@@ -80,8 +44,8 @@ class CustomWidgets {
       message: message,
       title: "Success",
       icon: Icons.check_rounded,
-      accent: const Color(0xff15803D),
-      accentBg: Consonants.primaryGreenColor,
+      accent: Consonants.credit,
+      accentBg: Consonants.creditWash,
     );
   }
 
@@ -106,15 +70,9 @@ class CustomWidgets {
       content: Container(
         padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 12.h),
         decoration: BoxDecoration(
-          color: Consonants.whiteColor,
-          borderRadius: BorderRadius.circular(16.r),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.10),
-              blurRadius: 18,
-              offset: const Offset(0, 8),
-            ),
-          ],
+          color: Consonants.surface,
+          borderRadius: BorderRadius.circular(Consonants.rCard.r),
+          boxShadow: Consonants.cardLift,
         ),
         child: Row(
           children: [
@@ -151,11 +109,9 @@ class CustomWidgets {
                     title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontFamily: Consonants.fontFamily,
-                      fontSize: 11.sp,
+                    style: AppText.navLabel(color: accent).copyWith(
+                      fontSize: 11.5.sp,
                       fontWeight: FontWeight.w800,
-                      color: accent,
                     ),
                   ),
                   SizedBox(height: 1.h),
@@ -163,11 +119,9 @@ class CustomWidgets {
                     message,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontFamily: Consonants.fontFamily,
-                      fontSize: 11.sp,
-                      fontWeight: FontWeight.w600,
-                      color: Consonants.boldTextColor,
+                    style: AppText.caption(color: Consonants.bodyInk).copyWith(
+                      fontSize: 12.5.sp,
+                      fontWeight: FontWeight.w500,
                       height: 1.3,
                     ),
                   ),
@@ -211,17 +165,14 @@ class AuthFields extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // The system's field: r16, 17/18 padding, resting #D9D9E3 border that
+    // turns violet on focus. The label sits above at 16/500 body ink.
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 30.w),
+      padding: EdgeInsets.symmetric(horizontal: Consonants.gutter.w),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          CustomWidgets.customText(
-            text,
-            10.sp,
-            Consonants.boldTextColor,
-            FontWeight.w600,
-          ),
+          Text(text, style: AppText.rowLabel().copyWith(fontSize: 14.5.sp)),
           SizedBox(height: 8.h),
           TextFormField(
             controller: controller,
@@ -229,33 +180,38 @@ class AuthFields extends StatelessWidget {
             validator: validator,
             autovalidateMode: AutovalidateMode.onUserInteraction,
             readOnly: readOnly,
-
-            // ✅ APPLY OPTIONALS
             keyboardType: keyboardType,
             inputFormatters: inputFormatters,
             maxLength: maxLength,
-
+            cursorColor: Consonants.violet,
+            style: AppText.rowLabel().copyWith(fontSize: 16.sp),
             decoration: InputDecoration(
-              counterText: "", // hides maxLength counter (clean UI)
+              counterText: "",
               suffixIcon: suffixIcon,
-              suffixIconColor: Consonants.primaryColor,
-              hoverColor: Consonants.whiteColor,
+              suffixIconColor: Consonants.iconInk,
               contentPadding: EdgeInsets.symmetric(
-                horizontal: 16.w,
-                vertical: 14.h,
+                horizontal: 18.w,
+                vertical: 17.h,
               ),
               enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16.r),
-                borderSide: BorderSide(color: Consonants.whiteColor),
+                borderRadius: BorderRadius.circular(Consonants.rInput.r),
+                borderSide: const BorderSide(color: Consonants.border, width: 1.2),
               ),
               focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16.r),
-                borderSide: BorderSide(color: Consonants.whiteColor),
+                borderRadius: BorderRadius.circular(Consonants.rInput.r),
+                borderSide: const BorderSide(color: Consonants.violet, width: 1.8),
               ),
+              errorBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(Consonants.rInput.r),
+                borderSide: const BorderSide(color: Consonants.danger, width: 1.2),
+              ),
+              focusedErrorBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(Consonants.rInput.r),
+                borderSide: const BorderSide(color: Consonants.danger, width: 1.8),
+              ),
+              errorStyle: AppText.caption(color: Consonants.danger),
               filled: true,
-              fillColor: readOnly
-                  ? Consonants.scaffoldBackgroundColor
-                  : Consonants.whiteColor,
+              fillColor: readOnly ? Consonants.canvas : Consonants.surface,
             ),
           ),
         ],
@@ -299,73 +255,13 @@ class _PasswordFieldState extends State<PasswordField> {
       suffixIcon: GestureDetector(
         onTap: () => setState(() => _obscure = !_obscure),
         child: Icon(
-          _obscure ? Icons.visibility : Icons.visibility_off,
+          // Outline pair — the system's icons are outlines, not filled glyphs.
+          _obscure
+              ? Icons.visibility_outlined
+              : Icons.visibility_off_outlined,
+          size: 20.sp,
+          color: Consonants.iconInk,
         ),
-      ),
-    );
-  }
-}
-
-class AuthContainer extends StatelessWidget {
-  final String buttonText;
-  final String accountText;
-  final String actionText;
-  final Future<void> Function()? onPressed;
-  final VoidCallback onTap;
-  final bool isLoading;
-  const AuthContainer({
-    super.key,
-    required this.buttonText,
-    required this.accountText,
-    required this.actionText,
-    required this.onPressed,
-    required this.onTap,
-    this.isLoading = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Consonants.whiteColor,
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(24.r),
-          topRight: Radius.circular(24.r),
-        ),
-      ),
-      child: Column(
-        children: [
-          SizedBox(height: 20.h),
-          CustomWidgets.customButton(
-            buttonText,
-            onPressed,
-            isLoading: isLoading,
-          ),
-          SizedBox(height: 20.h),
-          Row(
-            children: [
-              Spacer(),
-              CustomWidgets.customText(
-                accountText,
-                10.sp,
-                Consonants.boldTextColor,
-                FontWeight.w400,
-              ),
-              SizedBox(width: 4.w),
-              GestureDetector(
-                onTap: onTap,
-                child: CustomWidgets.customText(
-                  actionText,
-                  10.sp,
-                  Consonants.primaryColor,
-                  FontWeight.w600,
-                ),
-              ),
-              Spacer(),
-            ],
-          ),
-          SizedBox(height: 10.h),
-        ],
       ),
     );
   }

@@ -844,6 +844,11 @@ class RideDetails {
   /// PENDING (no driver has accepted yet).
   final DriverInfo? driver;
 
+  /// When the host plans to leave; null for an on-demand ride. The backend
+  /// always sent this — it just wasn't read here, so tapping into a ride made
+  /// its schedule disappear.
+  final DateTime? departureTime;
+
   const RideDetails({
     required this.id,
     required this.pickup,
@@ -870,7 +875,12 @@ class RideDetails {
     this.yourPickup,
     this.yourDrop,
     this.driver,
+    this.departureTime,
   });
+
+  /// True when this ride has a future scheduled departure.
+  bool get isScheduled =>
+      departureTime != null && departureTime!.isAfter(DateTime.now());
 
   factory RideDetails.fromJson(Map<String, dynamic> json) {
     double? readDouble(String key) {
@@ -926,6 +936,9 @@ class RideDetails {
       rideType: (json['rideType'] ?? 'ECONOMY').toString(),
       status: RideStatus.fromWire(json['status'] as String?),
       createdAt: readDate('createdAt'),
+      // The wire carries UTC; render it in the viewer's own clock, same as
+      // AvailableRide does.
+      departureTime: readDate('departureTime')?.toLocal(),
       host: host,
       seatsTotal: json['seatsTotal'] is num
           ? (json['seatsTotal'] as num).toInt()
@@ -1052,6 +1065,12 @@ class AvailableRide {
   /// True when this ride has a future scheduled departure.
   bool get isScheduled =>
       departureTime != null && departureTime!.isAfter(DateTime.now());
+
+  /// True when a scheduled departure has already come and gone. Distinct from
+  /// [isScheduled] so the UI doesn't fall through to a "Leave now" badge on a
+  /// ride that was due yesterday — which is what it used to do.
+  bool get isDeparted =>
+      departureTime != null && !departureTime!.isAfter(DateTime.now());
 
   /// "4.9 (12)" / "New" — host rating with how many it's based on.
   String get hostRatingLabel {

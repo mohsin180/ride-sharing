@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
-import 'package:ride_sharing/widgets/custom/customWidgets.dart';
+import 'package:ride_sharing/widgets/custom/appComponents.dart';
 
 /// Shows a post-trip rating bottom sheet and resolves to the chosen star
 /// count (1–5), or `null` if the user skipped / dismissed it. Pure UI — the
@@ -10,13 +10,17 @@ import 'package:ride_sharing/widgets/custom/customWidgets.dart';
 Future<int?> showRatingSheet({
   required BuildContext context,
   required String title,
-  required String subtitle,
+  String? subtitle,
   String? avatarInitial,
 }) {
   return showModalBottomSheet<int>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
+    barrierColor: Consonants.scrim,
+    constraints: BoxConstraints(
+      maxHeight: MediaQuery.of(context).size.height * 0.82,
+    ),
     builder: (_) => _RatingSheet(
       title: title,
       subtitle: subtitle,
@@ -27,12 +31,12 @@ Future<int?> showRatingSheet({
 
 class _RatingSheet extends StatefulWidget {
   final String title;
-  final String subtitle;
+  final String? subtitle;
   final String? avatarInitial;
 
   const _RatingSheet({
     required this.title,
-    required this.subtitle,
+    this.subtitle,
     this.avatarInitial,
   });
 
@@ -54,159 +58,135 @@ class _RatingSheetState extends State<_RatingSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final rated = _stars > 0;
+
     return Container(
-      padding: EdgeInsets.fromLTRB(
-        20.w,
-        12.h,
-        20.w,
-        16.h + MediaQuery.of(context).viewInsets.bottom,
-      ),
       decoration: BoxDecoration(
-        color: Consonants.whiteColor,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24.r)),
+        color: Consonants.surface,
+        borderRadius:
+            BorderRadius.vertical(top: Radius.circular(Consonants.rSheet.r)),
+        boxShadow: Consonants.sheetLift,
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 44.w,
-            height: 4.h,
-            decoration: BoxDecoration(
-              color: Consonants.lightGreyColor,
-              borderRadius: BorderRadius.circular(2.r),
-            ),
-          ),
-          SizedBox(height: 18.h),
-          if (widget.avatarInitial != null) ...[
-            Container(
-              width: 56.w,
-              height: 56.w,
-              alignment: Alignment.center,
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Consonants.primaryColor, Color(0xff5AC8FA)],
-                ),
-                shape: BoxShape.circle,
-              ),
-              child: Text(
-                widget.avatarInitial!,
-                style: TextStyle(
-                  color: Consonants.whiteColor,
-                  fontSize: 22.sp,
-                  fontWeight: FontWeight.w800,
-                  fontFamily: Consonants.fontFamily,
-                ),
-              ),
-            ),
-            SizedBox(height: 12.h),
-          ],
-          CustomWidgets.customText(
-            widget.title,
-            16.sp,
-            Consonants.boldTextColor,
-            FontWeight.w800,
-            textAlign: TextAlign.center,
-            maxLines: 2,
-          ),
-          SizedBox(height: 4.h),
-          CustomWidgets.customText(
-            widget.subtitle,
-            11.sp,
-            Consonants.greyColor,
-            FontWeight.w500,
-            textAlign: TextAlign.center,
-            maxLines: 2,
-          ),
-          SizedBox(height: 18.h),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+      padding: EdgeInsets.fromLTRB(
+        Consonants.gutter.w,
+        16.h,
+        Consonants.gutter.w,
+        30.h + MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              for (int i = 1; i <= 5; i++)
-                GestureDetector(
-                  onTap: () => setState(() => _stars = i),
-                  behavior: HitTestBehavior.opaque,
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 5.w),
-                    child: Icon(
-                      i <= _stars
-                          ? Icons.star_rounded
-                          : Icons.star_outline_rounded,
-                      size: 38.sp,
-                      color: i <= _stars
-                          ? const Color(0xffF5B800)
-                          : Consonants.lightGreyColor,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          SizedBox(height: 8.h),
-          CustomWidgets.customText(
-            _labels[_stars],
-            11.sp,
-            _stars == 0 ? Consonants.greyColor : const Color(0xffF5B800),
-            FontWeight.w700,
-          ),
-          SizedBox(height: 20.h),
-          Row(
-            children: [
-              Expanded(
-                child: GestureDetector(
-                  onTap: () => Navigator.of(context).pop(),
-                  behavior: HitTestBehavior.opaque,
-                  child: Container(
-                    padding: EdgeInsets.symmetric(vertical: 14.h),
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: Consonants.scaffoldBackgroundColor,
-                      borderRadius: BorderRadius.circular(14.r),
-                    ),
-                    child: CustomWidgets.customText(
-                      "Skip",
-                      13.sp,
-                      Consonants.boldTextColor,
-                      FontWeight.w700,
-                    ),
-                  ),
+              // Grabber at the system's spec. Not SheetHeader: this sheet's
+              // title is centred under an avatar rather than left-aligned.
+              Container(
+                width: 44.w,
+                height: 5.h,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFD6D6E2),
+                  borderRadius: BorderRadius.circular(Consonants.rPill.r),
                 ),
               ),
-              SizedBox(width: 12.w),
-              Expanded(
-                flex: 2,
-                child: GestureDetector(
-                  onTap: _stars == 0
-                      ? null
-                      : () => Navigator.of(context).pop(_stars),
-                  behavior: HitTestBehavior.opaque,
-                  child: Container(
-                    padding: EdgeInsets.symmetric(vertical: 14.h),
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      gradient: _stars == 0
-                          ? null
-                          : const LinearGradient(
-                              colors: [
-                                Consonants.primaryColor,
-                                Color(0xff5AC8FA),
-                              ],
-                            ),
-                      color: _stars == 0 ? Consonants.lightGreyColor : null,
-                      borderRadius: BorderRadius.circular(14.r),
-                    ),
-                    child: CustomWidgets.customText(
-                      "Submit Rating",
-                      13.sp,
-                      _stars == 0
-                          ? Consonants.greyColor
-                          : Consonants.whiteColor,
-                      FontWeight.w800,
-                    ),
+              SizedBox(height: 14.h),
+              if (widget.avatarInitial != null) ...[
+                SizedBox(height: 8.h),
+                // Wash, not gradient — the submit button is the only gradient
+                // this sheet is allowed.
+                Container(
+                  width: 56.w,
+                  height: 56.w,
+                  alignment: Alignment.center,
+                  decoration: const BoxDecoration(
+                    color: Consonants.indigoWash,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Text(
+                    widget.avatarInitial!,
+                    style: AppText.sectionHeading(color: Consonants.indigo)
+                        .copyWith(fontSize: 22.sp, fontWeight: FontWeight.w700),
                   ),
                 ),
+                SizedBox(height: 14.h),
+              ],
+              Text(
+                widget.title,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: AppText.sectionHeading().copyWith(fontSize: 19.sp),
+              ),
+              if ((widget.subtitle ?? '').trim().isNotEmpty) ...[
+                SizedBox(height: 6.h),
+                Text(
+                  widget.subtitle!,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppText.paragraph().copyWith(fontSize: 14.sp),
+                ),
+              ],
+              SizedBox(height: 22.h),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  for (int i = 1; i <= 5; i++)
+                    GestureDetector(
+                      onTap: () => setState(() => _stars = i),
+                      behavior: HitTestBehavior.opaque,
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 6.w),
+                        child: AnimatedScale(
+                          scale: i <= _stars ? 1.0 : 0.92,
+                          duration: const Duration(milliseconds: 140),
+                          curve: Curves.easeOut,
+                          child: Icon(
+                            i <= _stars
+                                ? Icons.star_rounded
+                                : Icons.star_outline_rounded,
+                            size: 38.sp,
+                            color: i <= _stars
+                                ? Consonants.violet
+                                : Consonants.border,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              SizedBox(height: 12.h),
+              Text(
+                _labels[_stars],
+                style: AppText.rowLabel(
+                  color: rated ? Consonants.indigo : Consonants.textMuted,
+                ).copyWith(fontSize: 13.5.sp, fontWeight: FontWeight.w600),
+              ),
+              SizedBox(height: 26.h),
+              Row(
+                children: [
+                  Expanded(
+                    child: AppButton(
+                      label: 'Skip',
+                      kind: AppButtonKind.neutral,
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                  ),
+                  SizedBox(width: Consonants.gapButtons.w),
+                  Expanded(
+                    flex: 2,
+                    child: AppButton(
+                      label: 'Submit rating',
+                      onPressed: rated
+                          ? () => Navigator.of(context).pop(_stars)
+                          : null,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
-        ],
+        ),
       ),
     );
   }

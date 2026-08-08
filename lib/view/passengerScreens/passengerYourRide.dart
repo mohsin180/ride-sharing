@@ -7,12 +7,14 @@ import 'package:ride_sharing/provider/directionsProvider.dart';
 import 'package:ride_sharing/provider/passengerActiveRideProvider.dart';
 import 'package:ride_sharing/provider/providers.dart';
 import 'package:ride_sharing/provider/rideTrackingProvider.dart';
-import 'package:ride_sharing/view/bottomNavbar.dart' show bottomNavIndexProvider;
+import 'package:ride_sharing/view/bottomNavbar.dart'
+    show bottomNavIndexProvider;
 import 'package:ride_sharing/view/driverScreens/driverChatDetail.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/consonants/errorHandler.dart';
 import 'package:ride_sharing/widgets/consonants/jwtUtils.dart';
 import 'package:ride_sharing/widgets/consonants/tokenStorage.dart';
+import 'package:ride_sharing/widgets/custom/appComponents.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
 import 'package:ride_sharing/widgets/custom/liveTrackingMap.dart';
 import 'package:ride_sharing/widgets/custom/ratingSheet.dart';
@@ -49,12 +51,7 @@ class Passengeryourride extends ConsumerStatefulWidget {
   ConsumerState<Passengeryourride> createState() => _PassengeryourrideState();
 }
 
-enum _RidePhase {
-  driverEnRoute,
-  driverArrived,
-  inTransit,
-  arrived,
-}
+enum _RidePhase { driverEnRoute, driverArrived, inTransit, arrived }
 
 class _PassengeryourrideState extends ConsumerState<Passengeryourride>
     with TickerProviderStateMixin {
@@ -137,69 +134,61 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
     showDialog<void>(
       context: context,
       barrierDismissible: true,
+      barrierColor: Consonants.scrim,
       builder: (dialogCtx) {
         return Dialog(
-          backgroundColor: Consonants.whiteColor,
+          backgroundColor: Consonants.surface,
           insetPadding: EdgeInsets.symmetric(horizontal: 32.w),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20.r),
+            borderRadius: BorderRadius.circular(Consonants.rHero.r),
           ),
           child: Padding(
-            padding: EdgeInsets.fromLTRB(20.w, 22.h, 20.w, 16.h),
+            padding: EdgeInsets.fromLTRB(22.w, 26.h, 22.w, 20.h),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
-                  width: 56.w,
-                  height: 56.w,
+                  width: 60.w,
+                  height: 60.w,
                   alignment: Alignment.center,
                   decoration: const BoxDecoration(
-                    color: Color(0xffFEE2E2),
+                    color: Consonants.dangerWash,
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(Icons.cancel_outlined,
-                      size: 26.sp, color: const Color(0xffEF4444)),
+                  child: Icon(
+                    Icons.cancel_outlined,
+                    size: 26.sp,
+                    color: Consonants.danger,
+                  ),
                 ),
-                SizedBox(height: 14.h),
-                CustomWidgets.customText(
+                SizedBox(height: 18.h),
+                Text(
                   "Cancel ride?",
-                  16.sp,
-                  Consonants.boldTextColor,
-                  FontWeight.w800,
+                  style: AppText.sectionHeading().copyWith(fontSize: 19.sp),
                 ),
-                SizedBox(height: 6.h),
-                CustomWidgets.customText(
+                SizedBox(height: 8.h),
+                Text(
                   subtitle,
-                  11.sp,
-                  feeApplies ? const Color(0xffEF4444) : Consonants.greyColor,
-                  feeApplies ? FontWeight.w700 : FontWeight.w500,
                   textAlign: TextAlign.center,
-                  maxLines: 2,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppText.paragraph(
+                    color: feeApplies
+                        ? Consonants.danger
+                        : Consonants.textMuted,
+                  ).copyWith(fontSize: 15.sp),
                 ),
-                SizedBox(height: 20.h),
+                SizedBox(height: 24.h),
                 Row(
                   children: [
                     Expanded(
-                      child: GestureDetector(
-                        onTap: () => Navigator.of(dialogCtx).pop(),
-                        behavior: HitTestBehavior.opaque,
-                        child: Container(
-                          padding: EdgeInsets.symmetric(vertical: 12.h),
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: Consonants.scaffoldBackgroundColor,
-                            borderRadius: BorderRadius.circular(12.r),
-                          ),
-                          child: CustomWidgets.customText(
-                            "Keep ride",
-                            13.sp,
-                            Consonants.boldTextColor,
-                            FontWeight.w700,
-                          ),
-                        ),
+                      child: AppButton(
+                        label: "Keep ride",
+                        kind: AppButtonKind.neutral,
+                        onPressed: () => Navigator.of(dialogCtx).pop(),
                       ),
                     ),
-                    SizedBox(width: 10.w),
+                    SizedBox(width: Consonants.gapButtons.w),
                     Expanded(
                       child: GestureDetector(
                         onTap: () {
@@ -208,27 +197,24 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
                         },
                         behavior: HitTestBehavior.opaque,
                         child: Container(
-                          padding: EdgeInsets.symmetric(vertical: 12.h),
+                          padding: EdgeInsets.symmetric(
+                            vertical: 17.h,
+                            horizontal: 12.w,
+                          ),
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [Color(0xffEF4444), Color(0xffF87171)],
+                            color: Consonants.danger,
+                            borderRadius: BorderRadius.circular(
+                              Consonants.rButton.r,
                             ),
-                            borderRadius: BorderRadius.circular(12.r),
-                            boxShadow: [
-                              BoxShadow(
-                                color: const Color(0xffEF4444)
-                                    .withValues(alpha: 0.30),
-                                blurRadius: 10,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
                           ),
-                          child: CustomWidgets.customText(
+                          child: Text(
                             "Cancel ride",
-                            13.sp,
-                            Consonants.whiteColor,
-                            FontWeight.w800,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppText.button(
+                              color: Consonants.surface,
+                            ).copyWith(fontSize: 16.sp),
                           ),
                         ),
                       ),
@@ -267,8 +253,8 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
       final message = result != null && result.hasFee
           ? "Ride cancelled · ${result.feeLabel} fee applied"
           : isHost
-              ? "Ride cancelled"
-              : "You left the ride";
+          ? "Ride cancelled"
+          : "You left the ride";
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(CustomWidgets.customSuccessSnackBar(message));
@@ -285,8 +271,10 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
 
   /// Emergency hotline (Pakistan Rescue 1122).
   Future<void> _emergencyCall() async {
-    await _launch(Uri(scheme: 'tel', path: '1122'),
-        fallback: "Couldn't reach emergency services");
+    await _launch(
+      Uri(scheme: 'tel', path: '1122'),
+      fallback: "Couldn't reach emergency services",
+    );
   }
 
   /// Opens the ride's group chat — same `DriverChatDetail` screen the
@@ -297,7 +285,7 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
         ? driver.displayName
         : "Ride chat";
     final members = driver != null
-        ? [ChatMember(initial: driver.initial, color: Consonants.primaryColor)]
+        ? [ChatMember(initial: driver.initial, color: Consonants.indigo)]
         : const <ChatMember>[];
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -368,8 +356,10 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
 
     // When the active trip disappears after having STARTED, it just completed
     // — prompt this passenger to rate the driver + co-passengers (once).
-    ref.listen<AsyncValue<List<RideDetails>>>(passengerActiveRideProvider,
-        (prev, next) {
+    ref.listen<AsyncValue<List<RideDetails>>>(passengerActiveRideProvider, (
+      prev,
+      next,
+    ) {
       final list = next.value;
       if (list == null) return; // first load still in flight
       final current = list.isNotEmpty ? list.first : null;
@@ -389,7 +379,7 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
     });
 
     return Scaffold(
-      backgroundColor: Consonants.scaffoldBackgroundColor,
+      backgroundColor: Consonants.canvas,
       body: ride == null ? _emptyState() : _activeRide(ride),
     );
   }
@@ -422,7 +412,9 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
       );
       if (stars != null) {
         try {
-          await ref.read(rideServiceProvider).rateCoPassenger(ride.id, c.id, stars);
+          await ref
+              .read(rideServiceProvider)
+              .rateCoPassenger(ride.id, c.id, stars);
         } catch (_) {}
       }
     }
@@ -430,19 +422,11 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
 
   // ─── Co-riders (matches the driver's remaining-passengers section) ──
   Widget _coRidersHeader(int count) {
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 4.w),
-      child: Row(
-        children: [
-          CustomWidgets.customText(
-              "CO-RIDERS", 10.sp, Consonants.greyColor, FontWeight.w800),
-          SizedBox(width: 6.w),
-          CustomWidgets.customText(
-              "($count)", 10.sp, Consonants.greyColor, FontWeight.w600),
-          SizedBox(width: 10.w),
-          Expanded(
-              child: Container(height: 1, color: Consonants.lightGreyColor)),
-        ],
+    return AppSectionHeading(
+      label: "Co-riders",
+      trailing: Text(
+        "$count",
+        style: AppText.caption().copyWith(fontSize: 13.sp),
       ),
     );
   }
@@ -452,54 +436,15 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
     final rating = (c.rating != null && c.rating! > 0)
         ? c.rating!.toStringAsFixed(1)
         : "New";
-    return GestureDetector(
+    return AppListRow(
+      icon: Icons.person_outline_rounded,
+      title: name,
+      meta: "$rating rating",
       onTap: () => _showCoRiderDetails(c),
-      child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
-        decoration: BoxDecoration(
-          color: Consonants.whiteColor,
-          borderRadius: BorderRadius.circular(14.r),
-          border: Border.all(color: Consonants.lightGreyColor),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 36.w,
-              height: 36.w,
-              alignment: Alignment.center,
-              decoration: const BoxDecoration(
-                color: Consonants.primaryColor,
-                shape: BoxShape.circle,
-              ),
-              child: CustomWidgets.customText(name[0].toUpperCase(), 14.sp,
-                  Consonants.whiteColor, FontWeight.w800),
-            ),
-            SizedBox(width: 10.w),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  CustomWidgets.customText(
-                      name, 12.sp, Consonants.boldTextColor, FontWeight.w700,
-                      maxLines: 1),
-                  SizedBox(height: 2.h),
-                  Row(
-                    children: [
-                      Icon(Icons.star_rounded,
-                          size: 11.sp, color: const Color(0xffF5B800)),
-                      SizedBox(width: 4.w),
-                      CustomWidgets.customText(
-                          rating, 10.sp, Consonants.greyColor, FontWeight.w500),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            SizedBox(width: 8.w),
-            Icon(Icons.chevron_right_rounded,
-                size: 18.sp, color: Consonants.greyColor),
-          ],
-        ),
+      trailing: Icon(
+        Icons.chevron_right_rounded,
+        size: 22.sp,
+        color: Consonants.textMuted,
       ),
     );
   }
@@ -509,71 +454,63 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
     final rating = (c.rating != null && c.rating! > 0)
         ? c.rating!.toStringAsFixed(1)
         : "New";
-    showModalBottomSheet(
+    showAppSheet<void>(
       context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (_) => Container(
-        decoration: BoxDecoration(
-          color: Consonants.whiteColor,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24.r)),
-        ),
-        padding: EdgeInsets.fromLTRB(20.w, 12.h, 20.w, 28.h),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Center(
-              child: Container(
-                height: 5.h,
-                width: 44.w,
-                decoration: BoxDecoration(
-                  color: Consonants.lightGreyColor,
-                  borderRadius: BorderRadius.circular(4.r),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SheetHeader(title: "Co-rider"),
+          SizedBox(height: 20.h),
+          Row(
+            children: [
+              Container(
+                width: 56.w,
+                height: 56.w,
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(
+                  color: Consonants.indigoWash,
+                  shape: BoxShape.circle,
+                ),
+                child: Text(
+                  name[0].toUpperCase(),
+                  style: AppText.screenTitle(
+                    color: Consonants.indigo,
+                  ).copyWith(fontSize: 22.sp),
                 ),
               ),
-            ),
-            SizedBox(height: 18.h),
-            Row(
-              children: [
-                Container(
-                  width: 52.w,
-                  height: 52.w,
-                  alignment: Alignment.center,
-                  decoration: const BoxDecoration(
-                    color: Consonants.primaryColor,
-                    shape: BoxShape.circle,
-                  ),
-                  child: CustomWidgets.customText(name[0].toUpperCase(), 20.sp,
-                      Consonants.whiteColor, FontWeight.w800),
+              SizedBox(width: 16.w),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppText.sectionHeading().copyWith(fontSize: 19.sp),
+                    ),
+                    SizedBox(height: 5.h),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.star_outline_rounded,
+                          size: 14.sp,
+                          color: Consonants.textMuted,
+                        ),
+                        SizedBox(width: 5.w),
+                        Text(
+                          "$rating  ·  Sharing this ride",
+                          style: AppText.caption().copyWith(fontSize: 13.sp),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
-                SizedBox(width: 14.w),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      CustomWidgets.customText(name, 16.sp,
-                          Consonants.boldTextColor, FontWeight.w800,
-                          maxLines: 1),
-                      SizedBox(height: 4.h),
-                      Row(
-                        children: [
-                          Icon(Icons.star_rounded,
-                              size: 14.sp, color: const Color(0xffF5B800)),
-                          SizedBox(width: 4.w),
-                          CustomWidgets.customText(rating, 12.sp,
-                              Consonants.greyColor, FontWeight.w600),
-                          SizedBox(width: 8.w),
-                          CustomWidgets.customText("Co-rider", 10.sp,
-                              Consonants.primaryColor, FontWeight.w700),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -584,12 +521,14 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
     // Derive the passenger-facing phase from the authoritative ride status,
     // so the banner/chip below track what the driver actually did.
     _phase = _phaseFor(ride.status);
-    final hasCoords = ride.pickupLat != null &&
+    final hasCoords =
+        ride.pickupLat != null &&
         ride.pickupLng != null &&
         ride.dropLat != null &&
         ride.dropLng != null;
-    final pickupLL =
-        hasCoords ? LatLng(ride.pickupLat!, ride.pickupLng!) : _pickup;
+    final pickupLL = hasCoords
+        ? LatLng(ride.pickupLat!, ride.pickupLng!)
+        : _pickup;
     final dropLL = hasCoords ? LatLng(ride.dropLat!, ride.dropLng!) : _drop;
 
     final media = MediaQuery.of(context);
@@ -635,59 +574,54 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
           bottom: 0,
           child: Container(
             decoration: BoxDecoration(
-              color: Consonants.whiteColor,
-              borderRadius: BorderRadius.only(
-                topLeft: Radius.circular(28.r),
-                topRight: Radius.circular(28.r),
+              color: Consonants.canvas,
+              borderRadius: BorderRadius.vertical(
+                top: Radius.circular(Consonants.rSheet.r),
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.06),
-                  blurRadius: 18,
-                  offset: const Offset(0, -6),
-                ),
-              ],
+              boxShadow: Consonants.sheetLift,
             ),
             child: Column(
               children: [
-                SizedBox(height: 8.h),
+                SizedBox(height: 12.h),
                 Container(
                   width: 44.w,
-                  height: 4.h,
+                  height: 5.h,
                   decoration: BoxDecoration(
-                    color: Consonants.lightGreyColor,
-                    borderRadius: BorderRadius.circular(2.r),
+                    color: const Color(0xFFD6D6E2),
+                    borderRadius: BorderRadius.circular(Consonants.rPill.r),
                   ),
                 ),
-                SizedBox(height: 8.h),
+                SizedBox(height: 18.h),
                 Expanded(
                   child: ListView(
                     physics: const BouncingScrollPhysics(),
-                    padding: EdgeInsets.symmetric(horizontal: 16.w),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: Consonants.gutter.w,
+                    ),
                     children: [
                       // Below-map layout mirrors the driver's active-ride
                       // cockpit: status band → focus card → trip strip →
                       // co-riders list. (The full route is on the map now, so
                       // the old text route card is dropped — same as the driver.)
                       _statusBand(),
-                      SizedBox(height: 12.h),
-                      _driverCard(ride),
-                      SizedBox(height: 12.h),
+                      SizedBox(height: Consonants.gapTiles.h),
                       _tripStrip(ride, pickupLL, dropLL),
+                      SizedBox(height: Consonants.gapTiles.h),
+                      _driverCard(ride),
                       if (ride.fare != null) ...[
-                        SizedBox(height: 12.h),
+                        SizedBox(height: Consonants.gapTiles.h),
                         _cashPaymentHint(ride),
                       ],
                       if (ride.coPassengers.isNotEmpty) ...[
-                        SizedBox(height: 18.h),
+                        SizedBox(height: 26.h),
                         _coRidersHeader(ride.coPassengers.length),
-                        SizedBox(height: 8.h),
-                        for (final c in ride.coPassengers) ...[
-                          _coRiderTile(c),
-                          SizedBox(height: 8.h),
+                        for (int i = 0; i < ride.coPassengers.length; i++) ...[
+                          _coRiderTile(ride.coPassengers[i]),
+                          if (i != ride.coPassengers.length - 1)
+                            const AppDivider(),
                         ],
                       ],
-                      SizedBox(height: 14.h),
+                      SizedBox(height: 22.h),
                       _safetyTile(),
                       SizedBox(height: 16.h),
                     ],
@@ -725,37 +659,35 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
                   const Spacer(),
                   Container(
                     padding: EdgeInsets.symmetric(
-                        horizontal: 12.w, vertical: 6.h),
+                      horizontal: 14.w,
+                      vertical: 9.h,
+                    ),
                     decoration: BoxDecoration(
-                      color: Consonants.whiteColor,
-                      borderRadius: BorderRadius.circular(20.r),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.05),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
+                      color: Consonants.surface,
+                      borderRadius: BorderRadius.circular(Consonants.rPill.r),
+                      boxShadow: Consonants.cardLift,
                     ),
                     child: Row(
                       children: [
-                        Icon(Icons.directions_car_rounded,
-                            size: 14.sp,
-                            color: Consonants.primaryColor),
-                        SizedBox(width: 5.w),
-                        CustomWidgets.customText(
+                        Icon(
+                          Icons.directions_car_outlined,
+                          size: 15.sp,
+                          color: Consonants.iconInk,
+                        ),
+                        SizedBox(width: 6.w),
+                        Text(
                           "Live Trip",
-                          11.sp,
-                          Consonants.boldTextColor,
-                          FontWeight.w800,
+                          style: AppText.navLabel(
+                            color: Consonants.iconInk,
+                          ).copyWith(fontSize: 12.5.sp),
                         ),
                       ],
                     ),
                   ),
                   const Spacer(),
                   _circleIconButton(
-                    icon: Icons.shield_rounded,
-                    iconColor: const Color(0xffEF4444),
+                    icon: Icons.shield_outlined,
+                    iconColor: Consonants.danger,
                     onTap: _emergencyCall,
                   ),
                 ],
@@ -780,61 +712,49 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
         width: 40.w,
         height: 40.w,
         alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: Consonants.whiteColor,
+        decoration: const BoxDecoration(
+          color: Consonants.surface,
           shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
+          boxShadow: Consonants.cardLift,
         ),
-        child: Icon(icon,
-            size: 18.sp, color: iconColor ?? Consonants.boldTextColor),
+        child: Icon(icon, size: 20.sp, color: iconColor ?? Consonants.iconInk),
       ),
     );
   }
 
   Widget _statusBand() {
-    final isArrivedBanner = _phase == _RidePhase.driverArrived;
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
+      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
       decoration: BoxDecoration(
-        color: isArrivedBanner
-            ? Consonants.primaryGreenColor
-            : Consonants.lightBlueColor,
-        borderRadius: BorderRadius.circular(14.r),
+        color: Consonants.indigoWash,
+        borderRadius: BorderRadius.circular(Consonants.rCard.r),
       ),
       child: Row(
         children: [
           AnimatedBuilder(
             animation: _pulse,
             builder: (_, __) {
-              final color = isArrivedBanner
-                  ? const Color(0xff15803D)
-                  : Consonants.primaryColor;
               return Container(
                 width: 10.w,
                 height: 10.w,
                 decoration: BoxDecoration(
-                  color: color.withValues(
-                    alpha: 0.50 + 0.50 * _pulse.value,
+                  color: Consonants.indigo.withValues(
+                    alpha: 0.45 + 0.55 * _pulse.value,
                   ),
                   shape: BoxShape.circle,
                 ),
               );
             },
           ),
-          SizedBox(width: 10.w),
+          SizedBox(width: 12.w),
           Expanded(
-            child: CustomWidgets.customText(
+            child: Text(
               _statusLine,
-              12.sp,
-              Consonants.boldTextColor,
-              FontWeight.w700,
               maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: AppText.rowLabel(
+                color: Consonants.headingInk,
+              ).copyWith(fontSize: 15.sp, fontWeight: FontWeight.w600),
             ),
           ),
         ],
@@ -844,24 +764,9 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
 
   Widget _driverCard(RideDetails ride) {
     final driver = ride.driver;
-
-    return Container(
-      padding: EdgeInsets.all(14.w),
-      decoration: BoxDecoration(
-        color: Consonants.whiteColor,
-        borderRadius: BorderRadius.circular(18.r),
-        border: Border.all(color: Consonants.lightGreyColor),
-        boxShadow: [
-          BoxShadow(
-            color: Consonants.primaryColor.withValues(alpha: 0.08),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: driver == null
-          ? _driverPending()
-          : _driverDetails(ride, driver),
+    return AppCard(
+      padding: EdgeInsets.all(18.w),
+      child: driver == null ? _driverPending() : _driverDetails(ride, driver),
     );
   }
 
@@ -874,36 +779,28 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
           width: 52.w,
           height: 52.w,
           alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: Consonants.lightBlueColor,
+          decoration: const BoxDecoration(
+            color: Consonants.indigoWash,
             shape: BoxShape.circle,
           ),
-          child: Icon(Icons.person_search_rounded,
-              size: 24.sp, color: Consonants.primaryColor),
-        ),
-        SizedBox(width: 12.w),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              CustomWidgets.customText(
-                "Driver assigned soon",
-                14.sp,
-                Consonants.boldTextColor,
-                FontWeight.w800,
-                maxLines: 1,
-              ),
-              SizedBox(height: 3.h),
-              CustomWidgets.customText(
-                "We'll show their details here once they're on the way.",
-                11.sp,
-                Consonants.greyColor,
-                FontWeight.w500,
-                maxLines: 2,
-              ),
-            ],
+          child: Icon(
+            Icons.person_search_outlined,
+            size: 24.sp,
+            color: Consonants.indigo,
           ),
         ),
+        SizedBox(width: 14.w),
+        Expanded(
+          child: Text(
+            "Driver assigned soon",
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppText.rowLabel(
+              color: Consonants.headingInk,
+            ).copyWith(fontSize: 16.sp, fontWeight: FontWeight.w700),
+          ),
+        ),
+        SizedBox(width: 10.w),
         _phaseChip(),
       ],
     );
@@ -920,32 +817,18 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
               width: 52.w,
               height: 52.w,
               alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: Consonants.primaryColor,
+              decoration: const BoxDecoration(
+                color: Consonants.indigoWash,
                 shape: BoxShape.circle,
-                border: Border.all(
-                  color: Consonants.whiteColor,
-                  width: 2.5,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Consonants.primaryColor.withValues(alpha: 0.30),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
               ),
               child: Text(
                 driver.initial,
-                style: TextStyle(
-                  color: Consonants.whiteColor,
-                  fontSize: 20.sp,
-                  fontWeight: FontWeight.w800,
-                  fontFamily: Consonants.fontFamily,
-                ),
+                style: AppText.amount(
+                  color: Consonants.indigo,
+                ).copyWith(fontSize: 20.sp),
               ),
             ),
-            SizedBox(width: 12.w),
+            SizedBox(width: 14.w),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -953,143 +836,111 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
                   Row(
                     children: [
                       Flexible(
-                        child: CustomWidgets.customText(
+                        child: Text(
                           driver.displayName,
-                          14.sp,
-                          Consonants.boldTextColor,
-                          FontWeight.w800,
                           maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppText.rowLabel(color: Consonants.headingInk)
+                              .copyWith(
+                                fontSize: 16.5.sp,
+                                fontWeight: FontWeight.w700,
+                              ),
                         ),
                       ),
-                      SizedBox(width: 4.w),
-                      Icon(Icons.verified_rounded,
-                          size: 14.sp, color: Consonants.primaryColor),
+                      SizedBox(width: 5.w),
+                      Icon(
+                        Icons.verified_outlined,
+                        size: 15.sp,
+                        color: Consonants.iconInk,
+                      ),
                     ],
                   ),
-                  SizedBox(height: 3.h),
+                  SizedBox(height: 4.h),
                   Row(
                     children: [
-                      Icon(Icons.star_rounded,
-                          size: 12.sp, color: const Color(0xffF5B800)),
-                      SizedBox(width: 3.w),
+                      Icon(
+                        Icons.star_outline_rounded,
+                        size: 14.sp,
+                        color: Consonants.textMuted,
+                      ),
+                      SizedBox(width: 4.w),
                       Flexible(
-                        child: CustomWidgets.customText(
+                        child: Text(
                           driver.ratingLabel,
-                          11.sp,
-                          Consonants.greyColor,
-                          FontWeight.w700,
                           maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppText.caption().copyWith(fontSize: 12.5.sp),
                         ),
                       ),
-                      if (carInfo.isNotEmpty) ...[
-                        SizedBox(width: 8.w),
-                        Container(
-                          width: 3.w,
-                          height: 3.w,
-                          decoration: BoxDecoration(
-                            color: Consonants.greyColor,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        SizedBox(width: 8.w),
-                        Flexible(
-                          child: CustomWidgets.customText(
-                            carInfo,
-                            11.sp,
-                            Consonants.greyColor,
-                            FontWeight.w600,
-                            maxLines: 1,
-                          ),
-                        ),
-                      ],
                     ],
                   ),
                 ],
               ),
             ),
+            SizedBox(width: 10.w),
             _phaseChip(),
           ],
         ),
         if (carInfo.isNotEmpty) ...[
-          SizedBox(height: 14.h),
-          Container(height: 1, color: Consonants.lightGreyColor),
-          SizedBox(height: 12.h),
+          SizedBox(height: 16.h),
+          const AppDivider(),
+          SizedBox(height: 16.h),
           Row(
             children: [
               Container(
-                width: 38.w,
-                height: 38.w,
+                width: 40.w,
+                height: 40.w,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: Consonants.lightBlueColor,
-                  borderRadius: BorderRadius.circular(10.r),
+                  color: Consonants.chipBg,
+                  borderRadius: BorderRadius.circular(12.r),
                 ),
-                child: Icon(Icons.directions_car_rounded,
-                    size: 18.sp, color: Consonants.primaryColor),
+                child: Icon(
+                  Icons.directions_car_outlined,
+                  size: 19.sp,
+                  color: Consonants.iconInk,
+                ),
               ),
-              SizedBox(width: 10.w),
+              SizedBox(width: 12.w),
               Expanded(
-                child: CustomWidgets.customText(
+                child: Text(
                   carInfo,
-                  12.sp,
-                  Consonants.boldTextColor,
-                  FontWeight.w800,
                   maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppText.rowLabel().copyWith(fontSize: 15.5.sp),
                 ),
               ),
             ],
           ),
         ],
-        SizedBox(height: 14.h),
+        SizedBox(height: 18.h),
         // Message the driver, and call them directly when a phone is on file.
         Row(
           children: [
             Expanded(
-              child: GestureDetector(
-                onTap: () => _openChat(ride),
-                child: Container(
-                  height: 46.h,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Consonants.primaryColor, Color(0xff5AC8FA)],
-                    ),
-                    borderRadius: BorderRadius.circular(12.r),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Consonants.primaryColor.withValues(alpha: 0.25),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.chat_bubble_outline_rounded,
-                          size: 16.sp, color: Consonants.whiteColor),
-                      SizedBox(width: 8.w),
-                      CustomWidgets.customText("Message driver", 13.sp,
-                          Consonants.whiteColor, FontWeight.w800),
-                    ],
-                  ),
-                ),
+              child: AppButton(
+                label: "Message driver",
+                icon: Icons.chat_bubble_outline_rounded,
+                onPressed: () => _openChat(ride),
               ),
             ),
             if ((ride.driver?.phone ?? '').trim().isNotEmpty) ...[
-              SizedBox(width: 10.w),
+              SizedBox(width: Consonants.gapButtons.w),
               GestureDetector(
                 onTap: () => _callDriver(ride.driver!.phone!),
                 child: Container(
-                  height: 46.h,
-                  width: 46.h,
+                  height: 56.h,
+                  width: 56.h,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: Consonants.primaryGreenColor,
-                    borderRadius: BorderRadius.circular(12.r),
+                    color: Consonants.chipBg,
+                    borderRadius: BorderRadius.circular(Consonants.rButton.r),
                   ),
-                  child: Icon(Icons.call_rounded,
-                      size: 20.sp, color: const Color(0xff15803D)),
+                  child: Icon(
+                    Icons.call_outlined,
+                    size: 21.sp,
+                    color: Consonants.iconInk,
+                  ),
                 ),
               ),
             ],
@@ -1101,44 +952,30 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
 
   /// Dial the driver's phone (only shown when a number is on file).
   Future<void> _callDriver(String phone) async {
-    await _launch(Uri(scheme: 'tel', path: phone.trim()),
-        fallback: "Couldn't start the call");
+    await _launch(
+      Uri(scheme: 'tel', path: phone.trim()),
+      fallback: "Couldn't start the call",
+    );
   }
 
   Widget _phaseChip() {
-    final (label, fg, bg) = switch (_phase) {
-      _RidePhase.driverEnRoute => (
-          "On the way",
-          Consonants.primaryColor,
-          Consonants.lightBlueColor,
-        ),
-      _RidePhase.driverArrived => (
-          "Arrived",
-          const Color(0xff15803D),
-          Consonants.primaryGreenColor,
-        ),
-      _RidePhase.inTransit => (
-          "In transit",
-          Consonants.primaryColor,
-          Consonants.lightBlueColor,
-        ),
-      _RidePhase.arrived => (
-          "Reached",
-          const Color(0xff15803D),
-          Consonants.primaryGreenColor,
-        ),
+    final label = switch (_phase) {
+      _RidePhase.driverEnRoute => "On the way",
+      _RidePhase.driverArrived => "Arrived",
+      _RidePhase.inTransit => "In transit",
+      _RidePhase.arrived => "Reached",
     };
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
+      padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 6.h),
       decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(20.r),
+        color: Consonants.chipBg,
+        borderRadius: BorderRadius.circular(Consonants.rPill.r),
       ),
-      child: CustomWidgets.customText(
+      child: Text(
         label,
-        9.sp,
-        fg,
-        FontWeight.w800,
+        style: AppText.navLabel(
+          color: Consonants.iconInk,
+        ).copyWith(fontSize: 12.sp),
       ),
     );
   }
@@ -1154,37 +991,23 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
   Widget _cashPaymentHint(RideDetails ride) {
     final fare = ride.fare!;
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
+      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
       decoration: BoxDecoration(
-        color: const Color(0xffF0FDF4),
-        borderRadius: BorderRadius.circular(14.r),
-        border: Border.all(color: const Color(0xffBBF7D0)),
+        color: Consonants.chipBg,
+        borderRadius: BorderRadius.circular(Consonants.rCard.r),
       ),
       child: Row(
         children: [
-          Icon(Icons.payments_rounded,
-              size: 20.sp, color: const Color(0xff15803D)),
-          SizedBox(width: 10.w),
+          Icon(Icons.payments_outlined, size: 20.sp, color: Consonants.iconInk),
+          SizedBox(width: 12.w),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                CustomWidgets.customText(
-                  "Pay ${fare.format(fare.perRider)} in cash",
-                  13.sp,
-                  const Color(0xff15803D),
-                  FontWeight.w800,
-                  maxLines: 1,
-                ),
-                SizedBox(height: 2.h),
-                CustomWidgets.customText(
-                  "Hand it to your driver at drop-off.",
-                  11.sp,
-                  Consonants.greyColor,
-                  FontWeight.w500,
-                  maxLines: 1,
-                ),
-              ],
+            child: Text(
+              "Pay ${fare.format(fare.perRider)} in cash",
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppText.rowLabel(
+                color: Consonants.headingInk,
+              ).copyWith(fontSize: 15.sp, fontWeight: FontWeight.w600),
             ),
           ),
         ],
@@ -1217,16 +1040,20 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
           // Live: from the driver's position to the point that matters now.
           // Round to ~110 m so the route only refetches on real movement.
           final origin = LatLng(
-              (driverPos.latitude * 1000).roundToDouble() / 1000,
-              (driverPos.longitude * 1000).roundToDouble() / 1000);
+            (driverPos.latitude * 1000).roundToDouble() / 1000,
+            (driverPos.longitude * 1000).roundToDouble() / 1000,
+          );
           final target = _phase == _RidePhase.inTransit ? drop : pickup;
           ref
-              .watch(directionsProvider(
-                  DirectionsRequest(origin: origin, destination: target)))
+              .watch(
+                directionsProvider(
+                  DirectionsRequest(origin: origin, destination: target),
+                ),
+              )
               .whenData((r) {
-            distanceValue = "${r.distanceKm.toStringAsFixed(1)} km";
-            durationValue = "${r.durationMinutes} min";
-          });
+                distanceValue = "${r.distanceKm.toStringAsFixed(1)} km";
+                durationValue = "${r.durationMinutes} min";
+              });
         } else if (ride.tripDistanceKm != null) {
           // No live fix yet: show the FULL shared trip (through every rider's
           // stops, recomputed by the backend) — grows as co-riders join.
@@ -1236,53 +1063,50 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
               : "—";
         } else {
           ref
-              .watch(directionsProvider(
-                  DirectionsRequest(origin: pickup, destination: drop)))
+              .watch(
+                directionsProvider(
+                  DirectionsRequest(origin: pickup, destination: drop),
+                ),
+              )
               .whenData((r) {
-            distanceValue = "${r.distanceKm.toStringAsFixed(1)} km";
-            durationValue = "${r.durationMinutes} min";
-          });
+                distanceValue = "${r.distanceKm.toStringAsFixed(1)} km";
+                durationValue = "${r.durationMinutes} min";
+              });
         }
 
-        return Container(
-          padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 12.h),
-          decoration: BoxDecoration(
-            color: Consonants.scaffoldBackgroundColor,
-            borderRadius: BorderRadius.circular(14.r),
-          ),
-          child: Row(
+        return HeroSurface(
+          padding: EdgeInsets.symmetric(horizontal: 22.w, vertical: 22.h),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: _stripItem(
-                  icon: Icons.straighten_rounded,
-                  value: distanceValue,
-                  label: "Distance",
-                ),
+              Text(
+                "Your fare",
+                style: AppText.caption(
+                  color: const Color(0xCCFFFFFF),
+                ).copyWith(fontSize: 13.sp),
               ),
-              Container(
-                width: 1,
-                height: 26.h,
-                color: Consonants.lightGreyColor,
+              SizedBox(height: 8.h),
+              Text(
+                fareValue,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppText.figure(
+                  color: Consonants.surface,
+                ).copyWith(fontSize: 36.sp),
               ),
-              Expanded(
-                child: _stripItem(
-                  icon: Icons.access_time_rounded,
-                  value: durationValue,
-                  label: "Duration",
-                ),
-              ),
-              Container(
-                width: 1,
-                height: 26.h,
-                color: Consonants.lightGreyColor,
-              ),
-              Expanded(
-                child: _stripItem(
-                  icon: Icons.payments_rounded,
-                  value: fareValue,
-                  label: "Fare",
-                  accent: Consonants.primaryColor,
-                ),
+              SizedBox(height: 18.h),
+              Row(
+                children: [
+                  HeroChip(
+                    label: distanceValue,
+                    icon: Icons.straighten_rounded,
+                  ),
+                  SizedBox(width: 8.w),
+                  HeroChip(
+                    label: durationValue,
+                    icon: Icons.access_time_rounded,
+                  ),
+                ],
               ),
             ],
           ),
@@ -1291,76 +1115,51 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
     );
   }
 
-  Widget _stripItem({
-    required IconData icon,
-    required String value,
-    required String label,
-    Color? accent,
-  }) {
-    return Column(
-      children: [
-        Icon(icon,
-            size: 14.sp, color: accent ?? Consonants.boldTextColor),
-        SizedBox(height: 4.h),
-        CustomWidgets.customText(
-          value,
-          12.sp,
-          accent ?? Consonants.boldTextColor,
-          FontWeight.w800,
-          maxLines: 1,
-        ),
-        SizedBox(height: 1.h),
-        CustomWidgets.customText(
-          label,
-          9.sp,
-          Consonants.greyColor,
-          FontWeight.w500,
-        ),
-      ],
-    );
-  }
-
   Widget _safetyTile() {
-    return GestureDetector(
-      onTap: () =>
-          _quickActionSnack("Live location shared with your contacts"),
-      child: Container(
-        padding:
-            EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
-        decoration: BoxDecoration(
-          color: Consonants.lightBlueColor,
-          borderRadius: BorderRadius.circular(14.r),
-        ),
-        child: Row(
-          children: [
-            Icon(Icons.shield_rounded,
-                size: 18.sp, color: Consonants.primaryColor),
-            SizedBox(width: 10.w),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  CustomWidgets.customText(
-                    "Ride safely",
-                    12.sp,
-                    Consonants.boldTextColor,
-                    FontWeight.w800,
-                  ),
-                  SizedBox(height: 2.h),
-                  CustomWidgets.customText(
-                    "Verify the vehicle plate before boarding",
-                    10.sp,
-                    Consonants.greyColor,
-                    FontWeight.w500,
-                    maxLines: 2,
-                  ),
-                ],
-              ),
+    return AppCard(
+      onTap: () => _quickActionSnack("Live location shared with your contacts"),
+      padding: EdgeInsets.all(16.w),
+      child: Row(
+        children: [
+          Container(
+            width: 44.w,
+            height: 44.w,
+            alignment: Alignment.center,
+            decoration: const BoxDecoration(
+              color: Consonants.chipBg,
+              shape: BoxShape.circle,
             ),
-            Icon(Icons.chevron_right_rounded,
-                size: 18.sp, color: Consonants.greyColor),
-          ],
-        ),
+            child: Icon(
+              Icons.shield_outlined,
+              size: 20.sp,
+              color: Consonants.iconInk,
+            ),
+          ),
+          SizedBox(width: 14.w),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Ride safely",
+                  style: AppText.rowLabel().copyWith(fontSize: 16.sp),
+                ),
+                SizedBox(height: 3.h),
+                Text(
+                  "Verify the vehicle plate before boarding",
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppText.caption().copyWith(fontSize: 12.5.sp),
+                ),
+              ],
+            ),
+          ),
+          Icon(
+            Icons.chevron_right_rounded,
+            size: 22.sp,
+            color: Consonants.textMuted,
+          ),
+        ],
       ),
     );
   }
@@ -1369,67 +1168,71 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
     // The passenger doesn't drive the trip — the driver does. So before the
     // trip moves the only real action is cancelling; once it's underway
     // (STARTED) we show a passive status instead of a fake button.
-    final canCancel = _phase == _RidePhase.driverEnRoute ||
+    final canCancel =
+        _phase == _RidePhase.driverEnRoute ||
         _phase == _RidePhase.driverArrived;
-    return Container(
-      padding: EdgeInsets.fromLTRB(16.w, 10.h, 16.w, 16.h + bottomInset),
-      decoration: BoxDecoration(
-        color: Consonants.whiteColor,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 12,
-            offset: const Offset(0, -4),
-          ),
-        ],
+    return Padding(
+      // The floating nav sits over this panel, so the action reserves the
+      // system's nav clearance rather than hiding underneath it.
+      padding: EdgeInsets.fromLTRB(
+        Consonants.gutter.w,
+        12.h,
+        Consonants.gutter.w,
+        Consonants.navClearance.h + bottomInset,
       ),
       child: canCancel
           ? GestureDetector(
               onTap: _cancelling ? null : () => _confirmCancel(ride),
               child: Container(
-                height: 54.h,
+                padding: EdgeInsets.symmetric(vertical: 17.h, horizontal: 20.w),
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: const Color(0xffFEE2E2),
-                  borderRadius: BorderRadius.circular(40.r),
-                  border: Border.all(color: const Color(0xffFCA5A5)),
+                  borderRadius: BorderRadius.circular(Consonants.rButton.r),
+                  border: Border.all(color: Consonants.danger, width: 1.5),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.close_rounded,
-                        size: 20.sp, color: const Color(0xffEF4444)),
-                    SizedBox(width: 8.w),
-                    CustomWidgets.customText(
+                    Icon(
+                      Icons.close_rounded,
+                      size: 19.sp,
+                      color: Consonants.danger,
+                    ),
+                    SizedBox(width: 10.w),
+                    Text(
                       _cancelling ? "Cancelling…" : "Cancel ride",
-                      14.sp,
-                      const Color(0xffEF4444),
-                      FontWeight.w800,
+                      style: AppText.button(
+                        color: Consonants.danger,
+                      ).copyWith(fontSize: 17.5.sp),
                     ),
                   ],
                 ),
               ),
             )
           : Container(
-              height: 54.h,
+              padding: EdgeInsets.symmetric(vertical: 17.h, horizontal: 20.w),
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: Consonants.lightBlueColor,
-                borderRadius: BorderRadius.circular(40.r),
+                color: Consonants.indigoWash,
+                borderRadius: BorderRadius.circular(Consonants.rButton.r),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.directions_car_filled_rounded,
-                      size: 18.sp, color: Consonants.primaryColor),
-                  SizedBox(width: 8.w),
+                  Icon(
+                    Icons.directions_car_outlined,
+                    size: 19.sp,
+                    color: Consonants.indigo,
+                  ),
+                  SizedBox(width: 10.w),
                   Flexible(
-                    child: CustomWidgets.customText(
-                      "Trip in progress — enjoy your ride",
-                      13.sp,
-                      Consonants.primaryColor,
-                      FontWeight.w700,
+                    child: Text(
+                      "Trip in progress",
                       maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppText.button(
+                        color: Consonants.indigo,
+                      ).copyWith(fontSize: 16.sp),
                     ),
                   ),
                 ],
@@ -1444,28 +1247,16 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
   /// Same height as the real map so the bottom panel doesn't jump on swap.
   Widget _mapLoadingPlaceholder() {
     return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Consonants.lightBlueColor,
-            Consonants.scaffoldBackgroundColor,
-          ],
-        ),
-      ),
+      color: Consonants.indigoWash,
       alignment: Alignment.center,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.map_rounded,
-              size: 36.sp, color: Consonants.primaryColor),
-          SizedBox(height: 8.h),
-          CustomWidgets.customText(
+          Icon(Icons.map_outlined, size: 34.sp, color: Consonants.indigo),
+          SizedBox(height: 10.h),
+          Text(
             "Loading map…",
-            11.sp,
-            Consonants.greyColor,
-            FontWeight.w600,
+            style: AppText.caption().copyWith(fontSize: 13.sp),
           ),
         ],
       ),
@@ -1476,93 +1267,54 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
 
   Widget _emptyState() {
     return SafeArea(
-      child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: 24.w),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 96.w,
-              height: 96.w,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    Consonants.primaryColor.withValues(alpha: 0.15),
-                    const Color(0xff5AC8FA).withValues(alpha: 0.15),
-                  ],
+      bottom: false,
+      // Explicit full width: this tab is reached through a Stack, which hands
+      // its children loose constraints, so the centred column would otherwise
+      // shrink to its widest child and sit against the left gutter.
+      child: SizedBox(
+        width: double.infinity,
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(
+            Consonants.gutter.w,
+            0,
+            Consonants.gutter.w,
+            Consonants.navClearance.h,
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 96.w,
+                height: 96.w,
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(
+                  color: Consonants.indigoWash,
+                  shape: BoxShape.circle,
                 ),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.route_rounded,
-                size: 42.sp,
-                color: Consonants.primaryColor,
-              ),
-            ),
-            SizedBox(height: 18.h),
-            CustomWidgets.customText(
-              "No active ride right now",
-              16.sp,
-              Consonants.boldTextColor,
-              FontWeight.w800,
-            ),
-            SizedBox(height: 6.h),
-            CustomWidgets.customText(
-              "Your booked ride will appear here once a driver accepts.",
-              11.sp,
-              Consonants.greyColor,
-              FontWeight.w500,
-              textAlign: TextAlign.center,
-              maxLines: 2,
-            ),
-            SizedBox(height: 22.h),
-            GestureDetector(
-              onTap: () => ref
-                  .read(bottomNavIndexProvider.notifier)
-                  .select(_kRideTabIndex),
-              child: Container(
-                padding:
-                    EdgeInsets.symmetric(horizontal: 22.w, vertical: 12.h),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Consonants.primaryColor, Color(0xff5AC8FA)],
-                  ),
-                  borderRadius: BorderRadius.circular(40.r),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Consonants.primaryColor.withValues(alpha: 0.30),
-                      blurRadius: 12,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.directions_car_rounded,
-                        size: 16.sp, color: Consonants.whiteColor),
-                    SizedBox(width: 6.w),
-                    CustomWidgets.customText(
-                      "Book a Ride",
-                      13.sp,
-                      Consonants.whiteColor,
-                      FontWeight.w800,
-                    ),
-                  ],
+                child: Icon(
+                  Icons.route_outlined,
+                  size: 40.sp,
+                  color: Consonants.indigo,
                 ),
               ),
-            ),
-          ],
+              SizedBox(height: 24.h),
+              Text(
+                "No active ride right now",
+                style: AppText.screenTitle().copyWith(fontSize: 22.sp),
+              ),
+              SizedBox(height: 28.h),
+              AppButton(
+                label: "Book a Ride",
+                icon: Icons.directions_car_outlined,
+                expand: false,
+                onPressed: () => ref
+                    .read(bottomNavIndexProvider.notifier)
+                    .select(_kRideTabIndex),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
-
-// The active-trip driver/route/fare now come from the real RideDetails
-// (via passengerActiveRideProvider) — the old hardcoded _kSampleDriver and
-// address constants were removed. The active-trip map is the shared
-// LiveTrackingMap (real-time car / person markers).

@@ -18,7 +18,6 @@ import 'package:ride_sharing/provider/rideRequestProvider.dart';
 import 'package:ride_sharing/services/maps/mapTilesService.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/consonants/errorHandler.dart';
-import 'package:ride_sharing/widgets/custom/customWidgets.dart';
 import 'package:ride_sharing/widgets/home/homeBookingSheet.dart';
 
 /// SafeRide home — real Google Map as background, fixed-center pickup pin,
@@ -98,7 +97,7 @@ class _HomepageState extends ConsumerState<Homepage> {
           SafeArea(
             bottom: false,
             child: Padding(
-              padding: EdgeInsets.fromLTRB(16.w, 8.h, 16.w, 0),
+              padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 0),
               child: const _HomeHeader(),
             ),
           ),
@@ -270,17 +269,11 @@ class _GreetingPill extends ConsumerWidget {
     final greeting = _timeOfDayGreeting(DateTime.now().hour);
 
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 8.h),
+      padding: EdgeInsets.fromLTRB(8.w, 8.h, 18.w, 8.h),
       decoration: BoxDecoration(
-        color: Consonants.whiteColor,
-        borderRadius: BorderRadius.circular(14.r),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        color: Consonants.surface,
+        borderRadius: BorderRadius.circular(Consonants.rPill.r),
+        boxShadow: Consonants.cardLift,
       ),
       child: Row(
         children: [
@@ -288,61 +281,35 @@ class _GreetingPill extends ConsumerWidget {
             width: 38.w,
             height: 38.w,
             alignment: Alignment.center,
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               shape: BoxShape.circle,
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Consonants.primaryColor, Color(0xff5AC8FA)],
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Consonants.primaryColor.withValues(alpha: 0.30),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
+              color: Consonants.indigoWash,
             ),
             child: Text(
               initial,
-              style: TextStyle(
-                fontFamily: Consonants.fontFamily,
-                fontSize: 15.sp,
-                fontWeight: FontWeight.w800,
-                color: Consonants.whiteColor,
-              ),
+              style: AppText.amount(color: Consonants.indigo)
+                  .copyWith(fontSize: 15.sp),
             ),
           ),
-          SizedBox(width: 10.w),
+          SizedBox(width: 12.w),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Row(
-                  children: [
-                    CustomWidgets.customText(
-                      "$greeting,",
-                      10.sp,
-                      Consonants.greyColor,
-                      FontWeight.w500,
-                    ),
-                    SizedBox(width: 4.w),
-                    CustomWidgets.customText(
-                      "👋",
-                      10.sp,
-                      Consonants.greyColor,
-                      FontWeight.w500,
-                    ),
-                  ],
-                ),
-                SizedBox(height: 2.h),
-                CustomWidgets.customText(
-                  displayName,
-                  13.sp,
-                  Consonants.boldTextColor,
-                  FontWeight.w800,
+                Text(
+                  "$greeting 👋",
                   maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppText.caption().copyWith(fontSize: 11.5.sp),
+                ),
+                SizedBox(height: 3.h),
+                Text(
+                  displayName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppText.rowLabel(color: Consonants.headingInk)
+                      .copyWith(fontSize: 15.sp, fontWeight: FontWeight.w700),
                 ),
               ],
             ),
@@ -383,18 +350,12 @@ class _CircleIconButton extends StatelessWidget {
             width: 44.w,
             height: 44.w,
             alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: Consonants.whiteColor,
+            decoration: const BoxDecoration(
+              color: Consonants.surface,
               shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.06),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-              ],
+              boxShadow: Consonants.cardLift,
             ),
-            child: Icon(icon, size: 20.sp, color: Consonants.boldTextColor),
+            child: Icon(icon, size: 20.sp, color: Consonants.iconInk),
           ),
           if (badge)
             Positioned(
@@ -404,9 +365,9 @@ class _CircleIconButton extends StatelessWidget {
                 width: 9.w,
                 height: 9.w,
                 decoration: BoxDecoration(
-                  color: const Color(0xffEF4444),
+                  color: Consonants.danger,
                   shape: BoxShape.circle,
-                  border: Border.all(color: Consonants.whiteColor, width: 1.5),
+                  border: Border.all(color: Consonants.surface, width: 1.5),
                 ),
               ),
             ),
@@ -529,8 +490,12 @@ class _MapLayer extends ConsumerWidget {
                 point: pickup,
                 width: 32,
                 height: 32,
+                // Origin and destination read as the two ends of the brand
+                // ramp — indigo then violet. The old azure/red pair added a
+                // third accent hue and borrowed red, which the system holds
+                // for money out and destructive actions.
                 child: const _RouteMarker(
-                  color: Color(0xff2196F3), // azure — pickup
+                  color: Consonants.indigo,
                   icon: Icons.my_location_rounded,
                 ),
               ),
@@ -540,7 +505,7 @@ class _MapLayer extends ConsumerWidget {
                 width: 32,
                 height: 32,
                 child: const _RouteMarker(
-                  color: Color(0xffEF4444), // red — drop
+                  color: Consonants.violet,
                   icon: Icons.location_on_rounded,
                 ),
               ),
@@ -653,21 +618,10 @@ class _MyLocationFab extends ConsumerWidget {
         width: 46.w,
         height: 46.w,
         alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: Consonants.whiteColor,
+        decoration: const BoxDecoration(
+          color: Consonants.surface,
           shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.12),
-              blurRadius: 14,
-              offset: const Offset(0, 6),
-            ),
-            BoxShadow(
-              color: Consonants.primaryColor.withValues(alpha: 0.12),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
+          boxShadow: Consonants.cardLift,
         ),
         child: isResolving
             ? SizedBox(
@@ -675,12 +629,12 @@ class _MyLocationFab extends ConsumerWidget {
                 height: 18.w,
                 child: const CircularProgressIndicator(
                   strokeWidth: 2.2,
-                  color: Consonants.primaryColor,
+                  color: Consonants.indigo,
                 ),
               )
             : Icon(
-                Icons.my_location_rounded,
-                color: Consonants.primaryColor,
+                Icons.my_location_outlined,
+                color: Consonants.indigo,
                 size: 22.sp,
               ),
       ),

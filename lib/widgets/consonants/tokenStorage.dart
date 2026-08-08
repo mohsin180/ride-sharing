@@ -5,6 +5,7 @@ class Tokenstorage {
   static const _tokenKey = "token";
   static const _onboardingTokenKey = "onboardingToken";
   static const _pendingUserIdKey = "pendingUserId";
+  static const _pendingEmailKey = "pendingEmail";
 
   static Future<void> saveToken(String token) async {
     await _storage.write(key: _tokenKey, value: token);
@@ -32,9 +33,13 @@ class Tokenstorage {
   static Future<void> saveOnboarding({
     required String userId,
     required String onboardingToken,
+    String? email,
   }) async {
     await _storage.write(key: _pendingUserIdKey, value: userId);
     await _storage.write(key: _onboardingTokenKey, value: onboardingToken);
+    if (email != null && email.isNotEmpty) {
+      await _storage.write(key: _pendingEmailKey, value: email);
+    }
   }
 
   static Future<String?> getOnboardingToken() =>
@@ -43,9 +48,17 @@ class Tokenstorage {
   static Future<String?> getPendingUserId() =>
       _storage.read(key: _pendingUserIdKey);
 
+  /// The address the verification link was sent to. Persisted so that after
+  /// a cold start the verification screen can still show WHICH email it's
+  /// waiting on — without it the screen just says "your email", which is no
+  /// help to someone who mistyped it.
+  static Future<String?> getPendingEmail() =>
+      _storage.read(key: _pendingEmailKey);
+
   /// Called once a role is chosen and a real token exists.
   static Future<void> clearOnboarding() async {
     await _storage.delete(key: _pendingUserIdKey);
     await _storage.delete(key: _onboardingTokenKey);
+    await _storage.delete(key: _pendingEmailKey);
   }
 }

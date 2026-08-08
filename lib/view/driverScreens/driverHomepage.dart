@@ -10,13 +10,17 @@ import 'package:ride_sharing/provider/notificationProvider.dart';
 import 'package:ride_sharing/provider/profileProvider.dart';
 import 'package:ride_sharing/provider/rideStatsProvider.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
-import 'package:ride_sharing/widgets/custom/customWidgets.dart';
+import 'package:ride_sharing/widgets/custom/appComponents.dart';
 
 /// Driver-side home screen.
 ///
 /// Drivers do NOT publish rides — passengers do. So the home screen is
 /// built around the things a driver actually does: go online, watch
 /// today's earnings, and accept incoming ride requests.
+///
+/// Hierarchy: the earnings hero is the screen's single gradient surface and
+/// carries the largest figure; the online switch sits directly beneath it as
+/// the one control that changes the driver's day.
 class DriverHomepage extends StatefulWidget {
   const DriverHomepage({super.key});
 
@@ -27,7 +31,6 @@ class DriverHomepage extends StatefulWidget {
 class _DriverHomepageState extends State<DriverHomepage>
     with TickerProviderStateMixin {
   late final AnimationController _pulseController;
-  late final AnimationController _shimmerController;
 
   @override
   void initState() {
@@ -36,60 +39,48 @@ class _DriverHomepageState extends State<DriverHomepage>
       vsync: this,
       duration: const Duration(milliseconds: 1400),
     )..repeat(reverse: true);
-    _shimmerController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1800),
-    )..repeat();
   }
 
   @override
   void dispose() {
     _pulseController.dispose();
-    _shimmerController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Consonants.scaffoldBackgroundColor,
-      body: SafeArea(
-        child: Consumer(
-          builder: (context, ref, _) {
-            final isOnline = ref.watch(driverOnlineProvider);
-            return SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              padding: EdgeInsets.only(bottom: 28.h),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _Header(),
-                  SizedBox(height: 16.h),
-                  _EarningsHero(shimmer: _shimmerController),
-                  SizedBox(height: 14.h),
-                  _OnlineToggleCard(
-                    isOnline: isOnline,
-                    pulse: _pulseController,
-                    onToggle: () =>
-                        ref.read(driverOnlineProvider.notifier).toggle(),
-                  ),
-                  SizedBox(height: 18.h),
-                  _QuickStatsRow(),
-                ],
-              ),
-            );
-          },
-        ),
-      ),
+    return Consumer(
+      builder: (context, ref, _) {
+        final isOnline = ref.watch(driverOnlineProvider);
+        return AppScreen(
+          header: const _Header(),
+          navClearance: true,
+          children: [
+            const _EarningsHero(),
+            SizedBox(height: Consonants.gapTiles.h),
+            _OnlineToggleCard(
+              isOnline: isOnline,
+              pulse: _pulseController,
+              onToggle: () => ref.read(driverOnlineProvider.notifier).toggle(),
+            ),
+            SizedBox(height: 28.h),
+            const AppSectionHeading(label: "Your numbers"),
+            SizedBox(height: 14.h),
+            const _QuickStatsRow(),
+          ],
+        );
+      },
     );
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// HEADER  — greeting + avatar + notification bell
+// HEADER  — greeting + avatar + message / notification actions
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _Header extends ConsumerWidget {
+  const _Header();
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // Real driver identity from the cached profile (mirrors the passenger
@@ -106,67 +97,39 @@ class _Header extends ConsumerWidget {
     final greeting = _timeOfDayGreeting(DateTime.now().hour);
 
     return Padding(
-      padding: EdgeInsets.fromLTRB(20.w, 14.h, 20.w, 0),
+      padding: EdgeInsets.fromLTRB(
+          Consonants.gutter.w, 16.h, Consonants.gutter.w, 18.h),
       child: Row(
         children: [
           Container(
             width: 46.w,
             height: 46.w,
             alignment: Alignment.center,
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               shape: BoxShape.circle,
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Consonants.primaryColor, Color(0xff5AC8FA)],
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Consonants.primaryColor.withValues(alpha: 0.30),
-                  blurRadius: 12,
-                  offset: const Offset(0, 6),
-                ),
-              ],
+              gradient: Consonants.actionGradient,
             ),
             child: Text(
               initial,
-              style: TextStyle(
-                fontFamily: Consonants.fontFamily,
-                fontSize: 18.sp,
-                fontWeight: FontWeight.w800,
-                color: Consonants.whiteColor,
-              ),
+              style: AppText.amount(color: Consonants.surface)
+                  .copyWith(fontSize: 18.sp),
             ),
           ),
-          SizedBox(width: 12.w),
+          SizedBox(width: 14.w),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    CustomWidgets.customText(
-                      "$greeting,",
-                      11.sp,
-                      Consonants.greyColor,
-                      FontWeight.w500,
-                    ),
-                    SizedBox(width: 4.w),
-                    CustomWidgets.customText(
-                      "👋",
-                      11.sp,
-                      Consonants.greyColor,
-                      FontWeight.w500,
-                    ),
-                  ],
+                Text(
+                  greeting,
+                  style: AppText.caption().copyWith(fontSize: 13.sp),
                 ),
-                SizedBox(height: 2.h),
-                CustomWidgets.customText(
+                SizedBox(height: 3.h),
+                Text(
                   displayName,
-                  16.sp,
-                  Consonants.boldTextColor,
-                  FontWeight.w800,
                   maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppText.screenTitle().copyWith(fontSize: 21.sp),
                 ),
               ],
             ),
@@ -177,9 +140,9 @@ class _Header extends ConsumerWidget {
                     data: (c) => c,
                     orElse: () => 0,
                   );
-              return _circleIconButton(
-                icon: Icons.send_outlined,
-                badge: unread > 0,
+              return AppIconButton(
+                icon: Icons.chat_bubble_outline_rounded,
+                badge: unread > 0 ? const _Pip() : null,
                 onTap: () => context.push(Approutes.driverMessages),
               );
             },
@@ -191,59 +154,13 @@ class _Header extends ConsumerWidget {
                     data: (c) => c,
                     orElse: () => 0,
                   );
-              return _circleIconButton(
+              return AppIconButton(
                 icon: Icons.notifications_none_rounded,
-                badge: unread > 0,
+                badge: unread > 0 ? const _Pip() : null,
                 onTap: () => context.push(Approutes.driverNotification),
               );
             },
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _circleIconButton({
-    required IconData icon,
-    bool badge = false,
-    VoidCallback? onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Container(
-            width: 42.w,
-            height: 42.w,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: Consonants.whiteColor,
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Icon(icon, size: 20.sp, color: Consonants.boldTextColor),
-          ),
-          if (badge)
-            Positioned(
-              top: 6.h,
-              right: 8.w,
-              child: Container(
-                width: 9.w,
-                height: 9.w,
-                decoration: BoxDecoration(
-                  color: const Color(0xffEF4444),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Consonants.whiteColor, width: 1.5),
-                ),
-              ),
-            ),
         ],
       ),
     );
@@ -258,14 +175,31 @@ class _Header extends ConsumerWidget {
   }
 }
 
+/// Unread marker on a header action — a violet dot ringed in canvas so it
+/// reads against the chip fill.
+class _Pip extends StatelessWidget {
+  const _Pip();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 11.w,
+      height: 11.w,
+      decoration: BoxDecoration(
+        color: Consonants.violet,
+        shape: BoxShape.circle,
+        border: Border.all(color: Consonants.canvas, width: 2),
+      ),
+    );
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
-// EARNINGS HERO  — gradient card with today's earnings + soft shimmer accents
+// EARNINGS HERO  — the screen's one gradient surface, carrying today's figure
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _EarningsHero extends ConsumerWidget {
-  final AnimationController shimmer;
-
-  const _EarningsHero({required this.shimmer});
+  const _EarningsHero();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -285,148 +219,59 @@ class _EarningsHero extends ConsumerWidget {
         ? "Lifetime · Rs ${fmt(earnings.totalEarnings)} · ${earnings.totalTrips} trips"
         : (loading ? "Lifetime · …" : "Lifetime · —");
 
-    return Container(
-      margin: EdgeInsets.symmetric(horizontal: 20.w),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(22.r),
-        boxShadow: [
-          BoxShadow(
-            color: Consonants.primaryColor.withValues(alpha: 0.32),
-            blurRadius: 22,
-            offset: const Offset(0, 12),
+    return HeroSurface(
+      padding: EdgeInsets.fromLTRB(24.w, 24.h, 24.w, 22.h),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            "TODAY'S EARNINGS",
+            style: AppText.navLabel(
+              color: Consonants.surface.withValues(alpha: 0.72),
+            ).copyWith(fontSize: 12.sp, letterSpacing: 0.8),
+          ),
+          SizedBox(height: 12.h),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                "Rs",
+                style: AppText.amount(
+                  color: Consonants.surface.withValues(alpha: 0.80),
+                ).copyWith(fontSize: 17.sp),
+              ),
+              SizedBox(width: 8.w),
+              Flexible(
+                child: Text(
+                  todayValue,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppText.figure(color: Consonants.surface)
+                      .copyWith(fontSize: 38.sp),
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 10.h),
+          Text(
+            lifetimeLine,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppText.caption(
+              color: Consonants.surface.withValues(alpha: 0.72),
+            ).copyWith(fontSize: 12.5.sp),
+          ),
+          SizedBox(height: 20.h),
+          Row(
+            children: [
+              HeroChip(
+                label: "$todayTrips trips today",
+                icon: Icons.directions_car_outlined,
+              ),
+            ],
           ),
         ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(22.r),
-        child: Stack(
-          children: [
-            // Gradient base — matches the profile hero header for a
-            // strong, vibrant blue (no pale third stop, no washing out).
-            Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [Consonants.primaryColor, Color(0xff5AC8FA)],
-                ),
-              ),
-            ),
-            // Subtle decorative circles — kept very faint so they
-            // don't lighten the card's overall appearance.
-            Positioned(
-              top: -30.h,
-              right: -30.w,
-              child: Container(
-                width: 120.w,
-                height: 120.w,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white.withValues(alpha: 0.05),
-                ),
-              ),
-            ),
-            Positioned(
-              bottom: -40.h,
-              right: 30.w,
-              child: Container(
-                width: 80.w,
-                height: 80.w,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white.withValues(alpha: 0.04),
-                ),
-              ),
-            ),
-            // Animated shimmer streak — narrower and more transparent
-            // so it adds life without washing the card out.
-            AnimatedBuilder(
-              animation: shimmer,
-              builder: (_, __) {
-                return Positioned(
-                  left: -80.w + (shimmer.value * 360.w),
-                  top: 0,
-                  bottom: 0,
-                  child: Transform.rotate(
-                    angle: -0.5,
-                    child: Container(
-                      width: 50.w,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            Colors.white.withValues(alpha: 0.0),
-                            Colors.white.withValues(alpha: 0.06),
-                            Colors.white.withValues(alpha: 0.0),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-            Padding(
-              padding: EdgeInsets.all(18.w),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.account_balance_wallet_rounded,
-                        size: 14.sp,
-                        color: Consonants.boldTextColor.withValues(alpha: 0.75),
-                      ),
-                      SizedBox(width: 6.w),
-                      CustomWidgets.customText(
-                        "Today's Earnings",
-                        11.sp,
-                        Consonants.boldTextColor.withValues(alpha: 0.75),
-                        FontWeight.w600,
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 10.h),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      CustomWidgets.customText(
-                        "Rs",
-                        16.sp,
-                        Consonants.boldTextColor.withValues(alpha: 0.85),
-                        FontWeight.w600,
-                      ),
-                      SizedBox(width: 6.w),
-                      CustomWidgets.customText(
-                        todayValue,
-                        32.sp,
-                        Consonants.boldTextColor,
-                        FontWeight.w800,
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 6.h),
-                  // Lifetime subline — keeps totalEarnings / totalTrips
-                  // visible without faking a daily goal target.
-                  CustomWidgets.customText(
-                    lifetimeLine,
-                    10.sp,
-                    Consonants.boldTextColor.withValues(alpha: 0.65),
-                    FontWeight.w600,
-                    maxLines: 1,
-                  ),
-                  SizedBox(height: 14.h),
-                  Row(
-                    children: [
-                      _heroStat(Icons.directions_car_filled_rounded,
-                          todayTrips, "Trips"),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -441,46 +286,10 @@ class _EarningsHero extends ConsumerWidget {
     }
     return value < 0 ? '-$buf' : buf.toString();
   }
-
-  Widget _heroStat(IconData icon, String value, String label) {
-    return Row(
-      children: [
-        Container(
-          width: 28.w,
-          height: 28.w,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.55),
-            borderRadius: BorderRadius.circular(8.r),
-          ),
-          child: Icon(icon, size: 14.sp, color: Consonants.boldTextColor),
-        ),
-        SizedBox(width: 8.w),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CustomWidgets.customText(
-              value,
-              12.sp,
-              Consonants.boldTextColor,
-              FontWeight.w800,
-            ),
-            CustomWidgets.customText(
-              label,
-              9.sp,
-              Consonants.boldTextColor.withValues(alpha: 0.70),
-              FontWeight.w500,
-            ),
-          ],
-        ),
-      ],
-    );
-  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ONLINE / OFFLINE TOGGLE  — large, prominent, pulses while online
+// ONLINE / OFFLINE TOGGLE  — the one control that changes the driver's day
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _OnlineToggleCard extends StatelessWidget {
@@ -496,29 +305,8 @@ class _OnlineToggleCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: EdgeInsets.symmetric(horizontal: 20.w),
-      padding: EdgeInsets.all(16.w),
-      decoration: BoxDecoration(
-        color: Consonants.whiteColor,
-        borderRadius: BorderRadius.circular(20.r),
-        border: Border.all(
-          color: isOnline
-              ? Consonants.primaryColor.withValues(alpha: 0.30)
-              : Consonants.lightGreyColor,
-          width: 1.5,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: (isOnline
-                    ? Consonants.primaryColor
-                    : Consonants.greyColor)
-                .withValues(alpha: 0.10),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
+    return AppCard(
+      padding: EdgeInsets.fromLTRB(18.w, 18.h, 18.w, 18.h),
       child: Column(
         children: [
           Row(
@@ -535,11 +323,11 @@ class _OnlineToggleCard extends StatelessWidget {
                         animation: pulse,
                         builder: (_, __) {
                           return Container(
-                            width: 24.w + (pulse.value * 22.w),
-                            height: 24.w + (pulse.value * 22.w),
+                            width: 26.w + (pulse.value * 20.w),
+                            height: 26.w + (pulse.value * 20.w),
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              color: Consonants.primaryColor.withValues(
+                              color: Consonants.violet.withValues(
                                 alpha: 0.22 - (pulse.value * 0.18),
                               ),
                             ),
@@ -547,81 +335,54 @@ class _OnlineToggleCard extends StatelessWidget {
                         },
                       ),
                     Container(
-                      width: 24.w,
-                      height: 24.w,
+                      width: 30.w,
+                      height: 30.w,
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: isOnline
-                            ? Consonants.primaryColor
-                            : Consonants.lightGreyColor,
+                        gradient: isOnline ? Consonants.actionGradient : null,
+                        color: isOnline ? null : Consonants.chipBg,
                       ),
                       child: Icon(
                         isOnline
                             ? Icons.bolt_rounded
                             : Icons.power_settings_new_rounded,
-                        size: 14.sp,
+                        size: 16.sp,
                         color: isOnline
-                            ? Consonants.whiteColor
-                            : Consonants.greyColor,
+                            ? Consonants.surface
+                            : Consonants.iconInk,
                       ),
                     ),
                   ],
                 ),
               ),
-              SizedBox(width: 10.w),
+              SizedBox(width: 14.w),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    CustomWidgets.customText(
-                      isOnline ? "You're Online" : "You're Offline",
-                      14.sp,
-                      Consonants.boldTextColor,
-                      FontWeight.w800,
-                    ),
-                    SizedBox(height: 2.h),
-                    CustomWidgets.customText(
-                      isOnline
-                          ? "Receiving requests near Gulberg"
-                          : "Tap to start receiving requests",
-                      10.sp,
-                      Consonants.greyColor,
-                      FontWeight.w500,
-                    ),
-                  ],
+                child: Text(
+                  isOnline ? "You're online" : "You're offline",
+                  style: AppText.sectionHeading().copyWith(fontSize: 17.sp),
                 ),
               ),
+              SizedBox(width: 10.w),
               GestureDetector(
                 onTap: onToggle,
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 220),
-                  width: 56.w,
-                  height: 32.h,
+                  width: 58.w,
+                  height: 34.h,
                   padding: EdgeInsets.all(3.r),
                   alignment:
                       isOnline ? Alignment.centerRight : Alignment.centerLeft,
                   decoration: BoxDecoration(
-                    color: isOnline
-                        ? Consonants.primaryColor
-                        : Consonants.lightGreyColor,
-                    borderRadius: BorderRadius.circular(20.r),
-                    boxShadow: isOnline
-                        ? [
-                            BoxShadow(
-                              color: Consonants.primaryColor
-                                  .withValues(alpha: 0.40),
-                              blurRadius: 10,
-                              offset: const Offset(0, 4),
-                            ),
-                          ]
-                        : null,
+                    gradient: isOnline ? Consonants.actionGradient : null,
+                    color: isOnline ? null : Consonants.chipBg,
+                    borderRadius: BorderRadius.circular(Consonants.rPill.r),
                   ),
                   child: Container(
-                    width: 26.w,
-                    height: 26.h,
+                    width: 28.w,
+                    height: 28.h,
                     decoration: const BoxDecoration(
-                      color: Consonants.whiteColor,
+                      color: Consonants.surface,
                       shape: BoxShape.circle,
                     ),
                   ),
@@ -630,25 +391,25 @@ class _OnlineToggleCard extends StatelessWidget {
             ],
           ),
           if (isOnline) ...[
-            SizedBox(height: 12.h),
-            Container(
-              height: 1,
-              color: Consonants.lightGreyColor,
-            ),
-            SizedBox(height: 12.h),
+            SizedBox(height: 16.h),
+            const AppDivider(),
+            SizedBox(height: 16.h),
             Row(
               children: [
                 _searchingDot(0),
-                SizedBox(width: 4.w),
+                SizedBox(width: 5.w),
                 _searchingDot(0.33),
-                SizedBox(width: 4.w),
+                SizedBox(width: 5.w),
                 _searchingDot(0.66),
-                SizedBox(width: 10.w),
-                CustomWidgets.customText(
-                  "Searching for ride requests…",
-                  11.sp,
-                  Consonants.boldTextColor,
-                  FontWeight.w600,
+                SizedBox(width: 12.w),
+                Expanded(
+                  child: Text(
+                    "Searching for ride requests…",
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppText.rowLabel(color: Consonants.textMuted)
+                        .copyWith(fontSize: 14.sp),
+                  ),
                 ),
               ],
             ),
@@ -668,9 +429,7 @@ class _OnlineToggleCard extends StatelessWidget {
           height: 6.w,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: Consonants.primaryColor.withValues(
-              alpha: 0.30 + (t * 0.70),
-            ),
+            color: Consonants.violet.withValues(alpha: 0.30 + (t * 0.70)),
           ),
         );
       },
@@ -679,10 +438,12 @@ class _OnlineToggleCard extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// QUICK STATS  — three coloured tiles for at-a-glance stats
+// QUICK STATS  — two white tiles for at-a-glance numbers
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _QuickStatsRow extends ConsumerWidget {
+  const _QuickStatsRow();
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // Rating + Trips come from the real backend stats (GET /rides/stats,
@@ -698,31 +459,24 @@ class _QuickStatsRow extends ConsumerWidget {
       orElse: () => "—",
     );
 
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 20.w),
-      child: Row(
-        children: [
-          Expanded(
-            child: _statTile(
-              icon: Icons.star_rounded,
-              value: rating,
-              label: "Rating",
-              accent: const Color(0xffF59E0B),
-              accentBg: const Color(0xffFEF3C7),
-            ),
+    return Row(
+      children: [
+        Expanded(
+          child: _statTile(
+            icon: Icons.star_outline_rounded,
+            value: rating,
+            label: "Rating",
           ),
-          SizedBox(width: 10.w),
-          Expanded(
-            child: _statTile(
-              icon: Icons.route_rounded,
-              value: trips,
-              label: "Trips",
-              accent: Consonants.primaryColor,
-              accentBg: Consonants.lightBlueColor,
-            ),
+        ),
+        SizedBox(width: Consonants.gapTiles.w),
+        Expanded(
+          child: _statTile(
+            icon: Icons.route_outlined,
+            value: trips,
+            label: "Trips",
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -730,48 +484,31 @@ class _QuickStatsRow extends ConsumerWidget {
     required IconData icon,
     required String value,
     required String label,
-    required Color accent,
-    required Color accentBg,
   }) {
-    return Container(
-      padding: EdgeInsets.symmetric(vertical: 14.h, horizontal: 10.w),
-      decoration: BoxDecoration(
-        color: Consonants.whiteColor,
-        borderRadius: BorderRadius.circular(16.r),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
+    return AppCard(
+      padding: EdgeInsets.symmetric(vertical: 18.h, horizontal: 16.w),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width: 36.w,
-            height: 36.w,
+            width: 40.w,
+            height: 40.w,
             alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: accentBg,
+            decoration: const BoxDecoration(
+              color: Consonants.indigoWash,
               shape: BoxShape.circle,
             ),
-            child: Icon(icon, size: 18.sp, color: accent),
+            child: Icon(icon, size: 20.sp, color: Consonants.iconInk),
           ),
-          SizedBox(height: 8.h),
-          CustomWidgets.customText(
+          SizedBox(height: 14.h),
+          Text(
             value,
-            14.sp,
-            Consonants.boldTextColor,
-            FontWeight.w800,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppText.screenTitle().copyWith(fontSize: 22.sp),
           ),
-          SizedBox(height: 1.h),
-          CustomWidgets.customText(
-            label,
-            9.sp,
-            Consonants.greyColor,
-            FontWeight.w500,
-          ),
+          SizedBox(height: 3.h),
+          Text(label, style: AppText.caption().copyWith(fontSize: 12.5.sp)),
         ],
       ),
     );

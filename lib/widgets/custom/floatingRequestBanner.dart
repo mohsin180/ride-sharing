@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -9,6 +11,7 @@ import 'package:ride_sharing/provider/rideDetailsProvider.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/consonants/errorHandler.dart';
 import 'package:ride_sharing/widgets/custom/acceptJoinDialog.dart';
+import 'package:ride_sharing/widgets/custom/appComponents.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
 
 /// Floating, real-time request card shown over the ride page (inDrive style).
@@ -62,135 +65,125 @@ class _FloatingRequestBannerState extends ConsumerState<FloatingRequestBanner> {
         : req.subjectName!.trim();
     final action = driverOffer ? 'offered to drive your ride' : 'wants to join';
 
+    final radius = BorderRadius.circular(Consonants.rSheet.r);
+
     return Container(
       key: key,
       margin: EdgeInsets.symmetric(horizontal: 14.w),
-      padding: EdgeInsets.all(14.w),
       decoration: BoxDecoration(
-        color: Consonants.whiteColor,
-        borderRadius: BorderRadius.circular(18.r),
-        border: Border.all(
-          color: Consonants.primaryColor.withValues(alpha: 0.30),
-          width: 1.2,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.16),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
+        borderRadius: radius,
+        boxShadow: Consonants.cardLift,
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 44.w,
-                height: 44.w,
-                alignment: Alignment.center,
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: LinearGradient(
-                    colors: [Consonants.primaryColor, Color(0xff5AC8FA)],
-                  ),
-                ),
-                child: CustomWidgets.customText(
-                    name[0].toUpperCase(), 18.sp, Consonants.whiteColor,
-                    FontWeight.w800),
-              ),
-              SizedBox(width: 12.w),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+      // Floats over the live ride map, so it's translucent canvas over a blur
+      // rather than an opaque bar — the route keeps reading underneath it.
+      child: ClipRRect(
+        borderRadius: radius,
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: Container(
+            padding: EdgeInsets.fromLTRB(16.w, 14.h, 16.w, 16.h),
+            decoration: BoxDecoration(
+              color: Consonants.canvas.withValues(alpha: 0.90),
+              borderRadius: radius,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
                   children: [
-                    CustomWidgets.customText(
-                        name, 14.sp, Consonants.boldTextColor, FontWeight.w800,
-                        maxLines: 1),
-                    SizedBox(height: 2.h),
-                    Row(
-                      children: [
-                        Icon(
-                          driverOffer
-                              ? Icons.local_taxi_rounded
-                              : Icons.person_add_alt_1_rounded,
-                          size: 12.sp,
-                          color: Consonants.primaryColor,
-                        ),
-                        SizedBox(width: 4.w),
-                        Flexible(
-                          child: CustomWidgets.customText(action, 11.sp,
-                              Consonants.greyColor, FontWeight.w600,
-                              maxLines: 1),
-                        ),
-                      ],
+                    // Wash, not gradient: the Accept button is the only thing
+                    // on this card allowed to carry the action gradient.
+                    Container(
+                      width: 44.w,
+                      height: 44.w,
+                      alignment: Alignment.center,
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Consonants.indigoWash,
+                      ),
+                      child: Text(
+                        name[0].toUpperCase(),
+                        style: AppText.amount(color: Consonants.indigo)
+                            .copyWith(fontSize: 17.sp),
+                      ),
+                    ),
+                    SizedBox(width: 12.w),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppText.rowLabel(
+                                    color: Consonants.headingInk)
+                                .copyWith(
+                                    fontSize: 15.sp,
+                                    fontWeight: FontWeight.w600),
+                          ),
+                          SizedBox(height: 3.h),
+                          Row(
+                            children: [
+                              Icon(
+                                driverOffer
+                                    ? Icons.local_taxi_outlined
+                                    : Icons.person_add_alt_1_outlined,
+                                size: 13.sp,
+                                color: Consonants.iconInk,
+                              ),
+                              SizedBox(width: 5.w),
+                              Flexible(
+                                child: Text(
+                                  action,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppText.caption()
+                                      .copyWith(fontSize: 12.5.sp),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    SizedBox(width: 8.w),
+                    GestureDetector(
+                      onTap: _busy ? null : () => _markHandled(req),
+                      behavior: HitTestBehavior.opaque,
+                      child: Padding(
+                        padding: EdgeInsets.all(4.w),
+                        child: Icon(Icons.close_rounded,
+                            size: 18.sp, color: Consonants.textMuted),
+                      ),
                     ),
                   ],
                 ),
-              ),
-              GestureDetector(
-                onTap: _busy ? null : () => _markHandled(req),
-                child: Icon(Icons.close_rounded,
-                    size: 18.sp, color: Consonants.greyColor),
-              ),
-            ],
-          ),
-          SizedBox(height: 12.h),
-          Row(
-            children: [
-              Expanded(
-                child: GestureDetector(
-                  onTap: _busy ? null : () => _respond(req, false),
-                  child: Container(
-                    padding: EdgeInsets.symmetric(vertical: 11.h),
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: Consonants.whiteColor,
-                      borderRadius: BorderRadius.circular(12.r),
-                      border: Border.all(
-                          color: const Color(0xffEF4444), width: 1.5),
-                    ),
-                    child: CustomWidgets.customText("Decline", 12.sp,
-                        const Color(0xffEF4444), FontWeight.w800),
-                  ),
-                ),
-              ),
-              SizedBox(width: 10.w),
-              Expanded(
-                flex: 2,
-                child: GestureDetector(
-                  onTap: _busy ? null : () => _respond(req, true),
-                  child: Container(
-                    padding: EdgeInsets.symmetric(vertical: 11.h),
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Consonants.primaryColor, Color(0xff5AC8FA)],
+                SizedBox(height: 16.h),
+                Row(
+                  children: [
+                    Expanded(
+                      child: AppButton(
+                        label: 'Decline',
+                        kind: AppButtonKind.neutral,
+                        onPressed: _busy ? null : () => _respond(req, false),
                       ),
-                      borderRadius: BorderRadius.circular(12.r),
                     ),
-                    child: _busy
-                        ? SizedBox(
-                            height: 16.h,
-                            width: 16.h,
-                            child: const CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor:
-                                  AlwaysStoppedAnimation<Color>(Colors.white),
-                            ),
-                          )
-                        : CustomWidgets.customText(
-                            driverOffer ? "Accept driver" : "Accept",
-                            12.sp,
-                            Consonants.whiteColor,
-                            FontWeight.w800),
-                  ),
+                    SizedBox(width: Consonants.gapButtons.w),
+                    Expanded(
+                      flex: 2,
+                      child: AppButton(
+                        label: driverOffer ? 'Accept driver' : 'Accept',
+                        isLoading: _busy,
+                        onPressed: _busy ? null : () => _respond(req, true),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ],
+        ),
       ),
     );
   }

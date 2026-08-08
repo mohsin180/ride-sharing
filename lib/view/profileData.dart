@@ -8,6 +8,7 @@ import 'package:ride_sharing/model/profileModels.dart';
 import 'package:ride_sharing/provider/profileProvider.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/consonants/errorHandler.dart';
+import 'package:ride_sharing/widgets/custom/appComponents.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
 import 'package:ride_sharing/widgets/custom/responsive.dart';
 
@@ -84,17 +85,31 @@ class _PassengerProfileDataState extends ConsumerState<PassengerProfileData> {
 
     return ResponsiveAuthScaffold(
       formKey: formKey,
+      bodyPadding: EdgeInsets.symmetric(vertical: 28.h),
       body: [
-        CustomWidgets.customText(
-          "Tell us about yourself",
-          20.sp,
-          Consonants.boldTextColor,
-          FontWeight.bold,
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: Consonants.gutter.w),
+          child: SizedBox(
+            width: double.infinity,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Tell us about yourself",
+                  style: AppText.displayXs().copyWith(fontSize: 33.sp),
+                ),
+              ],
+            ),
+          ),
         ),
-        SizedBox(height: 10.h),
+        SizedBox(height: 32.h),
         AuthFields(
           text: "Full Name",
-          suffixIcon: Icon(Icons.person),
+          suffixIcon: Icon(
+            Icons.person_outline_rounded,
+            size: 20.sp,
+            color: Consonants.iconInk,
+          ),
           controller: nameController,
           validator: (value) {
             if (value == null || value.trim().isEmpty) {
@@ -106,9 +121,14 @@ class _PassengerProfileDataState extends ConsumerState<PassengerProfileData> {
             return null;
           },
         ),
+        SizedBox(height: Consonants.gapFields.h),
         AuthFields(
           text: "Phone Number",
-          suffixIcon: Icon(Icons.phone),
+          suffixIcon: Icon(
+            Icons.phone_outlined,
+            size: 20.sp,
+            color: Consonants.iconInk,
+          ),
           controller: phoneController,
           keyboardType: TextInputType.number,
           maxLength: 11,
@@ -123,9 +143,14 @@ class _PassengerProfileDataState extends ConsumerState<PassengerProfileData> {
             return null;
           },
         ),
+        SizedBox(height: Consonants.gapFields.h),
         AuthFields(
           text: "CNIC Number",
-          suffixIcon: Icon(Icons.format_indent_decrease_rounded),
+          suffixIcon: Icon(
+            Icons.badge_outlined,
+            size: 20.sp,
+            color: Consonants.iconInk,
+          ),
           controller: cnicController,
           keyboardType: TextInputType.number,
           maxLength: 15,
@@ -156,25 +181,19 @@ Widget profileContainer(
   Future<void> Function()? onPressed, {
   bool isLoading = false,
 }) {
-  return Container(
-    width: double.infinity,
-    decoration: BoxDecoration(
-      color: Consonants.whiteColor,
-      borderRadius: BorderRadius.only(
-        topLeft: Radius.circular(24.r),
-        topRight: Radius.circular(24.r),
-      ),
+  // Shared by both onboarding wizards: the single primary action, pinned to
+  // the bottom of the screen on the canvas.
+  return Padding(
+    padding: EdgeInsets.fromLTRB(
+      Consonants.gutter.w,
+      12.h,
+      Consonants.gutter.w,
+      22.h,
     ),
-    child: Column(
-      children: [
-        SizedBox(height: 20.h),
-        CustomWidgets.customButton(
-          "Continue",
-          onPressed,
-          isLoading: isLoading,
-        ),
-        SizedBox(height: 20.h),
-      ],
+    child: AppButton(
+      label: "Continue",
+      onPressed: onPressed,
+      isLoading: isLoading,
     ),
   );
 }

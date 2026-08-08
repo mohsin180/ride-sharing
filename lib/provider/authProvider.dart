@@ -44,6 +44,7 @@ class Authprovider extends StateNotifier<AuthState> {
         await Tokenstorage.saveOnboarding(
           userId: response.userId,
           onboardingToken: response.onboardingToken,
+          email: request.email,
         );
         state = state.copyWith(
           isloading: false,
@@ -92,6 +93,7 @@ class Authprovider extends StateNotifier<AuthState> {
       await Tokenstorage.saveOnboarding(
         userId: response.id,
         onboardingToken: response.onboardingToken,
+        email: response.email,
       );
       state = state.copyWith(
         isloading: false,
@@ -113,8 +115,8 @@ class Authprovider extends StateNotifier<AuthState> {
 
   /// Puts a persisted, unfinished signup back into memory after a cold start,
   /// so the verification and role screens have the id they poll with.
-  void restorePendingSignup(String userId) {
-    state = state.copyWith(userId: userId, isRegistered: true);
+  void restorePendingSignup(String userId, {String? email}) {
+    state = state.copyWith(userId: userId, isRegistered: true, email: email);
   }
 
   Future<void> verifyEmail(String token) async {

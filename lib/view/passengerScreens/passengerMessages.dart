@@ -8,7 +8,7 @@ import 'package:ride_sharing/provider/providers.dart';
 import 'package:ride_sharing/view/driverScreens/driverChatDetail.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/consonants/errorHandler.dart';
-import 'package:ride_sharing/widgets/custom/customWidgets.dart';
+import 'package:ride_sharing/widgets/custom/appComponents.dart';
 
 /// Passenger group-chat list. Mirrors [Drivermessages] in look and
 /// behaviour but the seed senders read "Driver" instead of named
@@ -17,7 +17,6 @@ import 'package:ride_sharing/widgets/custom/customWidgets.dart';
 ///
 /// UX behaviors:
 ///   • Search        — live-filters by group name and last message.
-///   • Filter pills  — All / Unread, with live counts.
 ///   • Tap chat      — opens the chat-detail screen (currently shared
 ///                     with the driver flow).
 ///   • Long-press    — bottom-sheet menu: mark read/unread.
@@ -28,8 +27,6 @@ class Passengermessages extends ConsumerStatefulWidget {
   @override
   ConsumerState<Passengermessages> createState() => _PassengermessagesState();
 }
-
-enum _ChatFilter { all, unread }
 
 class _ChatMember {
   final String initial;
@@ -71,7 +68,6 @@ class _ChatGroup {
 }
 
 class _PassengermessagesState extends ConsumerState<Passengermessages> {
-  _ChatFilter _filter = _ChatFilter.all;
   String _query = "";
   late TextEditingController _searchController;
   List<_ChatGroup> _chats = [];
@@ -108,13 +104,18 @@ class _PassengermessagesState extends ConsumerState<Passengermessages> {
   }
 
   _ChatGroup _fromConversation(ChatConversation c) {
+    // Steps along the indigo→violet ramp, not a rainbow. Avatars still
+    // separate members at a glance, but every hue stays inside the brand —
+    // the system allows no third accent. Matches the palette the driver's
+    // message list and chat detail use, so a member keeps one colour across
+    // both screens.
     const palette = [
-      Color(0xff60A5FA),
-      Color(0xffF472B6),
-      Color(0xffFBBF24),
-      Color(0xff34D399),
-      Color(0xffA78BFA),
-      Color(0xffEC4899),
+      Color(0xff6E4BC9),
+      Color(0xff8A5BE0),
+      Color(0xff4B3AA0),
+      Color(0xffA044FF),
+      Color(0xff5B3BB8),
+      Color(0xff7C4DD6),
     ];
     final members = <_ChatMember>[];
     for (int i = 0; i < c.memberNames.length; i++) {
@@ -195,59 +196,39 @@ class _PassengermessagesState extends ConsumerState<Passengermessages> {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
-      barrierColor: Colors.black.withValues(alpha: 0.40),
+      barrierColor: Consonants.scrim,
       builder: (sheetContext) {
         return Container(
           decoration: BoxDecoration(
-            color: Consonants.whiteColor,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24.r)),
+            color: Consonants.surface,
+            borderRadius:
+                BorderRadius.vertical(top: Radius.circular(Consonants.rSheet.r)),
+            boxShadow: Consonants.sheetLift,
           ),
+          padding: EdgeInsets.fromLTRB(
+              Consonants.gutter.w, 16.h, Consonants.gutter.w, 16.h),
           child: SafeArea(
             top: false,
             child: Column(
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SizedBox(height: 10.h),
-                Container(
-                  width: 44.w,
-                  height: 4.h,
-                  decoration: BoxDecoration(
-                    color: Consonants.lightGreyColor,
-                    borderRadius: BorderRadius.circular(2.r),
-                  ),
-                ),
+                SheetHeader(title: chat.name),
                 SizedBox(height: 14.h),
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 20.w),
-                  child: Row(
-                    children: [
-                      _StackedAvatars(members: chat.members, size: 36.w),
-                      SizedBox(width: 12.w),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            CustomWidgets.customText(
-                              chat.name,
-                              13.sp,
-                              Consonants.boldTextColor,
-                              FontWeight.w800,
-                            ),
-                            SizedBox(height: 2.h),
-                            CustomWidgets.customText(
-                              "${chat.members.length + 1} members",
-                              10.sp,
-                              Consonants.greyColor,
-                              FontWeight.w500,
-                            ),
-                          ],
-                        ),
+                Row(
+                  children: [
+                    _StackedAvatars(members: chat.members, size: 38.w),
+                    SizedBox(width: 14.w),
+                    Expanded(
+                      child: Text(
+                        "${chat.members.length + 1} members",
+                        style: AppText.caption().copyWith(fontSize: 13.sp),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-                SizedBox(height: 14.h),
-                Container(height: 1, color: Consonants.lightGreyColor),
+                SizedBox(height: 16.h),
+                const AppDivider(),
                 _sheetAction(
                   icon: chat.unread > 0
                       ? Icons.mark_chat_read_outlined
@@ -275,21 +256,23 @@ class _PassengermessagesState extends ConsumerState<Passengermessages> {
     required VoidCallback onTap,
     bool destructive = false,
   }) {
-    final color =
-        destructive ? const Color(0xffEF4444) : Consonants.boldTextColor;
-    return InkWell(
+    final color = destructive ? Consonants.danger : Consonants.bodyInk;
+    return GestureDetector(
       onTap: onTap,
+      behavior: HitTestBehavior.opaque,
       child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 14.h),
+        padding: EdgeInsets.symmetric(vertical: Consonants.rowVertical.h),
         child: Row(
           children: [
-            Icon(icon, size: 18.sp, color: color),
+            Icon(
+              icon,
+              size: 20.sp,
+              color: destructive ? Consonants.danger : Consonants.iconInk,
+            ),
             SizedBox(width: 14.w),
-            CustomWidgets.customText(
+            Text(
               label,
-              12.sp,
-              color,
-              FontWeight.w700,
+              style: AppText.rowLabel(color: color).copyWith(fontSize: 16.sp),
             ),
           ],
         ),
@@ -301,28 +284,28 @@ class _PassengermessagesState extends ConsumerState<Passengermessages> {
 
   @override
   Widget build(BuildContext context) {
-    final filtered = _applyAll(_chats);
+    final filtered = _applySearch(_chats);
 
     return Scaffold(
-      backgroundColor: Consonants.scaffoldBackgroundColor,
+      backgroundColor: Consonants.canvas,
       body: SafeArea(
+        bottom: false,
         child: Column(
           children: [
             _topBar(),
-            SizedBox(height: 12.h),
             _searchBar(),
+            SizedBox(height: 16.h),
             SizedBox(height: 12.h),
-            _filterPills(),
-            SizedBox(height: 8.h),
             Expanded(
               child: RefreshIndicator(
-                color: Consonants.primaryColor,
-                backgroundColor: Consonants.whiteColor,
+                color: Consonants.indigo,
+                backgroundColor: Consonants.surface,
                 onRefresh: _onRefresh,
                 child: _loading && _chats.isEmpty
                     ? _statusList(const Center(
                         child: CircularProgressIndicator(
-                          color: Consonants.primaryColor,
+                          strokeWidth: 2.4,
+                          color: Consonants.indigo,
                         ),
                       ))
                     : _error != null && _chats.isEmpty
@@ -333,13 +316,17 @@ class _PassengermessagesState extends ConsumerState<Passengermessages> {
                         physics: const AlwaysScrollableScrollPhysics(
                           parent: BouncingScrollPhysics(),
                         ),
-                        padding: EdgeInsets.only(bottom: 24.h, top: 6.h),
+                        padding: EdgeInsets.fromLTRB(
+                          Consonants.gutter.w,
+                          8.h,
+                          Consonants.gutter.w,
+                          32.h,
+                        ),
                         children: [
-                          _sectionLabel("Conversations"),
-                          SizedBox(height: 8.h),
+                          const AppSectionHeading(label: "Conversations"),
                           for (int i = 0; i < filtered.length; i++) ...[
                             _chatRow(filtered[i]),
-                            if (i != filtered.length - 1) _rowDivider(),
+                            if (i != filtered.length - 1) const AppDivider(),
                           ],
                         ],
                       ),
@@ -367,22 +354,27 @@ class _PassengermessagesState extends ConsumerState<Passengermessages> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.cloud_off_rounded, size: 36.sp, color: Consonants.greyColor),
-            SizedBox(height: 12.h),
-            CustomWidgets.customText(
+            Container(
+              width: 68.w,
+              height: 68.w,
+              alignment: Alignment.center,
+              decoration: const BoxDecoration(
+                color: Consonants.dangerWash,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.cloud_off_outlined,
+                size: 30.sp,
+                color: Consonants.danger,
+              ),
+            ),
+            SizedBox(height: 18.h),
+            Text(
               message,
-              12.sp,
-              Consonants.boldTextColor,
-              FontWeight.w700,
               textAlign: TextAlign.center,
               maxLines: 3,
-            ),
-            SizedBox(height: 6.h),
-            CustomWidgets.customText(
-              "Pull down to retry",
-              10.sp,
-              Consonants.greyColor,
-              FontWeight.w500,
+              overflow: TextOverflow.ellipsis,
+              style: AppText.sectionHeading().copyWith(fontSize: 17.sp),
             ),
           ],
         ),
@@ -390,8 +382,8 @@ class _PassengermessagesState extends ConsumerState<Passengermessages> {
     );
   }
 
-  // Combines search + filter pill.
-  List<_ChatGroup> _applyAll(List<_ChatGroup> all) {
+  /// Live search over group name, last message and last sender.
+  List<_ChatGroup> _applySearch(List<_ChatGroup> all) {
     var list = all;
     final q = _query.trim().toLowerCase();
     if (q.isNotEmpty) {
@@ -401,67 +393,17 @@ class _PassengermessagesState extends ConsumerState<Passengermessages> {
             c.lastSender.toLowerCase().contains(q);
       }).toList();
     }
-    switch (_filter) {
-      case _ChatFilter.all:
-        break;
-      case _ChatFilter.unread:
-        list = list.where((c) => c.unread > 0).toList();
-        break;
-    }
     return list;
   }
 
   // ─── Top bar ─────────────────────────────────────────────
 
   Widget _topBar() {
-    return Padding(
-      padding: EdgeInsets.fromLTRB(14.w, 10.h, 16.w, 0),
-      child: Row(
-        children: [
-          GestureDetector(
-            onTap: () => context.pop(),
-            child: Container(
-              width: 40.w,
-              height: 40.w,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: Consonants.whiteColor,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Icon(Icons.arrow_back_rounded,
-                  size: 18.sp, color: Consonants.boldTextColor),
-            ),
-          ),
-          SizedBox(width: 12.w),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                CustomWidgets.customText(
-                  "Messages",
-                  18.sp,
-                  Consonants.boldTextColor,
-                  FontWeight.w800,
-                ),
-                SizedBox(height: 2.h),
-                CustomWidgets.customText(
-                  "${_chats.length} group chats",
-                  10.sp,
-                  Consonants.greyColor,
-                  FontWeight.w500,
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+    return AppHeader(
+      title: "Messages",
+      subtitle: "${_chats.length} group chats",
+      showBack: true,
+      onBack: () => context.pop(),
     );
   }
 
@@ -469,47 +411,34 @@ class _PassengermessagesState extends ConsumerState<Passengermessages> {
 
   Widget _searchBar() {
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 20.w),
+      padding: EdgeInsets.symmetric(horizontal: Consonants.gutter.w),
       child: Container(
-        height: 44.h,
-        padding: EdgeInsets.symmetric(horizontal: 12.w),
+        padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
         decoration: BoxDecoration(
-          color: Consonants.whiteColor,
-          borderRadius: BorderRadius.circular(14.r),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 10,
-              offset: const Offset(0, 3),
-            ),
-          ],
+          color: Consonants.surface,
+          borderRadius: BorderRadius.circular(Consonants.rInput.r),
+          border: Border.all(color: Consonants.border, width: 1.2),
         ),
         child: Row(
           children: [
-            Icon(Icons.search_rounded,
-                size: 18.sp, color: Consonants.greyColor),
-            SizedBox(width: 8.w),
+            Icon(
+              Icons.search_rounded,
+              size: 20.sp,
+              color: Consonants.iconInk,
+            ),
+            SizedBox(width: 12.w),
             Expanded(
               child: TextField(
                 controller: _searchController,
                 onChanged: (v) => setState(() => _query = v),
-                cursorColor: Consonants.primaryColor,
-                style: TextStyle(
-                  fontFamily: Consonants.fontFamily,
-                  fontSize: 12.sp,
-                  fontWeight: FontWeight.w600,
-                  color: Consonants.boldTextColor,
-                ),
+                cursorColor: Consonants.violet,
+                style: AppText.rowLabel().copyWith(fontSize: 15.5.sp),
                 decoration: InputDecoration(
                   border: InputBorder.none,
                   isCollapsed: true,
                   hintText: "Search messages or groups…",
-                  hintStyle: TextStyle(
-                    fontFamily: Consonants.fontFamily,
-                    fontSize: 12.sp,
-                    fontWeight: FontWeight.w500,
-                    color: Consonants.greyColor,
-                  ),
+                  hintStyle: AppText.rowLabel(color: Consonants.textMuted)
+                      .copyWith(fontSize: 15.5.sp),
                 ),
               ),
             ),
@@ -521,8 +450,11 @@ class _PassengermessagesState extends ConsumerState<Passengermessages> {
                     _searchController.clear();
                   });
                 },
-                child: Icon(Icons.close_rounded,
-                    size: 16.sp, color: Consonants.greyColor),
+                child: Icon(
+                  Icons.close_rounded,
+                  size: 18.sp,
+                  color: Consonants.textMuted,
+                ),
               ),
           ],
         ),
@@ -530,204 +462,81 @@ class _PassengermessagesState extends ConsumerState<Passengermessages> {
     );
   }
 
-  // ─── Filter pills ────────────────────────────────────────
+  // ─── Chat row (with long-press) ─────────────────────────
 
-  Widget _filterPills() {
-    final unreadCount = _chats.where((c) => c.unread > 0).length;
-    return SizedBox(
-      height: 36.h,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
-        padding: EdgeInsets.symmetric(horizontal: 16.w),
-        children: [
-          _pill("All", _ChatFilter.all, count: _chats.length),
-          SizedBox(width: 8.w),
-          _pill("Unread", _ChatFilter.unread, count: unreadCount),
-        ],
-      ),
-    );
-  }
-
-  Widget _pill(String label, _ChatFilter value, {int count = 0}) {
-    final selected = _filter == value;
+  /// A conversation is a list row — divided by a 1px rule, no card.
+  Widget _chatRow(_ChatGroup chat) {
+    final unread = chat.unread > 0;
     return GestureDetector(
-      onTap: () => setState(() => _filter = value),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 8.h),
-        decoration: BoxDecoration(
-          gradient: selected
-              ? const LinearGradient(
-                  colors: [Consonants.primaryColor, Color(0xff5AC8FA)],
-                )
-              : null,
-          color: selected ? null : Consonants.whiteColor,
-          borderRadius: BorderRadius.circular(20.r),
-          boxShadow: selected
-              ? [
-                  BoxShadow(
-                    color: Consonants.primaryColor.withValues(alpha: 0.30),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
+      onTap: () => _openChat(chat),
+      onLongPress: () => _showActionSheet(chat),
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: EdgeInsets.symmetric(vertical: Consonants.rowVertical.h),
+        child: Row(
+          children: [
+            _StackedAvatars(members: chat.members, size: 48.w),
+            SizedBox(width: 14.w),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    chat.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppText.rowLabel(color: Consonants.headingInk)
+                        .copyWith(
+                      fontSize: 16.sp,
+                      fontWeight: unread ? FontWeight.w700 : FontWeight.w500,
+                    ),
                   ),
-                ]
-              : [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.04),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
+                  SizedBox(height: 4.h),
+                  _lastMessageRow(chat),
+                ],
+              ),
+            ),
+            SizedBox(width: 10.w),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  chat.timeAgo,
+                  style: AppText.caption(
+                    color: unread ? Consonants.indigo : Consonants.textMuted,
+                  ).copyWith(fontSize: 12.sp),
+                ),
+                if (unread) ...[
+                  SizedBox(height: 8.h),
+                  Container(
+                    constraints:
+                        BoxConstraints(minWidth: 20.w, minHeight: 20.w),
+                    padding:
+                        EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: Consonants.indigo,
+                      borderRadius:
+                          BorderRadius.circular(Consonants.rPill.r),
+                    ),
+                    child: Text(
+                      chat.unread > 99 ? "99+" : "${chat.unread}",
+                      style: AppText.navLabel(color: Consonants.surface)
+                          .copyWith(fontSize: 11.sp),
+                    ),
                   ),
                 ],
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CustomWidgets.customText(
-              label,
-              11.sp,
-              selected ? Consonants.whiteColor : Consonants.boldTextColor,
-              FontWeight.w700,
+              ],
             ),
-            if (count > 0) ...[
-              SizedBox(width: 6.w),
-              Container(
-                padding:
-                    EdgeInsets.symmetric(horizontal: 5.w, vertical: 1.h),
-                decoration: BoxDecoration(
-                  color: selected
-                      ? Colors.white.withValues(alpha: 0.30)
-                      : Consonants.lightBlueColor,
-                  borderRadius: BorderRadius.circular(20.r),
-                ),
-                child: CustomWidgets.customText(
-                  "$count",
-                  9.sp,
-                  selected ? Consonants.whiteColor : Consonants.primaryColor,
-                  FontWeight.w800,
-                ),
-              ),
-            ],
           ],
         ),
       ),
-    );
-  }
-
-  // ─── Section label ───────────────────────────────────────
-
-  Widget _sectionLabel(String text) {
-    return Padding(
-      padding: EdgeInsets.fromLTRB(24.w, 8.h, 24.w, 0),
-      child: Row(
-        children: [
-          CustomWidgets.customText(
-            text.toUpperCase(),
-            10.sp,
-            Consonants.greyColor,
-            FontWeight.w700,
-          ),
-          SizedBox(width: 10.w),
-          Expanded(
-            child: Container(
-              height: 1,
-              color: Consonants.lightGreyColor,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _rowDivider() {
-    return Padding(
-      padding: EdgeInsets.only(left: 88.w, right: 20.w),
-      child: Container(height: 1, color: Consonants.lightGreyColor),
-    );
-  }
-
-  // ─── Chat row (with swipe + long-press) ─────────────────
-
-  Widget _chatRow(_ChatGroup chat) {
-    return Material(
-        color: Consonants.whiteColor,
-        child: InkWell(
-          onTap: () => _openChat(chat),
-          onLongPress: () => _showActionSheet(chat),
-          splashColor: Consonants.primaryColor.withValues(alpha: 0.06),
-          highlightColor: Consonants.primaryColor.withValues(alpha: 0.04),
-          child: Padding(
-            padding:
-                EdgeInsets.symmetric(horizontal: 20.w, vertical: 12.h),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                _StackedAvatars(members: chat.members, size: 50.w),
-                SizedBox(width: 12.w),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        chat.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontFamily: Consonants.fontFamily,
-                          fontSize: 13.sp,
-                          fontWeight: FontWeight.w800,
-                          color: Consonants.boldTextColor,
-                        ),
-                      ),
-                      SizedBox(height: 3.h),
-                      _lastMessageRow(chat),
-                    ],
-                  ),
-                ),
-                SizedBox(width: 8.w),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    CustomWidgets.customText(
-                      chat.timeAgo,
-                      9.sp,
-                      chat.unread > 0
-                          ? Consonants.primaryColor
-                          : Consonants.greyColor,
-                      chat.unread > 0
-                          ? FontWeight.w800
-                          : FontWeight.w600,
-                    ),
-                    SizedBox(height: 6.h),
-                    if (chat.unread > 0)
-                      Container(
-                        constraints:
-                            BoxConstraints(minWidth: 18.w, minHeight: 18.w),
-                        padding: EdgeInsets.symmetric(
-                            horizontal: 5.w, vertical: 1.h),
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: Consonants.primaryColor,
-                          borderRadius: BorderRadius.circular(20.r),
-                        ),
-                        child: CustomWidgets.customText(
-                          chat.unread > 99 ? "99+" : "${chat.unread}",
-                          9.sp,
-                          Consonants.whiteColor,
-                          FontWeight.w800,
-                        ),
-                      ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
     );
   }
 
   Widget _lastMessageRow(_ChatGroup chat) {
     final senderLabel = chat.lastSender;
+    final unread = chat.unread > 0;
     return Row(
       children: [
         Flexible(
@@ -735,48 +544,36 @@ class _PassengermessagesState extends ConsumerState<Passengermessages> {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             text: TextSpan(
-              style: TextStyle(
-                fontFamily: Consonants.fontFamily,
-                fontSize: 11.sp,
-                fontWeight: FontWeight.w500,
-                color: Consonants.greyColor,
-                height: 1.4,
-              ),
+              style: AppText.caption().copyWith(fontSize: 13.sp, height: 1.35),
               children: [
                 if (senderLabel.isNotEmpty)
                   TextSpan(
                     text: "$senderLabel: ",
                     style: TextStyle(
-                      fontWeight: chat.unread > 0
-                          ? FontWeight.w800
-                          : FontWeight.w700,
-                      color: chat.unread > 0
-                          ? Consonants.boldTextColor
-                          : Consonants.greyColor,
+                      fontWeight: FontWeight.w600,
+                      color: unread
+                          ? Consonants.bodyInk
+                          : Consonants.textMuted,
                     ),
                   ),
                 TextSpan(
                   text: chat.lastMessage,
                   style: TextStyle(
-                    fontWeight: chat.unread > 0
-                        ? FontWeight.w700
-                        : FontWeight.w500,
-                    color: chat.unread > 0
-                        ? Consonants.boldTextColor
-                        : Consonants.greyColor,
+                    fontWeight:
+                        unread ? FontWeight.w600 : FontWeight.w400,
+                    color:
+                        unread ? Consonants.bodyInk : Consonants.textMuted,
                   ),
                 ),
               ],
             ),
           ),
         ),
-        SizedBox(width: 4.w),
+        SizedBox(width: 6.w),
         if (chat.members.isNotEmpty)
-          CustomWidgets.customText(
+          Text(
             "· ${chat.members.length + 1}",
-            10.sp,
-            Consonants.greyColor,
-            FontWeight.w500,
+            style: AppText.caption().copyWith(fontSize: 12.sp),
           ),
       ],
     );
@@ -785,13 +582,15 @@ class _PassengermessagesState extends ConsumerState<Passengermessages> {
   // ─── Empty state ────────────────────────────────────────
 
   Widget _emptyState() {
-    final (title, subtitle) = _emptyCopy();
+    final title = _query.isNotEmpty
+        ? "No matches for \"$_query\""
+        : "No conversations yet";
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(
         parent: BouncingScrollPhysics(),
       ),
       children: [
-        SizedBox(height: 80.h),
+        SizedBox(height: 70.h),
         Center(
           child: Column(
             children: [
@@ -799,36 +598,21 @@ class _PassengermessagesState extends ConsumerState<Passengermessages> {
                 width: 84.w,
                 height: 84.w,
                 alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: Consonants.lightBlueColor,
+                decoration: const BoxDecoration(
+                  color: Consonants.indigoWash,
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
                   Icons.forum_outlined,
-                  size: 36.sp,
-                  color: Consonants.primaryColor,
+                  size: 34.sp,
+                  color: Consonants.indigo,
                 ),
               ),
-              SizedBox(height: 14.h),
-              CustomWidgets.customText(
+              SizedBox(height: 20.h),
+              Text(
                 title,
-                14.sp,
-                Consonants.boldTextColor,
-                FontWeight.w800,
-              ),
-              SizedBox(height: 4.h),
-              CustomWidgets.customText(
-                subtitle,
-                11.sp,
-                Consonants.greyColor,
-                FontWeight.w500,
-              ),
-              SizedBox(height: 14.h),
-              CustomWidgets.customText(
-                "Pull down to refresh",
-                10.sp,
-                Consonants.primaryColor,
-                FontWeight.w700,
+                textAlign: TextAlign.center,
+                style: AppText.sectionHeading().copyWith(fontSize: 18.sp),
               ),
             ],
           ),
@@ -837,26 +621,6 @@ class _PassengermessagesState extends ConsumerState<Passengermessages> {
     );
   }
 
-  (String, String) _emptyCopy() {
-    if (_query.isNotEmpty) {
-      return (
-        "No matches",
-        "Nothing matched \"$_query\". Try another search.",
-      );
-    }
-    switch (_filter) {
-      case _ChatFilter.unread:
-        return (
-          "All caught up",
-          "No unread group messages right now",
-        );
-      case _ChatFilter.all:
-        return (
-          "No conversations yet",
-          "Group chats with your passengers show up here",
-        );
-    }
-  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -894,12 +658,8 @@ class _StackedAvatars extends StatelessWidget {
               child: _avatarBubble(
                 child: Text(
                   shown[i].initial,
-                  style: TextStyle(
-                    color: Consonants.whiteColor,
-                    fontFamily: Consonants.fontFamily,
-                    fontSize: small * 0.42,
-                    fontWeight: FontWeight.w800,
-                  ),
+                  style: AppText.amount(color: Consonants.surface)
+                      .copyWith(fontSize: small * 0.42),
                 ),
                 bg: shown[i].color,
                 diameter: small,
@@ -910,13 +670,12 @@ class _StackedAvatars extends StatelessWidget {
               left: shown.length * (small - overlap),
               top: (size - small) / 2,
               child: _avatarBubble(
-                child: CustomWidgets.customText(
+                child: Text(
                   "+$extra",
-                  small * 0.34,
-                  Consonants.boldTextColor,
-                  FontWeight.w800,
+                  style: AppText.amount(color: Consonants.indigo)
+                      .copyWith(fontSize: small * 0.34),
                 ),
-                bg: Consonants.lightBlueColor,
+                bg: Consonants.indigoWash,
                 diameter: small,
               ),
             ),
@@ -937,14 +696,7 @@ class _StackedAvatars extends StatelessWidget {
       decoration: BoxDecoration(
         color: bg,
         shape: BoxShape.circle,
-        border: Border.all(color: Consonants.whiteColor, width: 2.5),
-        boxShadow: [
-          BoxShadow(
-            color: bg.withValues(alpha: 0.30),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        border: Border.all(color: Consonants.surface, width: 2.5),
       ),
       child: child,
     );

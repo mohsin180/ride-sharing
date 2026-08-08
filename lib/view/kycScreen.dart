@@ -13,7 +13,7 @@ import 'package:ride_sharing/provider/providers.dart';
 import 'package:ride_sharing/view/editProfile.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/consonants/errorHandler.dart';
-import 'package:ride_sharing/widgets/custom/customWidgets.dart';
+import 'package:ride_sharing/widgets/custom/appComponents.dart';
 import 'package:ride_sharing/widgets/custom/responsive.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -212,34 +212,28 @@ class _KycScreenState extends ConsumerState<KycScreen> {
     final status = _kyc?.status ?? 'NOT_STARTED';
 
     return ResponsiveAuthScaffold(
+      bodyPadding: EdgeInsets.symmetric(
+        horizontal: Consonants.gutter.w,
+        vertical: 28.h,
+      ),
       body: [
-        SizedBox(height: 8.h),
-        _heroBadge(),
-        SizedBox(height: 16.h),
-        CustomWidgets.customText(
-          "Verify your identity",
-          20.sp,
-          Consonants.boldTextColor,
-          FontWeight.bold,
-        ),
-        SizedBox(height: 6.h),
-        _stepPill(),
-        SizedBox(height: 18.h),
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: 30.w),
-          child: CustomWidgets.customText(
-            "To keep every ride safe, we verify your CNIC and run a quick "
-            "selfie check. It takes about a minute and happens right here in "
-            "the app.",
-            10.sp,
-            Consonants.greyColor,
-            FontWeight.normal,
-            textAlign: TextAlign.center,
+        SizedBox(
+          width: double.infinity,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                "Verify your identity",
+                style: AppText.displayXs().copyWith(fontSize: 33.sp),
+              ),
+              SizedBox(height: 12.h),
+              _stepPill(),
+            ],
           ),
         ),
-        SizedBox(height: 22.h),
-        _stepsCard(),
-        SizedBox(height: 20.h),
+        SizedBox(height: 28.h),
+        _steps(),
+        SizedBox(height: 24.h),
         _statusIndicator(status),
       ],
       bottomBar: _bottomBar(status),
@@ -253,10 +247,10 @@ class _KycScreenState extends ConsumerState<KycScreen> {
     // even while the poll timer is running.
     if (status == 'IN_REVIEW') {
       return _statusChip(
-        Icons.hourglass_top_rounded,
-        "Your verification is under review. This page updates automatically "
-        "as soon as it's decided.",
-        Consonants.primaryColor,
+        Icons.hourglass_empty_rounded,
+        "Your verification is under review.",
+        Consonants.indigo,
+        Consonants.indigoWash,
       );
     }
     if (status == 'DECLINED') {
@@ -270,27 +264,27 @@ class _KycScreenState extends ConsumerState<KycScreen> {
             ? "$reason Fix that in your profile, then try again."
             : "Verification was declined. Make sure your CNIC is readable and "
                 "your face is clearly visible, then try again.",
-        Colors.redAccent,
+        Consonants.danger,
+        Consonants.dangerWash,
       );
     }
     if (_waiting || status == 'IN_PROGRESS') {
       return Row(
-        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           SizedBox(
-            width: 12.w,
-            height: 12.w,
-            child: CircularProgressIndicator(
+            width: 15.w,
+            height: 15.w,
+            child: const CircularProgressIndicator(
               strokeWidth: 2,
-              color: Consonants.primaryColor,
+              color: Consonants.violet,
             ),
           ),
-          SizedBox(width: 8.w),
-          CustomWidgets.customText(
-            'Waiting for verification result…',
-            10.sp,
-            Consonants.greyColor,
-            FontWeight.w500,
+          SizedBox(width: 10.w),
+          Flexible(
+            child: Text(
+              'Waiting for verification result…',
+              style: AppText.caption().copyWith(fontSize: 13.sp),
+            ),
           ),
         ],
       );
@@ -298,30 +292,27 @@ class _KycScreenState extends ConsumerState<KycScreen> {
     return const SizedBox.shrink();
   }
 
-  Widget _statusChip(IconData icon, String text, Color color) {
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 30.w),
-      child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 10.h),
-        decoration: BoxDecoration(
-          color: Consonants.lightBlueColor,
-          borderRadius: BorderRadius.circular(12.r),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, size: 16.sp, color: color),
-            SizedBox(width: 8.w),
-            Expanded(
-              child: CustomWidgets.customText(
-                text,
-                9.sp,
-                Consonants.boldTextColor,
-                FontWeight.w500,
-                maxLines: 6,
-              ),
+  Widget _statusChip(IconData icon, String text, Color colour, Color wash) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
+      decoration: BoxDecoration(
+        color: wash,
+        borderRadius: BorderRadius.circular(Consonants.rCard.r),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 19.sp, color: colour),
+          SizedBox(width: 12.w),
+          Expanded(
+            child: Text(
+              text,
+              maxLines: 6,
+              style: AppText.rowLabel(color: Consonants.headingInk)
+                  .copyWith(fontSize: 14.sp, height: 1.4),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -336,50 +327,24 @@ class _KycScreenState extends ConsumerState<KycScreen> {
     };
     final showButton = status != 'IN_REVIEW' && status != 'APPROVED';
 
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: Consonants.whiteColor,
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(24.r),
-          topRight: Radius.circular(24.r),
-        ),
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        Consonants.gutter.w,
+        12.h,
+        Consonants.gutter.w,
+        22.h,
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          SizedBox(height: 20.h),
-          if (showButton)
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: 30.w),
-              child: GestureDetector(
-                onTap: _starting ? null : _startVerification,
-                child: Container(
-                  width: double.infinity,
-                  height: 48.h,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: Consonants.primaryColor,
-                    borderRadius: BorderRadius.circular(14.r),
-                  ),
-                  child: _starting
-                      ? SizedBox(
-                          width: 18.w,
-                          height: 18.w,
-                          child: const CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Consonants.whiteColor,
-                          ),
-                        )
-                      : CustomWidgets.customText(
-                          buttonLabel,
-                          12.sp,
-                          Consonants.whiteColor,
-                          FontWeight.w700,
-                        ),
-                ),
-              ),
+          if (showButton) ...[
+            AppButton(
+              label: buttonLabel,
+              isLoading: _starting,
+              onPressed: _startVerification,
             ),
-          SizedBox(height: 12.h),
+            SizedBox(height: Consonants.gapButtons.h),
+          ],
           // The only way out of this screen besides passing. There's no skip
           // (verification is mandatory) and no plain back button — the screens
           // behind this one create a profile and would reject a second
@@ -387,39 +352,38 @@ class _KycScreenState extends ConsumerState<KycScreen> {
           // Without this, a typo'd CNIC is unfixable and the account is stuck.
           GestureDetector(
             onTap: _openProfileEditor,
+            behavior: HitTestBehavior.opaque,
             child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: 30.w, vertical: 4.h),
+              padding: EdgeInsets.symmetric(vertical: 4.h),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(
                     Icons.edit_outlined,
-                    size: 13.sp,
-                    color: Consonants.primaryColor,
+                    size: 17.sp,
+                    color: Consonants.indigo,
                   ),
-                  SizedBox(width: 6.w),
-                  CustomWidgets.customText(
-                    "Wrong CNIC or name? Edit your details",
-                    10.sp,
-                    Consonants.primaryColor,
-                    FontWeight.w600,
+                  SizedBox(width: 8.w),
+                  Flexible(
+                    child: Text(
+                      "Wrong CNIC or name? Edit your details",
+                      style: AppText.rowLabel(color: Consonants.indigo)
+                          .copyWith(
+                        fontSize: 14.5.sp,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
                 ],
               ),
             ),
           ),
-          SizedBox(height: 8.h),
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 30.w),
-            child: CustomWidgets.customText(
-              "Verification is required before you can book or drive.",
-              9.sp,
-              Consonants.greyColor,
-              FontWeight.w500,
-              textAlign: TextAlign.center,
-            ),
+          SizedBox(height: 12.h),
+          Text(
+            "Verification is required before you can book or drive.",
+            textAlign: TextAlign.center,
+            style: AppText.caption().copyWith(fontSize: 13.sp),
           ),
-          SizedBox(height: 20.h),
         ],
       ),
     );
@@ -427,126 +391,77 @@ class _KycScreenState extends ConsumerState<KycScreen> {
 
   // ── decorative bits (visual language of the onboarding wizard) ───
 
-  Widget _heroBadge() {
-    return Container(
-      width: 72.w,
-      height: 72.w,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Consonants.primaryColor, Color(0xff5AC8FA)],
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Consonants.primaryColor.withValues(alpha: 0.30),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Icon(
-        Icons.verified_user_rounded,
-        color: Consonants.whiteColor,
-        size: 34.sp,
-      ),
-    );
-  }
-
   /// Drivers arrive here after two form steps; passengers after one.
   Widget _stepPill() {
-    final label = widget.isDriver
-        ? "Step 3 of 3 · CNIC + selfie check"
-        : "Step 2 of 2 · CNIC + selfie check";
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 5.h),
-      decoration: BoxDecoration(
-        color: Consonants.lightBlueColor,
-        borderRadius: BorderRadius.circular(20.r),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.badge_rounded,
-            size: 11.sp,
-            color: Consonants.primaryColor,
-          ),
-          SizedBox(width: 5.w),
-          CustomWidgets.customText(
-            label,
-            9.sp,
-            Consonants.primaryColor,
-            FontWeight.w700,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _stepsCard() {
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 30.w),
+    final label = widget.isDriver ? "Step 3 of 3" : "Step 2 of 2";
+    return Align(
+      alignment: Alignment.centerLeft,
       child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
+        padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 7.h),
         decoration: BoxDecoration(
-          color: Consonants.whiteColor,
-          borderRadius: BorderRadius.circular(16.r),
-          border: Border.all(color: Consonants.lightGreyColor),
+          color: Consonants.chipBg,
+          borderRadius: BorderRadius.circular(Consonants.rPill.r),
         ),
-        child: Column(
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            _stepRow(Icons.credit_card_rounded, "Scan your CNIC",
-                "Front and back — data is read automatically"),
-            SizedBox(height: 12.h),
-            _stepRow(Icons.face_retouching_natural_rounded, "Take a selfie",
-                "A quick liveness check confirms it's really you"),
-            SizedBox(height: 12.h),
-            _stepRow(Icons.verified_rounded, "Get approved",
-                "Usually instant — this screen updates automatically"),
+            Icon(
+              Icons.badge_outlined,
+              size: 15.sp,
+              color: Consonants.iconInk,
+            ),
+            SizedBox(width: 7.w),
+            Text(
+              label,
+              style: AppText.caption(color: Consonants.headingInk)
+                  .copyWith(fontSize: 12.5.sp, fontWeight: FontWeight.w600),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _stepRow(IconData icon, String title, String subtitle) {
-    return Row(
+  /// What the flow asks of the user, as a plain list — three rows on the
+  /// canvas divided by a rule, not a card (nothing here is tappable).
+  Widget _steps() {
+    return Column(
       children: [
-        Container(
-          width: 34.w,
-          height: 34.w,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: Consonants.lightBlueColor,
-            borderRadius: BorderRadius.circular(10.r),
-          ),
-          child: Icon(icon, size: 16.sp, color: Consonants.primaryColor),
-        ),
-        SizedBox(width: 12.w),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              CustomWidgets.customText(
-                title,
-                10.sp,
-                Consonants.boldTextColor,
-                FontWeight.w700,
-              ),
-              CustomWidgets.customText(
-                subtitle,
-                8.5.sp,
-                Consonants.greyColor,
-                FontWeight.normal,
-                maxLines: 2,
-              ),
-            ],
-          ),
-        ),
+        const AppDivider(),
+        _stepRow(Icons.credit_card_outlined, "Scan your CNIC"),
+        const AppDivider(),
+        _stepRow(Icons.face_retouching_natural_outlined, "Take a selfie"),
+        const AppDivider(),
+        _stepRow(Icons.verified_outlined, "Get approved"),
+        const AppDivider(),
       ],
+    );
+  }
+
+  Widget _stepRow(IconData icon, String title) {
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: Consonants.rowVertical.h),
+      child: Row(
+        children: [
+          Container(
+            width: 44.w,
+            height: 44.w,
+            alignment: Alignment.center,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              color: Consonants.indigoWash,
+            ),
+            child: Icon(icon, size: 20.sp, color: Consonants.iconInk),
+          ),
+          SizedBox(width: 14.w),
+          Expanded(
+            child: Text(
+              title,
+              style: AppText.rowLabel().copyWith(fontSize: 15.5.sp),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

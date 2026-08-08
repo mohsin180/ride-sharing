@@ -9,14 +9,14 @@ import 'package:ride_sharing/view/driverScreens/driverViewDetails.dart';
 import 'package:ride_sharing/view/nearbyRidesMap.dart';
 import 'package:ride_sharing/widgets/consonants/apiException.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
+import 'package:ride_sharing/widgets/custom/appComponents.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
 
 /// Driver "Rides" tab — list of available shared-ride requests.
 ///
-/// Drivers can filter by host gender (All / Male / Female) so they only
-/// see requests from passengers they're comfortable picking up. Each
-/// request is rendered as a summary card with the host info, route,
+/// Each request is rendered as a summary card with the host info, route,
 /// total fare, rider count, and CTAs to decline or view full details.
+/// The list is ordered nearest-first.
 ///
 /// Backed by `driverFeedProvider` (GET /api/v1/rides/driver/feed) while
 /// the driver is online; offline it shows a placeholder and skips the
@@ -28,124 +28,57 @@ class Driverrides extends ConsumerStatefulWidget {
   ConsumerState<Driverrides> createState() => _DriverridesState();
 }
 
-enum _GenderFilter { all, male, female }
-
-enum _FeedSort { nearest, highestFare, soonest }
-
-extension _FeedSortLabel on _FeedSort {
-  String get label => switch (this) {
-        _FeedSort.nearest => 'Nearest',
-        _FeedSort.highestFare => 'Top fare',
-        _FeedSort.soonest => 'Soonest',
-      };
-}
-
 class _DriverridesState extends ConsumerState<Driverrides> {
-  _GenderFilter _filter = _GenderFilter.all;
-
   // Ride ids the driver declined this session — hidden from the list
   // without a backend round-trip (there's no per-driver decline yet, so
   // a refresh brings them back).
   final Set<String> _declined = {};
 
-  _FeedSort _sort = _FeedSort.nearest;
-
-  List<_RideRequest> _applyGenderFilter(List<_RideRequest> rides) {
-    switch (_filter) {
-      case _GenderFilter.all:
-        return rides;
-      case _GenderFilter.male:
-        return rides.where((r) => r.gender == "MALE").toList();
-      case _GenderFilter.female:
-        return rides.where((r) => r.gender == "FEMALE").toList();
-    }
-  }
-
-  List<_RideRequest> _applySort(List<_RideRequest> rides) {
+  /// Nearest first — the feed arrives in no particular order, and the
+  /// closest pickup is the one a driver can actually act on.
+  List<_RideRequest> _byDistance(List<_RideRequest> rides) {
     final list = [...rides];
-    switch (_sort) {
-      case _FeedSort.nearest:
-        list.sort((a, b) => (a.source.distanceKm ?? 1e9)
-            .compareTo(b.source.distanceKm ?? 1e9));
-      case _FeedSort.highestFare:
-        list.sort((a, b) => b.totalFare.compareTo(a.totalFare));
-      case _FeedSort.soonest:
-        list.sort((a, b) =>
-            (a.source.departureTime?.millisecondsSinceEpoch ?? 0)
-                .compareTo(b.source.departureTime?.millisecondsSinceEpoch ?? 0));
-    }
+    list.sort(
+      (a, b) =>
+          (a.source.distanceKm ?? 1e9).compareTo(b.source.distanceKm ?? 1e9),
+    );
     return list;
   }
 
   /// Opens the nearby-requests map; tapping a pin opens that ride's details.
   Widget _mapButton(List<_RideRequest> rides) {
     return GestureDetector(
-      onTap: () => Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => NearbyRidesMapScreen(
-          rides: rides.map((r) => r.source).toList(),
-          title: 'Nearby requests',
-          onTapRide: (ride) => Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => DriverViewDetails(ride: ride),
-          )),
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => NearbyRidesMapScreen(
+            rides: rides.map((r) => r.source).toList(),
+            title: 'Nearby requests',
+            onTapRide: (ride) => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => DriverViewDetails(ride: ride)),
+            ),
+          ),
         ),
-      )),
+      ),
       child: Container(
-        height: 30.h,
-        padding: EdgeInsets.symmetric(horizontal: 12.w),
+        padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 8.h),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: Consonants.primaryColor,
-          borderRadius: BorderRadius.circular(20.r),
+          color: Consonants.chipBg,
+          borderRadius: BorderRadius.circular(Consonants.rPill.r),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.map_rounded, size: 14.sp, color: Consonants.whiteColor),
-            SizedBox(width: 5.w),
-            CustomWidgets.customText(
-                'Map', 11.sp, Consonants.whiteColor, FontWeight.w700),
+            Icon(Icons.map_outlined, size: 16.sp, color: Consonants.iconInk),
+            SizedBox(width: 6.w),
+            Text(
+              'Map',
+              style: AppText.navLabel(
+                color: Consonants.iconInk,
+              ).copyWith(fontSize: 13.sp),
+            ),
           ],
         ),
-      ),
-    );
-  }
-
-  /// Sort chips for the feed.
-  Widget _sortBar() {
-    return SizedBox(
-      height: 30.h,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: EdgeInsets.symmetric(horizontal: 20.w),
-        itemCount: _FeedSort.values.length,
-        separatorBuilder: (_, __) => SizedBox(width: 8.w),
-        itemBuilder: (_, i) {
-          final s = _FeedSort.values[i];
-          final selected = s == _sort;
-          return GestureDetector(
-            onTap: () => setState(() => _sort = s),
-            child: Container(
-              alignment: Alignment.center,
-              padding: EdgeInsets.symmetric(horizontal: 14.w),
-              decoration: BoxDecoration(
-                color:
-                    selected ? Consonants.primaryColor : Consonants.whiteColor,
-                borderRadius: BorderRadius.circular(20.r),
-                border: Border.all(
-                  color: selected
-                      ? Consonants.primaryColor
-                      : Consonants.lightGreyColor,
-                ),
-              ),
-              child: CustomWidgets.customText(
-                s.label,
-                11.sp,
-                selected ? Consonants.whiteColor : Consonants.greyColor,
-                FontWeight.w700,
-              ),
-            ),
-          );
-        },
       ),
     );
   }
@@ -155,123 +88,122 @@ class _DriverridesState extends ConsumerState<Driverrides> {
     final isOnline = ref.watch(driverOnlineProvider);
 
     return Scaffold(
-      backgroundColor: Consonants.scaffoldBackgroundColor,
+      backgroundColor: Consonants.canvas,
       body: SafeArea(
+        bottom: false,
         child: RefreshIndicator(
+          color: Consonants.indigo,
+          backgroundColor: Consonants.surface,
           onRefresh: () async => ref.invalidate(driverFeedProvider),
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(
               parent: BouncingScrollPhysics(),
             ),
-            padding: EdgeInsets.only(bottom: 24.h),
+            padding: EdgeInsets.only(bottom: Consonants.navClearance.h),
             child: !isOnline
                 ? Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const _Header(rideCount: 0, isOnline: false),
-                      SizedBox(height: 14.h),
+                      const _Header(isOnline: false),
                       _OfflinePlaceholder(
                         onGoOnline: () =>
                             ref.read(driverOnlineProvider.notifier).goOnline(),
                       ),
                     ],
                   )
-                : ref.watch(driverFeedProvider).when(
-                      // Don't flash the spinner on the 12s background poll.
-                      skipLoadingOnReload: true,
-                      loading: () => Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const _Header(rideCount: 0, isOnline: true),
-                          SizedBox(height: 80.h),
-                          const Center(child: CircularProgressIndicator()),
-                        ],
-                      ),
-                      error: (e, _) => Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const _Header(rideCount: 0, isOnline: true),
-                          SizedBox(height: 14.h),
-                          _FeedError(
-                            message: e is ApiException
-                                ? e.message
-                                : "Couldn't load ride requests",
-                            onRetry: () => ref.invalidate(driverFeedProvider),
-                          ),
-                        ],
-                      ),
-                      data: (rides) {
-                        final all = rides
-                            .where((r) => !_declined.contains(r.id))
-                            .map(_RideRequest.fromAvailable)
-                            .toList();
-                        final filtered = _applySort(_applyGenderFilter(all));
-                        final maleCount =
-                            all.where((r) => r.gender == "MALE").length;
-                        final femaleCount =
-                            all.where((r) => r.gender == "FEMALE").length;
-
-                        return Column(
+                : ref
+                      .watch(driverFeedProvider)
+                      .when(
+                        // Don't flash the spinner on the 12s background poll.
+                        skipLoadingOnReload: true,
+                        loading: () => Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            _Header(
-                                rideCount: filtered.length, isOnline: true),
-                            SizedBox(height: 14.h),
-                            _FilterPills(
-                              selected: _filter,
-                              allCount: all.length,
-                              maleCount: maleCount,
-                              femaleCount: femaleCount,
-                              onSelect: (v) => setState(() => _filter = v),
+                            const _Header(isOnline: true),
+                            SizedBox(height: 90.h),
+                            const Center(
+                              child: CircularProgressIndicator(
+                                color: Consonants.indigo,
+                                strokeWidth: 2.5,
+                              ),
                             ),
-                            SizedBox(height: 10.h),
-                            Row(
-                              children: [
-                                Expanded(child: _sortBar()),
-                                SizedBox(width: 8.w),
-                                _mapButton(filtered),
-                                SizedBox(width: 20.w),
+                          ],
+                        ),
+                        error: (e, _) => Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const _Header(isOnline: true),
+                            _FeedError(
+                              message: e is ApiException
+                                  ? e.message
+                                  : "Couldn't load ride requests",
+                              onRetry: () => ref.invalidate(driverFeedProvider),
+                            ),
+                          ],
+                        ),
+                        data: (rides) {
+                          final all = rides
+                              .where((r) => !_declined.contains(r.id))
+                              .map(_RideRequest.fromAvailable)
+                              .toList();
+                          final filtered = _byDistance(all);
+
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const _Header(isOnline: true),
+                              // Nothing to pin — the map would open empty and
+                              // fall back to its default centre, which reads
+                              // as broken.
+                              if (filtered.isNotEmpty) ...[
+                                Row(
+                                  children: [
+                                    const Spacer(),
+                                    _mapButton(filtered),
+                                    SizedBox(width: Consonants.gutter.w),
+                                  ],
+                                ),
                               ],
-                            ),
-                            SizedBox(height: 14.h),
-                            if (filtered.isEmpty)
-                              _EmptyState(filter: _filter)
-                            else
-                              for (int i = 0; i < filtered.length; i++) ...[
-                                _RideSummaryCard(
-                                  ride: filtered[i],
-                                  onViewDetails: () => Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => DriverViewDetails(
-                                        ride: filtered[i].source,
+                              SizedBox(height: 20.h),
+                              if (filtered.isEmpty)
+                                const _EmptyState()
+                              else
+                                for (int i = 0; i < filtered.length; i++) ...[
+                                  _RideSummaryCard(
+                                    ride: filtered[i],
+                                    onViewDetails: () => Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => DriverViewDetails(
+                                          ride: filtered[i].source,
+                                        ),
                                       ),
                                     ),
+                                    onDecline: () {
+                                      final id = filtered[i].id;
+                                      // Hide it instantly, and persist the
+                                      // decline so it stays gone on later polls.
+                                      setState(() => _declined.add(id));
+                                      ref
+                                          .read(rideServiceProvider)
+                                          .driverDeclineRide(id)
+                                          .catchError((_) {});
+                                      ScaffoldMessenger.of(context)
+                                        ..hideCurrentSnackBar()
+                                        ..showSnackBar(
+                                          CustomWidgets.customErrorSnackBar(
+                                            "Ride declined",
+                                          ),
+                                        );
+                                    },
                                   ),
-                                  onDecline: () {
-                                    final id = filtered[i].id;
-                                    // Hide it instantly, and persist the
-                                    // decline so it stays gone on later polls.
-                                    setState(() => _declined.add(id));
-                                    ref
-                                        .read(rideServiceProvider)
-                                        .driverDeclineRide(id)
-                                        .catchError((_) {});
-                                    ScaffoldMessenger.of(context)
-                                      ..hideCurrentSnackBar()
-                                      ..showSnackBar(
-                                        CustomWidgets.customErrorSnackBar(
-                                            "Ride declined"),
-                                      );
-                                  },
-                                ),
-                                if (i != filtered.length - 1)
-                                  SizedBox(height: 14.h),
-                              ],
-                          ],
-                        );
-                      },
-                    ),
+                                  if (i != filtered.length - 1)
+                                    SizedBox(height: 16.h),
+                                ],
+                            ],
+                          );
+                        },
+                      ),
           ),
         ),
       ),
@@ -290,47 +222,49 @@ class _FeedError extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: EdgeInsets.symmetric(horizontal: 20.w),
-      padding: EdgeInsets.symmetric(vertical: 32.h, horizontal: 20.w),
-      decoration: BoxDecoration(
-        color: Consonants.whiteColor,
-        borderRadius: BorderRadius.circular(20.r),
-        border: Border.all(color: Consonants.lightGreyColor, width: 1.2),
-      ),
-      child: Column(
-        children: [
-          Icon(Icons.cloud_off_rounded,
-              size: 36.sp, color: Consonants.greyColor),
-          SizedBox(height: 12.h),
-          CustomWidgets.customText(
-            message,
-            12.sp,
-            Consonants.boldTextColor,
-            FontWeight.w700,
-            textAlign: TextAlign.center,
-            maxLines: 3,
-          ),
-          SizedBox(height: 14.h),
-          GestureDetector(
-            onTap: onRetry,
-            child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 22.w, vertical: 10.h),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Consonants.primaryColor, Color(0xff5AC8FA)],
-                ),
-                borderRadius: BorderRadius.circular(40.r),
+    // Full width so the centred column doesn't hug the left edge inside the
+    // start-aligned parent Column.
+    return SizedBox(
+      width: double.infinity,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          Consonants.gutter.w,
+          40.h,
+          Consonants.gutter.w,
+          0,
+        ),
+        child: Column(
+          children: [
+            Container(
+              width: 84.w,
+              height: 84.w,
+              alignment: Alignment.center,
+              decoration: const BoxDecoration(
+                color: Consonants.indigoWash,
+                shape: BoxShape.circle,
               ),
-              child: CustomWidgets.customText(
-                "Retry",
-                12.sp,
-                Consonants.whiteColor,
-                FontWeight.w800,
+              child: Icon(
+                Icons.cloud_off_outlined,
+                size: 34.sp,
+                color: Consonants.iconInk,
               ),
             ),
-          ),
-        ],
+            SizedBox(height: 20.h),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: AppText.sectionHeading().copyWith(fontSize: 18.sp),
+            ),
+            SizedBox(height: 24.h),
+            AppButton(
+              label: "Try again",
+              kind: AppButtonKind.secondary,
+              onPressed: onRetry,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -341,73 +275,52 @@ class _FeedError extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _Header extends StatelessWidget {
-  final int rideCount;
   final bool isOnline;
-  const _Header({required this.rideCount, required this.isOnline});
+  const _Header({required this.isOnline});
 
   @override
   Widget build(BuildContext context) {
-    final subtitle = !isOnline
-        ? "You're offline — go online to see requests"
-        : rideCount == 1
-            ? "1 shared ride matches your filter"
-            : "$rideCount shared rides match your filter";
     return Padding(
-      padding: EdgeInsets.fromLTRB(20.w, 14.h, 20.w, 0),
+      padding: EdgeInsets.fromLTRB(
+        Consonants.gutter.w,
+        18.h,
+        Consonants.gutter.w,
+        20.h,
+      ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                CustomWidgets.customText(
-                  "Available Rides",
-                  18.sp,
-                  Consonants.boldTextColor,
-                  FontWeight.w800,
-                ),
-                SizedBox(height: 2.h),
-                CustomWidgets.customText(
-                  subtitle,
-                  11.sp,
-                  Consonants.greyColor,
-                  FontWeight.w500,
-                  maxLines: 1,
-                ),
-              ],
+            child: Text(
+              "Ride requests",
+              style: AppText.screenTitle().copyWith(fontSize: 26.sp),
             ),
           ),
-          SizedBox(width: 8.w),
-          // Live status pill — green when online, grey when offline.
+          SizedBox(width: 12.w),
+          // Live status pill — indigo while online, muted when offline.
           Container(
-            padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 6.h),
+            padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 7.h),
             decoration: BoxDecoration(
-              color: isOnline
-                  ? Consonants.primaryGreenColor
-                  : Consonants.lightGreyColor,
-              borderRadius: BorderRadius.circular(20.r),
+              color: isOnline ? Consonants.indigoWash : Consonants.chipBg,
+              borderRadius: BorderRadius.circular(Consonants.rPill.r),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
-                  width: 6.w,
-                  height: 6.w,
+                  width: 7.w,
+                  height: 7.w,
                   decoration: BoxDecoration(
-                    color: isOnline
-                        ? const Color(0xff16A34A)
-                        : Consonants.greyColor,
+                    color: isOnline ? Consonants.violet : Consonants.textMuted,
                     shape: BoxShape.circle,
                   ),
                 ),
-                SizedBox(width: 5.w),
-                CustomWidgets.customText(
+                SizedBox(width: 6.w),
+                Text(
                   isOnline ? "Online" : "Offline",
-                  10.sp,
-                  isOnline
-                      ? const Color(0xff16A34A)
-                      : Consonants.greyColor,
-                  FontWeight.w800,
+                  style: AppText.navLabel(
+                    color: isOnline ? Consonants.indigo : Consonants.textMuted,
+                  ).copyWith(fontSize: 12.sp),
                 ),
               ],
             ),
@@ -419,7 +332,7 @@ class _Header extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// OFFLINE PLACEHOLDER  — gates the rides list behind the home-page online toggle
+// OFFLINE PLACEHOLDER  — gates the rides list behind the online toggle
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _OfflinePlaceholder extends StatelessWidget {
@@ -428,232 +341,49 @@ class _OfflinePlaceholder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: EdgeInsets.symmetric(horizontal: 20.w),
-      padding: EdgeInsets.fromLTRB(20.w, 28.h, 20.w, 22.h),
-      decoration: BoxDecoration(
-        color: Consonants.whiteColor,
-        borderRadius: BorderRadius.circular(22.r),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 14,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Container(
-            width: 84.w,
-            height: 84.w,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Consonants.primaryColor.withValues(alpha: 0.15),
-                  const Color(0xff5AC8FA).withValues(alpha: 0.15),
-                ],
-              ),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              Icons.power_settings_new_rounded,
-              size: 36.sp,
-              color: Consonants.primaryColor,
-            ),
-          ),
-          SizedBox(height: 14.h),
-          CustomWidgets.customText(
-            "You're currently offline",
-            15.sp,
-            Consonants.boldTextColor,
-            FontWeight.w800,
-          ),
-          SizedBox(height: 6.h),
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 12.w),
-            child: CustomWidgets.customText(
-              "Go online to start receiving ride requests from passengers nearby",
-              11.sp,
-              Consonants.greyColor,
-              FontWeight.w500,
-              textAlign: TextAlign.center,
-            ),
-          ),
-          SizedBox(height: 18.h),
-          GestureDetector(
-            onTap: onGoOnline,
-            child: Container(
-              padding:
-                  EdgeInsets.symmetric(horizontal: 22.w, vertical: 12.h),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Consonants.primaryColor, Color(0xff5AC8FA)],
-                ),
-                borderRadius: BorderRadius.circular(40.r),
-                boxShadow: [
-                  BoxShadow(
-                    color: Consonants.primaryColor.withValues(alpha: 0.30),
-                    blurRadius: 12,
-                    offset: const Offset(0, 6),
-                  ),
-                ],
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.bolt_rounded,
-                      size: 16.sp, color: Consonants.whiteColor),
-                  SizedBox(width: 6.w),
-                  CustomWidgets.customText(
-                    "Go Online",
-                    13.sp,
-                    Consonants.whiteColor,
-                    FontWeight.w800,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          SizedBox(height: 8.h),
-          CustomWidgets.customText(
-            "You can also toggle from the Home tab",
-            10.sp,
-            Consonants.greyColor,
-            FontWeight.w500,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// FILTER PILLS  — All / Male / Female
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _FilterPills extends StatelessWidget {
-  final _GenderFilter selected;
-  final int allCount;
-  final int maleCount;
-  final int femaleCount;
-  final ValueChanged<_GenderFilter> onSelect;
-
-  const _FilterPills({
-    required this.selected,
-    required this.allCount,
-    required this.maleCount,
-    required this.femaleCount,
-    required this.onSelect,
-  });
-
-  @override
-  Widget build(BuildContext context) {
+    // Full width so the stretched column fills the screen rather than
+    // shrink-wrapping inside the start-aligned parent Column.
     return SizedBox(
-      height: 38.h,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
-        padding: EdgeInsets.symmetric(horizontal: 16.w),
-        children: [
-          _pill(
-            label: "All",
-            count: allCount,
-            value: _GenderFilter.all,
-          ),
-          SizedBox(width: 8.w),
-          _pill(
-            label: "Male",
-            count: maleCount,
-            value: _GenderFilter.male,
-            icon: Icons.male_rounded,
-            iconColor: Consonants.primaryColor,
-          ),
-          SizedBox(width: 8.w),
-          _pill(
-            label: "Female",
-            count: femaleCount,
-            value: _GenderFilter.female,
-            icon: Icons.female_rounded,
-            iconColor: const Color(0xffEC4899),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _pill({
-    required String label,
-    required int count,
-    required _GenderFilter value,
-    IconData? icon,
-    Color? iconColor,
-  }) {
-    final isSelected = selected == value;
-    return GestureDetector(
-      onTap: () => onSelect(value),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 8.h),
-        decoration: BoxDecoration(
-          gradient: isSelected
-              ? const LinearGradient(
-                  colors: [Consonants.primaryColor, Color(0xff5AC8FA)],
-                )
-              : null,
-          color: isSelected ? null : Consonants.whiteColor,
-          borderRadius: BorderRadius.circular(20.r),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: Consonants.primaryColor.withValues(alpha: 0.30),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
+      width: double.infinity,
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: Consonants.gutter.w),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            HeroSurface(
+              padding: EdgeInsets.fromLTRB(24.w, 26.h, 24.w, 26.h),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 52.w,
+                    height: 52.w,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: Consonants.surface.withValues(alpha: 0.16),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.power_settings_new_rounded,
+                      size: 26.sp,
+                      color: Consonants.surface,
+                    ),
                   ),
-                ]
-              : [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.04),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
+                  SizedBox(height: 20.h),
+                  Text(
+                    "You're currently offline",
+                    style: AppText.screenTitle(
+                      color: Consonants.surface,
+                    ).copyWith(fontSize: 24.sp),
                   ),
                 ],
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (icon != null) ...[
-              Icon(
-                icon,
-                size: 13.sp,
-                color: isSelected ? Consonants.whiteColor : iconColor,
               ),
-              SizedBox(width: 5.w),
-            ],
-            CustomWidgets.customText(
-              label,
-              11.sp,
-              isSelected ? Consonants.whiteColor : Consonants.boldTextColor,
-              FontWeight.w700,
             ),
-            SizedBox(width: 6.w),
-            Container(
-              padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 1.h),
-              decoration: BoxDecoration(
-                color: isSelected
-                    ? Colors.white.withValues(alpha: 0.30)
-                    : Consonants.lightBlueColor,
-                borderRadius: BorderRadius.circular(20.r),
-              ),
-              child: CustomWidgets.customText(
-                "$count",
-                9.sp,
-                isSelected ? Consonants.whiteColor : Consonants.primaryColor,
-                FontWeight.w800,
-              ),
+            SizedBox(height: 24.h),
+            AppButton(
+              label: "Go online",
+              icon: Icons.bolt_rounded,
+              onPressed: onGoOnline,
             ),
           ],
         ),
@@ -667,65 +397,52 @@ class _FilterPills extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _EmptyState extends StatelessWidget {
-  final _GenderFilter filter;
-  const _EmptyState({required this.filter});
+  const _EmptyState();
 
   @override
   Widget build(BuildContext context) {
-    final label = switch (filter) {
-      _GenderFilter.male => "No male host rides right now",
-      _GenderFilter.female => "No female host rides right now",
-      _GenderFilter.all => "No rides available right now",
-    };
-    return Container(
-      margin: EdgeInsets.symmetric(horizontal: 20.w),
-      padding: EdgeInsets.symmetric(vertical: 32.h, horizontal: 20.w),
-      decoration: BoxDecoration(
-        color: Consonants.whiteColor,
-        borderRadius: BorderRadius.circular(20.r),
-        border: Border.all(
-          color: Consonants.lightGreyColor,
-          width: 1.2,
+    // The parent Column is start-aligned, so without the full width this
+    // shrink-wraps its widest child and the whole state hugs the left edge.
+    return SizedBox(
+      width: double.infinity,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          Consonants.gutter.w,
+          40.h,
+          Consonants.gutter.w,
+          0,
         ),
-      ),
-      child: Column(
-        children: [
-          Container(
-            width: 64.w,
-            height: 64.w,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: Consonants.lightBlueColor,
-              shape: BoxShape.circle,
+        child: Column(
+          children: [
+            Container(
+              width: 84.w,
+              height: 84.w,
+              alignment: Alignment.center,
+              decoration: const BoxDecoration(
+                color: Consonants.indigoWash,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.directions_car_outlined,
+                size: 34.sp,
+                color: Consonants.iconInk,
+              ),
             ),
-            child: Icon(
-              Icons.tune_rounded,
-              size: 28.sp,
-              color: Consonants.primaryColor,
+            SizedBox(height: 20.h),
+            Text(
+              "No rides available right now",
+              textAlign: TextAlign.center,
+              style: AppText.sectionHeading().copyWith(fontSize: 18.sp),
             ),
-          ),
-          SizedBox(height: 12.h),
-          CustomWidgets.customText(
-            label,
-            13.sp,
-            Consonants.boldTextColor,
-            FontWeight.w700,
-          ),
-          SizedBox(height: 4.h),
-          CustomWidgets.customText(
-            "Try switching the filter to see more rides",
-            11.sp,
-            Consonants.greyColor,
-            FontWeight.w500,
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// RIDE SUMMARY CARD
+// RIDE SUMMARY CARD  — a claimable request is a tappable object, so it's a card
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _RideSummaryCard extends StatelessWidget {
@@ -743,41 +460,44 @@ class _RideSummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: EdgeInsets.symmetric(horizontal: 20.w),
-      decoration: BoxDecoration(
-        color: Consonants.whiteColor,
-        borderRadius: BorderRadius.circular(22.r),
-        boxShadow: [
-          BoxShadow(
-            color: Consonants.primaryColor.withValues(alpha: 0.10),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          _hostStrip(),
-          Padding(
-            padding: EdgeInsets.fromLTRB(16.w, 14.h, 16.w, 16.h),
-            child: Column(
-              children: [
-                _statsPills(),
-                _metaRow(),
-                SizedBox(height: 16.h),
-                _actionButtons(),
-              ],
-            ),
-          ),
-        ],
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: Consonants.gutter.w),
+      child: AppCard(
+        onTap: onViewDetails,
+        padding: EdgeInsets.fromLTRB(18.w, 18.h, 18.w, 18.h),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _hostRow(),
+            SizedBox(height: 18.h),
+            _routeBlock(),
+            SizedBox(height: 16.h),
+            _metaRow(),
+            SizedBox(height: 18.h),
+            const AppDivider(),
+            SizedBox(height: 16.h),
+            _fareRow(),
+            SizedBox(height: 16.h),
+            _actionButtons(),
+          ],
+        ),
       ),
     );
   }
 
   static const _months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
   ];
 
   String _scheduledLabel(DateTime dt) {
@@ -787,251 +507,224 @@ class _RideSummaryCard extends StatelessWidget {
     return '${_months[dt.month - 1]} ${dt.day}, $h:$m $ap';
   }
 
-  /// Quick facts under the stats: scheduled-departure badge (when set) and the
-  /// trip's length + how far the pickup is from the driver.
-  Widget _metaRow() {
-    final r = ride.source;
-    final chips = <Widget>[];
-    if (r.isScheduled) {
-      chips.add(_metaChip(
-          Icons.schedule_rounded, _scheduledLabel(r.departureTime!),
-          accent: true));
-    } else {
-      chips.add(_metaChip(Icons.bolt_rounded, 'Leave now'));
-    }
-    if (r.tripDistanceKm != null) {
-      chips.add(_metaChip(Icons.straighten_rounded,
-          '${r.tripDistanceKm!.toStringAsFixed(1)} km trip'));
-    }
-    if (r.tripDurationMin != null) {
-      chips.add(_metaChip(Icons.access_time_rounded, '${r.tripDurationMin} min'));
-    }
-    if (r.distanceKm != null) {
-      chips.add(_metaChip(
-          Icons.near_me_rounded, '${r.distanceKm!.toStringAsFixed(1)} km away'));
-    }
-    return Padding(
-      padding: EdgeInsets.only(top: 12.h),
-      child: Wrap(spacing: 8.w, runSpacing: 8.h, children: chips),
-    );
-  }
-
-  Widget _metaChip(IconData icon, String label, {bool accent = false}) {
-    final fg = accent ? Consonants.primaryColor : Consonants.greyColor;
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 6.h),
-      decoration: BoxDecoration(
-        color: accent
-            ? Consonants.lightBlueColor
-            : Consonants.scaffoldBackgroundColor,
-        borderRadius: BorderRadius.circular(20.r),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 13.sp, color: fg),
-          SizedBox(width: 4.w),
-          CustomWidgets.customText(
-              label, 10.5.sp, fg, FontWeight.w700, maxLines: 1),
-        ],
-      ),
-    );
-  }
-
-  // ─── Host strip (gradient top section) ──────────────────
-  Widget _hostStrip() {
-    return Container(
-      padding: EdgeInsets.all(14.w),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22.r)),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Consonants.primaryColor, Color(0xff5AC8FA)],
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 48.w,
-            height: 48.w,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: Consonants.whiteColor,
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.40),
-                width: 2,
-              ),
-            ),
-            child: Text(
-              ride.hostInitial,
-              style: TextStyle(
-                color: Consonants.primaryColor,
-                fontSize: 20.sp,
-                fontWeight: FontWeight.w800,
-                fontFamily: Consonants.fontFamily,
-              ),
-            ),
-          ),
-          SizedBox(width: 12.w),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    CustomWidgets.customText(
-                      "Trip Host",
-                      9.sp,
-                      Consonants.whiteColor.withValues(alpha: 0.85),
-                      FontWeight.w700,
-                    ),
-                    SizedBox(width: 6.w),
-                    Container(
-                      padding: EdgeInsets.symmetric(
-                          horizontal: 6.w, vertical: 2.h),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.25),
-                        borderRadius: BorderRadius.circular(20.r),
-                      ),
-                      child: CustomWidgets.customText(
-                        "Created the ride",
-                        8.sp,
-                        Consonants.whiteColor,
-                        FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 4.h),
-                Row(
-                  children: [
-                    Flexible(
-                      child: CustomWidgets.customText(
-                        ride.hostName,
-                        14.sp,
-                        Consonants.whiteColor,
-                        FontWeight.w800,
-                        maxLines: 1,
-                      ),
-                    ),
-                    SizedBox(width: 5.w),
-                    Icon(Icons.verified_rounded,
-                        size: 14.sp, color: Consonants.whiteColor),
-                  ],
-                ),
-                SizedBox(height: 3.h),
-                Row(
-                  children: [
-                    Icon(Icons.star_rounded,
-                        size: 12.sp, color: const Color(0xffFFD54F)),
-                    SizedBox(width: 3.w),
-                    CustomWidgets.customText(
-                      ride.hostRating,
-                      11.sp,
-                      Consonants.whiteColor.withValues(alpha: 0.95),
-                      FontWeight.w700,
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          Container(
-            padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
-            decoration: BoxDecoration(
-              color: Consonants.whiteColor,
-              borderRadius: BorderRadius.circular(20.r),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  _isFemale ? Icons.female_rounded : Icons.male_rounded,
-                  size: 11.sp,
-                  color: _isFemale
-                      ? const Color(0xffEC4899)
-                      : Consonants.primaryColor,
-                ),
-                SizedBox(width: 3.w),
-                CustomWidgets.customText(
-                  _isFemale ? "Female" : "Male",
-                  9.sp,
-                  Consonants.boldTextColor,
-                  FontWeight.w700,
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ─── Stats: total fare / avg rating / riders ────────────
-  Widget _statsPills() {
+  // ─── Host row ───────────────────────────────────────────
+  Widget _hostRow() {
     return Row(
       children: [
-        Expanded(
-          child: _statTile(
-            icon: Icons.payments_rounded,
-            value: "Rs ${ride.totalFare}",
-            label: "Fare / rider",
+        Container(
+          width: 46.w,
+          height: 46.w,
+          alignment: Alignment.center,
+          decoration: const BoxDecoration(
+            color: Consonants.indigoWash,
+            shape: BoxShape.circle,
+          ),
+          child: Text(
+            ride.hostInitial,
+            style: AppText.amount(
+              color: Consonants.indigo,
+            ).copyWith(fontSize: 18.sp),
           ),
         ),
-        SizedBox(width: 8.w),
+        SizedBox(width: 14.w),
         Expanded(
-          child: _statTile(
-            icon: Icons.star_rounded,
-            value: ride.hostRating,
-            label: "Avg rating",
-            iconColor: const Color(0xffF5B800),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                ride.hostName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppText.rowLabel().copyWith(fontSize: 16.sp),
+              ),
+              SizedBox(height: 3.h),
+              Text(
+                "Trip host · ${ride.hostRating} · ${ride.riderCount} riders",
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppText.caption().copyWith(fontSize: 12.5.sp),
+              ),
+            ],
           ),
         ),
-        SizedBox(width: 8.w),
-        Expanded(
-          child: _statTile(
-            icon: Icons.people_alt_rounded,
-            value: "${ride.riderCount}",
-            label: "Riders",
+        SizedBox(width: 10.w),
+        Container(
+          padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 6.h),
+          decoration: BoxDecoration(
+            color: Consonants.chipBg,
+            borderRadius: BorderRadius.circular(Consonants.rPill.r),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                _isFemale ? Icons.female_outlined : Icons.male_outlined,
+                size: 13.sp,
+                color: Consonants.iconInk,
+              ),
+              SizedBox(width: 4.w),
+              Text(
+                _isFemale ? "Female" : "Male",
+                style: AppText.navLabel(
+                  color: Consonants.iconInk,
+                ).copyWith(fontSize: 11.5.sp),
+              ),
+            ],
           ),
         ),
       ],
     );
   }
 
-  Widget _statTile({
-    required IconData icon,
-    required String value,
-    required String label,
-    Color? iconColor,
-  }) {
-    return Container(
-      padding: EdgeInsets.symmetric(vertical: 10.h, horizontal: 6.w),
-      decoration: BoxDecoration(
-        color: Consonants.lightBlueColor,
-        borderRadius: BorderRadius.circular(12.r),
-      ),
-      child: Column(
-        children: [
-          Icon(icon,
-              size: 16.sp, color: iconColor ?? Consonants.primaryColor),
-          SizedBox(height: 4.h),
-          CustomWidgets.customText(
-            value,
-            12.sp,
-            Consonants.boldTextColor,
-            FontWeight.w800,
+  // ─── Route (pickup → drop) ──────────────────────────────
+  Widget _routeBlock() {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Column(
+          children: [
+            SizedBox(height: 5.h),
+            Container(
+              width: 10.w,
+              height: 10.w,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: Consonants.indigo, width: 2.5),
+              ),
+            ),
+            Container(width: 1.5, height: 26.h, color: Consonants.border),
+            Icon(
+              Icons.location_on_outlined,
+              size: 14.sp,
+              color: Consonants.iconInk,
+            ),
+          ],
+        ),
+        SizedBox(width: 12.w),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                ride.startPoint,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppText.rowLabel().copyWith(fontSize: 14.5.sp),
+              ),
+              SizedBox(height: 18.h),
+              Text(
+                ride.endPoint,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppText.rowLabel().copyWith(fontSize: 14.5.sp),
+              ),
+            ],
           ),
-          CustomWidgets.customText(
+        ),
+      ],
+    );
+  }
+
+  /// Quick facts: scheduled-departure badge (when set) and the trip's length
+  /// plus how far the pickup is from the driver.
+  Widget _metaRow() {
+    final r = ride.source;
+    final chips = <Widget>[];
+    if (r.isScheduled) {
+      chips.add(
+        _metaChip(
+          Icons.schedule_rounded,
+          _scheduledLabel(r.departureTime!),
+          accent: true,
+        ),
+      );
+    } else if (r.isDeparted) {
+      // Its slot has passed — "Leave now" would be a lie.
+      chips.add(
+        _metaChip(
+          Icons.history_rounded,
+          'Departed ${_scheduledLabel(r.departureTime!)}',
+        ),
+      );
+    } else {
+      chips.add(_metaChip(Icons.bolt_rounded, 'Leave now', accent: true));
+    }
+    if (r.tripDistanceKm != null) {
+      chips.add(
+        _metaChip(
+          Icons.straighten_rounded,
+          '${r.tripDistanceKm!.toStringAsFixed(1)} km trip',
+        ),
+      );
+    }
+    if (r.tripDurationMin != null) {
+      chips.add(
+        _metaChip(Icons.access_time_rounded, '${r.tripDurationMin} min'),
+      );
+    }
+    if (r.distanceKm != null) {
+      chips.add(
+        _metaChip(
+          Icons.near_me_outlined,
+          '${r.distanceKm!.toStringAsFixed(1)} km away',
+        ),
+      );
+    }
+    return Wrap(spacing: 8.w, runSpacing: 8.h, children: chips);
+  }
+
+  Widget _metaChip(IconData icon, String label, {bool accent = false}) {
+    final fg = accent ? Consonants.indigo : Consonants.textMuted;
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 11.w, vertical: 7.h),
+      decoration: BoxDecoration(
+        color: accent ? Consonants.indigoWash : Consonants.canvas,
+        borderRadius: BorderRadius.circular(Consonants.rPill.r),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13.sp, color: fg),
+          SizedBox(width: 5.w),
+          Text(
             label,
-            9.sp,
-            Consonants.greyColor,
-            FontWeight.w500,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppText.navLabel(color: fg).copyWith(fontSize: 12.sp),
           ),
         ],
       ),
+    );
+  }
+
+  // ─── Fare — the biggest thing on the card ───────────────
+  Widget _fareRow() {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                "Fare per rider",
+                style: AppText.caption().copyWith(fontSize: 12.5.sp),
+              ),
+              SizedBox(height: 4.h),
+              Text(
+                "Rs ${ride.totalFare}",
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppText.screenTitle().copyWith(fontSize: 24.sp),
+              ),
+            ],
+          ),
+        ),
+        Text(
+          "${ride.riderCount} riders",
+          style: AppText.caption().copyWith(fontSize: 12.5.sp),
+        ),
+      ],
     );
   }
 
@@ -1039,66 +732,20 @@ class _RideSummaryCard extends StatelessWidget {
   Widget _actionButtons() {
     return Row(
       children: [
+        // 3:4 rather than 1:2 — at a third of the row "Decline" truncated to
+        // "De…". The primary still reads as the wider of the two.
         Expanded(
-          child: GestureDetector(
-            onTap: onDecline,
-            child: Container(
-              padding: EdgeInsets.symmetric(vertical: 13.h),
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: Consonants.whiteColor,
-                borderRadius: BorderRadius.circular(14.r),
-                border: Border.all(
-                  color: Consonants.lightGreyColor,
-                  width: 1.5,
-                ),
-              ),
-              child: CustomWidgets.customText(
-                "Decline",
-                12.sp,
-                Consonants.boldTextColor,
-                FontWeight.w700,
-              ),
-            ),
+          flex: 3,
+          child: AppButton(
+            label: "Decline",
+            kind: AppButtonKind.neutral,
+            onPressed: onDecline,
           ),
         ),
-        SizedBox(width: 10.w),
+        SizedBox(width: Consonants.gapButtons.w),
         Expanded(
-          flex: 2,
-          child: GestureDetector(
-            onTap: onViewDetails,
-            child: Container(
-              padding: EdgeInsets.symmetric(vertical: 13.h),
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Consonants.primaryColor, Color(0xff5AC8FA)],
-                ),
-                borderRadius: BorderRadius.circular(14.r),
-                boxShadow: [
-                  BoxShadow(
-                    color: Consonants.primaryColor.withValues(alpha: 0.30),
-                    blurRadius: 12,
-                    offset: const Offset(0, 6),
-                  ),
-                ],
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CustomWidgets.customText(
-                    "View Details",
-                    12.sp,
-                    Consonants.whiteColor,
-                    FontWeight.w800,
-                  ),
-                  SizedBox(width: 6.w),
-                  Icon(Icons.arrow_forward_rounded,
-                      size: 14.sp, color: Consonants.whiteColor),
-                ],
-              ),
-            ),
-          ),
+          flex: 4,
+          child: AppButton(label: "View details", onPressed: onViewDetails),
         ),
       ],
     );

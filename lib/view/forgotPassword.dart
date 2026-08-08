@@ -5,6 +5,7 @@ import 'package:ride_sharing/model/authModels.dart';
 import 'package:ride_sharing/provider/authProvider.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/consonants/errorHandler.dart';
+import 'package:ride_sharing/widgets/custom/appComponents.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
 import 'package:ride_sharing/widgets/custom/responsive.dart';
 
@@ -58,28 +59,46 @@ class _ForgotpasswordState extends ConsumerState<Forgotpassword> {
 
     return ResponsiveAuthScaffold(
       formKey: _formKey,
+      bodyPadding: EdgeInsets.symmetric(vertical: 28.h),
       body: [
-        CustomWidgets.customText(
-          "Reset Your Password",
-          20.sp,
-          Consonants.boldTextColor,
-          FontWeight.w700,
-        ),
-        SizedBox(height: 10.h),
         Padding(
-          padding: EdgeInsets.symmetric(horizontal: 20.w),
-          child: CustomWidgets.customText(
-            "Please enter your email address to receive a link to create a new password via email",
-            10.sp,
-            Consonants.greyColor,
-            FontWeight.w400,
-            textAlign: TextAlign.center,
+          padding: EdgeInsets.symmetric(horizontal: Consonants.gutter.w),
+          child: SizedBox(
+            width: double.infinity,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 56.w,
+                  height: 56.w,
+                  alignment: Alignment.center,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Consonants.indigoWash,
+                  ),
+                  child: Icon(
+                    Icons.lock_reset_outlined,
+                    size: 27.sp,
+                    color: Consonants.indigo,
+                  ),
+                ),
+                SizedBox(height: 24.h),
+                Text(
+                  "Reset Your Password",
+                  style: AppText.displayXs().copyWith(fontSize: 33.sp),
+                ),
+              ],
+            ),
           ),
         ),
-        SizedBox(height: 20.h),
+        SizedBox(height: 32.h),
         AuthFields(
           text: 'Email Address',
-          suffixIcon: Icon(Icons.email_rounded, size: 10.sp),
+          suffixIcon: Icon(
+            Icons.mail_outline_rounded,
+            size: 20.sp,
+            color: Consonants.iconInk,
+          ),
           controller: emailController,
           keyboardType: TextInputType.emailAddress,
           validator: (value) {
@@ -117,44 +136,39 @@ class ResetPassword extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: Consonants.whiteColor,
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(24.r),
-          topRight: Radius.circular(24.r),
-        ),
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        Consonants.gutter.w,
+        12.h,
+        Consonants.gutter.w,
+        22.h,
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          SizedBox(height: 20.h),
-          CustomWidgets.customButton(
-            "Send Reset Link",
-            onPressed,
+          AppButton(
+            label: "Send Reset Link",
+            onPressed: onPressed,
             isLoading: isLoading,
           ),
-          SizedBox(height: 10.h),
+          SizedBox(height: Consonants.gapButtons.h),
           GestureDetector(
             onTap: () => onResend?.call(),
-            child: CustomWidgets.customText(
+            child: Text(
               'Resent Link',
-              10.sp,
-              Consonants.primaryColor,
-              FontWeight.w700,
+              style: AppText.rowLabel(color: Consonants.indigo)
+                  .copyWith(fontSize: 14.5.sp, fontWeight: FontWeight.w700),
             ),
           ),
-          SizedBox(height: 20.h),
+          SizedBox(height: 16.h),
           GestureDetector(
             onTap: () => Navigator.pop(context),
-            child: CustomWidgets.customText(
+            child: Text(
               'Back to Login',
-              10.sp,
-              Consonants.greyColor,
-              FontWeight.w400,
+              style: AppText.rowLabel(color: Consonants.textMuted)
+                  .copyWith(fontSize: 14.5.sp, fontWeight: FontWeight.w400),
             ),
           ),
-          SizedBox(height: 20.h),
         ],
       ),
     );

@@ -6,6 +6,7 @@ import 'package:ride_sharing/model/profileModels.dart';
 import 'package:ride_sharing/provider/profileProvider.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/consonants/errorHandler.dart';
+import 'package:ride_sharing/widgets/custom/appComponents.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
 
 /// Edit-profile screen used by both passengers and drivers. The driver
@@ -189,386 +190,247 @@ class _EditprofileState extends ConsumerState<Editprofile> {
       profileControllerProvider.select((s) => s.isloading),
     );
 
-    return Scaffold(
-      backgroundColor: Consonants.scaffoldBackgroundColor,
-      resizeToAvoidBottomInset: true,
-      body: SafeArea(
-        child: Column(
+    return AppScreen(
+      formKey: _formKey,
+      padding: EdgeInsets.zero,
+      header: AppHeader(
+        title: "Edit Profile",
+        showBack: true,
+        onBack: () => Navigator.of(context).pop(),
+      ),
+      bottomBar: AppButton(
+        label: "Save Changes",
+        icon: Icons.check_rounded,
+        isLoading: saving,
+        onPressed: _save,
+      ),
+      children: [
+        _avatarHeader(),
+        SizedBox(height: 30.h),
+        _sectionLabel("Personal Details"),
+        SizedBox(height: 16.h),
+        AuthFields(
+          text: "Full Name",
+          controller: _name,
+          suffixIcon: const Icon(Icons.person_outline_rounded),
+          validator: _required("Enter your full name"),
+        ),
+        SizedBox(height: Consonants.gapFields.h),
+        AuthFields(
+          text: "Email Address",
+          controller: _email,
+          suffixIcon: const Icon(Icons.email_outlined),
+          keyboardType: TextInputType.emailAddress,
+          // Email is locked for both roles: changing it
+          // requires a separate re-verification flow.
+          readOnly: true,
+          validator: (v) {
+            if (v == null || v.isEmpty) {
+              return "Email is required";
+            }
+            if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(v)) {
+              return "Enter a valid email";
+            }
+            return null;
+          },
+        ),
+        SizedBox(height: Consonants.gapFields.h),
+        AuthFields(
+          text: "Phone Number",
+          controller: _phone,
+          suffixIcon: const Icon(Icons.phone_outlined),
+          keyboardType: TextInputType.number,
+          maxLength: 11,
+          inputFormatters: [
+            FilteringTextInputFormatter.digitsOnly,
+          ],
+          validator: (v) {
+            if (v == null || v.isEmpty) {
+              return "Phone number is required";
+            }
+            if (!RegExp(r'^03[0-9]{9}$').hasMatch(v)) {
+              return "Enter a valid Pakistani number";
+            }
+            return null;
+          },
+        ),
+        SizedBox(height: Consonants.gapFields.h),
+        AuthFields(
+          text: "CNIC Number",
+          controller: _cnic,
+          suffixIcon: const Icon(Icons.badge_outlined),
+          keyboardType: TextInputType.number,
+          maxLength: 15,
+          inputFormatters: [
+            FilteringTextInputFormatter.singleLineFormatter,
+            CnicInputFormatter(),
+          ],
+          validator: (v) {
+            if (v == null || v.isEmpty) {
+              return "CNIC is required";
+            }
+            if (!RegExp(r'^[0-9]{5}-[0-9]{7}-[0-9]{1}$').hasMatch(v)) {
+              return "Enter a valid CNIC";
+            }
+            return null;
+          },
+        ),
+        if (!widget.isPassenger) ...[
+          SizedBox(height: 30.h),
+          _sectionLabel("Vehicle Details"),
+          SizedBox(height: 16.h),
+          AuthFields(
+            text: "Car Make",
+            controller: _carMake,
+            suffixIcon: const Icon(Icons.directions_car_outlined),
+            validator: (v) {
+              if (v == null || v.trim().isEmpty) {
+                return "Required";
+              }
+              if (!RegExp(r'^[a-zA-Z ]+$').hasMatch(v)) {
+                return "Letters only";
+              }
+              return null;
+            },
+          ),
+          SizedBox(height: Consonants.gapFields.h),
+          AuthFields(
+            text: "Car Model",
+            controller: _carModel,
+            suffixIcon: const Icon(Icons.info_outline),
+            validator: _required("Required"),
+          ),
+          SizedBox(height: Consonants.gapFields.h),
+          AuthFields(
+            text: "Car Number",
+            controller: _carNumber,
+            suffixIcon: const Icon(Icons.confirmation_number_outlined),
+            validator: (v) {
+              if (v == null || v.trim().isEmpty) {
+                return "Required";
+              }
+              if (!RegExp(r'^[A-Za-z]{2,3}-[0-9]{3,4}$').hasMatch(v)) {
+                return "Format: ABC-1234";
+              }
+              return null;
+            },
+          ),
+          SizedBox(height: Consonants.gapFields.h),
+          AuthFields(
+            text: "Car Color",
+            controller: _carColor,
+            suffixIcon: const Icon(Icons.color_lens_outlined),
+            validator: _required("Required"),
+          ),
+          SizedBox(height: Consonants.gapFields.h),
+          AuthFields(
+            text: "Car Seats",
+            controller: _carSeats,
+            suffixIcon: const Icon(Icons.event_seat_outlined),
+            keyboardType: TextInputType.number,
+            validator: (v) {
+              if (v == null || v.isEmpty) {
+                return "Required";
+              }
+              if (!RegExp(r'^[0-9]+$').hasMatch(v)) {
+                return "Numbers only";
+              }
+              final seats = int.parse(v);
+              if (seats < 1 || seats > 4) {
+                return "Max 4 seats";
+              }
+              return null;
+            },
+          ),
+          SizedBox(height: Consonants.gapFields.h),
+          AuthFields(
+            text: "Car Year",
+            controller: _carYear,
+            suffixIcon: const Icon(Icons.calendar_today_outlined),
+            keyboardType: TextInputType.number,
+            validator: (v) {
+              if (v == null || v.isEmpty) {
+                return "Required";
+              }
+              if (!RegExp(r'^[0-9]{4}$').hasMatch(v)) {
+                return "Enter valid year";
+              }
+              final year = int.parse(v);
+              final current = DateTime.now().year;
+              if (year < 1980 || year > current) {
+                return "1980 – $current";
+              }
+              return null;
+            },
+          ),
+        ],
+      ],
+    );
+  }
+
+  // ─── Avatar hero ─────────────────────────────────────────
+
+  /// The screen's single focal point: the person being edited, on the one
+  /// gradient surface this screen is allowed.
+  Widget _avatarHeader() {
+    final name = _name.text.trim();
+    final initial = name.isNotEmpty ? name[0].toUpperCase() : "?";
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: Consonants.gutter.w),
+      child: HeroSurface(
+        padding: EdgeInsets.symmetric(horizontal: 22.w, vertical: 22.h),
+        child: Row(
           children: [
-            _topBar(),
-            Expanded(
-              child: SingleChildScrollView(
-                physics: const BouncingScrollPhysics(),
-                padding: EdgeInsets.only(bottom: 16.h),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    children: [
-                      SizedBox(height: 8.h),
-                      _avatarHeader(),
-                      SizedBox(height: 24.h),
-                      _sectionLabel("Personal Details"),
-                      SizedBox(height: 12.h),
-                      AuthFields(
-                        text: "Full Name",
-                        controller: _name,
-                        suffixIcon: const Icon(Icons.person_outline_rounded),
-                        validator: _required("Enter your full name"),
-                      ),
-                      AuthFields(
-                        text: "Email Address",
-                        controller: _email,
-                        suffixIcon: const Icon(Icons.email_outlined),
-                        keyboardType: TextInputType.emailAddress,
-                        // Email is locked for both roles: changing it
-                        // requires a separate re-verification flow.
-                        readOnly: true,
-                        validator: (v) {
-                          if (v == null || v.isEmpty) {
-                            return "Email is required";
-                          }
-                          if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$')
-                              .hasMatch(v)) {
-                            return "Enter a valid email";
-                          }
-                          return null;
-                        },
-                      ),
-                      AuthFields(
-                        text: "Phone Number",
-                        controller: _phone,
-                        suffixIcon: const Icon(Icons.phone_outlined),
-                        keyboardType: TextInputType.number,
-                        maxLength: 11,
-                        inputFormatters: [
-                          FilteringTextInputFormatter.digitsOnly,
-                        ],
-                        validator: (v) {
-                          if (v == null || v.isEmpty) {
-                            return "Phone number is required";
-                          }
-                          if (!RegExp(r'^03[0-9]{9}$').hasMatch(v)) {
-                            return "Enter a valid Pakistani number";
-                          }
-                          return null;
-                        },
-                      ),
-                      AuthFields(
-                        text: "CNIC Number",
-                        controller: _cnic,
-                        suffixIcon: const Icon(Icons.badge_outlined),
-                        keyboardType: TextInputType.number,
-                        maxLength: 15,
-                        inputFormatters: [
-                          FilteringTextInputFormatter.singleLineFormatter,
-                          CnicInputFormatter(),
-                        ],
-                        validator: (v) {
-                          if (v == null || v.isEmpty) {
-                            return "CNIC is required";
-                          }
-                          if (!RegExp(r'^[0-9]{5}-[0-9]{7}-[0-9]{1}$')
-                              .hasMatch(v)) {
-                            return "Enter a valid CNIC";
-                          }
-                          return null;
-                        },
-                      ),
-                      SizedBox(height: 8.h),
-                      if (!widget.isPassenger) ...[
-                        SizedBox(height: 24.h),
-                        _sectionLabel("Vehicle Details"),
-                        SizedBox(height: 12.h),
-                        AuthFields(
-                          text: "Car Make",
-                          controller: _carMake,
-                          suffixIcon: const Icon(Icons.drive_eta),
-                          validator: (v) {
-                            if (v == null || v.trim().isEmpty) {
-                              return "Required";
-                            }
-                            if (!RegExp(r'^[a-zA-Z ]+$').hasMatch(v)) {
-                              return "Letters only";
-                            }
-                            return null;
-                          },
-                        ),
-                        AuthFields(
-                          text: "Car Model",
-                          controller: _carModel,
-                          suffixIcon: const Icon(Icons.info_outline),
-                          validator: _required("Required"),
-                        ),
-                        AuthFields(
-                          text: "Car Number",
-                          controller: _carNumber,
-                          suffixIcon: const Icon(Icons.confirmation_number),
-                          validator: (v) {
-                            if (v == null || v.trim().isEmpty) {
-                              return "Required";
-                            }
-                            if (!RegExp(r'^[A-Za-z]{2,3}-[0-9]{3,4}$')
-                                .hasMatch(v)) {
-                              return "Format: ABC-1234";
-                            }
-                            return null;
-                          },
-                        ),
-                        AuthFields(
-                          text: "Car Color",
-                          controller: _carColor,
-                          suffixIcon: const Icon(Icons.color_lens),
-                          validator: _required("Required"),
-                        ),
-                        AuthFields(
-                          text: "Car Seats",
-                          controller: _carSeats,
-                          suffixIcon: const Icon(Icons.chair),
-                          keyboardType: TextInputType.number,
-                          validator: (v) {
-                            if (v == null || v.isEmpty) {
-                              return "Required";
-                            }
-                            if (!RegExp(r'^[0-9]+$').hasMatch(v)) {
-                              return "Numbers only";
-                            }
-                            final seats = int.parse(v);
-                            if (seats < 1 || seats > 4) {
-                              return "Max 4 seats";
-                            }
-                            return null;
-                          },
-                        ),
-                        AuthFields(
-                          text: "Car Year",
-                          controller: _carYear,
-                          suffixIcon: const Icon(Icons.calendar_today),
-                          keyboardType: TextInputType.number,
-                          validator: (v) {
-                            if (v == null || v.isEmpty) {
-                              return "Required";
-                            }
-                            if (!RegExp(r'^[0-9]{4}$').hasMatch(v)) {
-                              return "Enter valid year";
-                            }
-                            final year = int.parse(v);
-                            final current = DateTime.now().year;
-                            if (year < 1980 || year > current) {
-                              return "1980 – $current";
-                            }
-                            return null;
-                          },
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
+            Container(
+              width: 68.w,
+              height: 68.w,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0x29FFFFFF),
+                border: Border.all(color: const Color(0x40FFFFFF), width: 1.5),
+              ),
+              child: Text(
+                initial,
+                style: AppText.screenTitle(color: Consonants.surface)
+                    .copyWith(fontSize: 26.sp),
               ),
             ),
-            _saveBar(saving: saving),
+            SizedBox(width: 16.w),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    name.isEmpty ? "Your profile" : name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppText.sectionHeading(color: Consonants.surface)
+                        .copyWith(fontSize: 19.sp),
+                  ),
+                  SizedBox(height: 10.h),
+                  HeroChip(
+                    label: widget.isPassenger ? "Passenger" : "Driver",
+                    icon: widget.isPassenger
+                        ? Icons.person_outline_rounded
+                        : Icons.directions_car_outlined,
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  // ─── Top bar ─────────────────────────────────────────────
-
-  Widget _topBar() {
-    return Padding(
-      padding: EdgeInsets.fromLTRB(14.w, 10.h, 14.w, 10.h),
-      child: Row(
-        children: [
-          GestureDetector(
-            onTap: () => Navigator.of(context).pop(),
-            child: Container(
-              width: 38.w,
-              height: 38.w,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: Consonants.whiteColor,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Icon(Icons.arrow_back_rounded,
-                  size: 18.sp, color: Consonants.boldTextColor),
-            ),
-          ),
-          SizedBox(width: 12.w),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                CustomWidgets.customText(
-                  "Edit Profile",
-                  18.sp,
-                  Consonants.boldTextColor,
-                  FontWeight.w800,
-                  maxLines: 1,
-                ),
-                SizedBox(height: 2.h),
-                CustomWidgets.customText(
-                  widget.isPassenger
-                      ? "Update your personal details"
-                      : "Update your personal & vehicle details",
-                  10.sp,
-                  Consonants.greyColor,
-                  FontWeight.w500,
-                  maxLines: 1,
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ─── Avatar header ───────────────────────────────────────
-
-  Widget _avatarHeader() {
-    final initial = _name.text.trim().isNotEmpty
-        ? _name.text.trim()[0].toUpperCase()
-        : "?";
-    return Column(
-      children: [
-        Container(
-          width: 96.w,
-          height: 96.w,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Consonants.primaryColor, Color(0xff5AC8FA)],
-            ),
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: Consonants.primaryColor.withValues(alpha: 0.30),
-                blurRadius: 14,
-                offset: const Offset(0, 6),
-              ),
-            ],
-          ),
-          child: Text(
-            initial,
-            style: TextStyle(
-              color: Consonants.whiteColor,
-              fontSize: 36.sp,
-              fontWeight: FontWeight.w800,
-              fontFamily: Consonants.fontFamily,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ─── Section label ───────────────────────────────────────
+  // ─── Section heading ─────────────────────────────────────
 
   Widget _sectionLabel(String text) {
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 30.w),
-      child: Row(
-        children: [
-          CustomWidgets.customText(
-            text.toUpperCase(),
-            10.sp,
-            Consonants.greyColor,
-            FontWeight.w800,
-          ),
-          SizedBox(width: 10.w),
-          Expanded(
-            child: Container(height: 1, color: Consonants.lightGreyColor),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ─── Save bar ────────────────────────────────────────────
-
-  Widget _saveBar({required bool saving}) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Consonants.whiteColor,
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(24.r),
-          topRight: Radius.circular(24.r),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 14,
-            offset: const Offset(0, -4),
-          ),
-        ],
-      ),
-      padding: EdgeInsets.fromLTRB(20.w, 14.h, 20.w, 18.h),
-      child: GestureDetector(
-        onTap: saving ? null : _save,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          height: 52.h,
-          decoration: BoxDecoration(
-            gradient: saving
-                ? null
-                : const LinearGradient(
-                    colors: [Consonants.primaryColor, Color(0xff5AC8FA)],
-                  ),
-            color: saving ? Consonants.lightGreyColor : null,
-            borderRadius: BorderRadius.circular(40.r),
-            boxShadow: saving
-                ? null
-                : [
-                    BoxShadow(
-                      color: Consonants.primaryColor.withValues(alpha: 0.30),
-                      blurRadius: 12,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: saving
-                ? [
-                    SizedBox(
-                      width: 18.w,
-                      height: 18.w,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Consonants.greyColor,
-                      ),
-                    ),
-                    SizedBox(width: 10.w),
-                    CustomWidgets.customText(
-                      "Saving…",
-                      13.sp,
-                      Consonants.greyColor,
-                      FontWeight.w700,
-                    ),
-                  ]
-                : [
-                    Icon(Icons.check_rounded,
-                        size: 18.sp, color: Consonants.whiteColor),
-                    SizedBox(width: 8.w),
-                    CustomWidgets.customText(
-                      "Save Changes",
-                      13.sp,
-                      Consonants.whiteColor,
-                      FontWeight.w700,
-                    ),
-                  ],
-          ),
-        ),
-      ),
+      padding: EdgeInsets.symmetric(horizontal: Consonants.gutter.w),
+      child: AppSectionHeading(label: text),
     );
   }
 

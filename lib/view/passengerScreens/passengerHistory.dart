@@ -10,6 +10,7 @@ import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/consonants/errorHandler.dart';
 import 'package:ride_sharing/widgets/consonants/jwtUtils.dart';
 import 'package:ride_sharing/widgets/consonants/tokenStorage.dart';
+import 'package:ride_sharing/widgets/custom/appComponents.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
 import 'package:ride_sharing/widgets/custom/ratingSheet.dart';
 
@@ -63,15 +64,19 @@ class _PassengerhistoryState extends ConsumerState<Passengerhistory> {
     final totalTrips = completed.length;
 
     return Scaffold(
-      backgroundColor: Consonants.scaffoldBackgroundColor,
+      backgroundColor: Consonants.canvas,
       body: SafeArea(
+        bottom: false,
         child: Column(
           children: [
-            _topBar(context),
+            const AppHeader(
+              title: "Ride History",
+              showBack: true,
+            ),
             _summaryStrip(totalSpent: totalSpent, totalTrips: totalTrips),
             Expanded(
               child: RefreshIndicator(
-                color: Consonants.primaryColor,
+                color: Consonants.indigo,
                 onRefresh: () async {
                   ref.invalidate(passengerRideHistoryProvider);
                   await ref.read(passengerRideHistoryProvider.future);
@@ -109,14 +114,21 @@ class _PassengerhistoryState extends ConsumerState<Passengerhistory> {
       physics: const AlwaysScrollableScrollPhysics(
         parent: BouncingScrollPhysics(),
       ),
-      padding: EdgeInsets.fromLTRB(16.w, 14.h, 16.w, 24.h),
+      padding: EdgeInsets.fromLTRB(
+        Consonants.gutter.w,
+        8.h,
+        Consonants.gutter.w,
+        32.h,
+      ),
       itemCount: rides.length,
-      itemBuilder: (_, i) => Padding(
-        padding: EdgeInsets.only(bottom: 12.h),
-        child: _RideCard(
-          ride: rides[i],
-          onRate: () => _rateDriver(rides[i]),
-        ),
+      itemBuilder: (_, i) => Column(
+        children: [
+          _RideCard(
+            ride: rides[i],
+            onRate: () => _rateDriver(rides[i]),
+          ),
+          if (i != rides.length - 1) const AppDivider(),
+        ],
       ),
     );
   }
@@ -222,137 +234,49 @@ class _PassengerhistoryState extends ConsumerState<Passengerhistory> {
     }
   }
 
-  Widget _topBar(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.fromLTRB(14.w, 10.h, 14.w, 10.h),
-      child: Row(
-        children: [
-          GestureDetector(
-            onTap: () => Navigator.of(context).maybePop(),
-            child: Container(
-              width: 38.w,
-              height: 38.w,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: Consonants.whiteColor,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Icon(Icons.arrow_back_rounded,
-                  size: 18.sp, color: Consonants.boldTextColor),
-            ),
-          ),
-          SizedBox(width: 12.w),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                CustomWidgets.customText(
-                  "Ride History",
-                  18.sp,
-                  Consonants.boldTextColor,
-                  FontWeight.w800,
-                  maxLines: 1,
-                ),
-                SizedBox(height: 2.h),
-                CustomWidgets.customText(
-                  "All your past rides in one place",
-                  10.sp,
-                  Consonants.greyColor,
-                  FontWeight.w500,
-                  maxLines: 1,
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
+  /// The screen's one gradient surface: what these trips cost, in total.
+  /// Money is the largest thing here, so it carries the display figure.
   Widget _summaryStrip({
     required double totalSpent,
     required int totalTrips,
   }) {
-    return Container(
-      margin: EdgeInsets.symmetric(horizontal: 16.w),
-      padding: EdgeInsets.symmetric(vertical: 14.h, horizontal: 16.w),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Consonants.primaryColor, Color(0xff5AC8FA)],
-        ),
-        borderRadius: BorderRadius.circular(18.r),
-        boxShadow: [
-          BoxShadow(
-            color: Consonants.primaryColor.withValues(alpha: 0.25),
-            blurRadius: 16,
-            offset: const Offset(0, 8),
-          ),
-        ],
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        Consonants.gutter.w,
+        0,
+        Consonants.gutter.w,
+        20.h,
       ),
-      child: Row(
-        children: [
-          Expanded(
-            child: _summaryCell(
-              icon: Icons.payments_rounded,
-              label: "Total spent",
-              value: "PKR ${totalSpent.round()}",
-            ),
-          ),
-          Container(
-            width: 1,
-            height: 32.h,
-            color: Consonants.whiteColor.withValues(alpha: 0.30),
-          ),
-          Expanded(
-            child: _summaryCell(
-              icon: Icons.route_rounded,
-              label: "Trips",
-              value: "$totalTrips",
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _summaryCell({
-    required IconData icon,
-    required String label,
-    required String value,
-  }) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(icon, size: 18.sp, color: Consonants.whiteColor),
-        SizedBox(width: 8.w),
-        Column(
+      child: HeroSurface(
+        padding: EdgeInsets.symmetric(horizontal: 22.w, vertical: 22.h),
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            CustomWidgets.customText(
-              value,
-              14.sp,
-              Consonants.whiteColor,
-              FontWeight.w800,
-              maxLines: 1,
+            Text(
+              "Total spent",
+              style: AppText.caption(color: const Color(0xCCFFFFFF))
+                  .copyWith(fontSize: 13.sp),
             ),
-            SizedBox(height: 1.h),
-            CustomWidgets.customText(
-              label,
-              9.sp,
-              Consonants.whiteColor.withValues(alpha: 0.85),
-              FontWeight.w500,
+            SizedBox(height: 8.h),
+            Text(
+              "PKR ${totalSpent.round()}",
               maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppText.figure(color: Consonants.surface)
+                  .copyWith(fontSize: 34.sp),
+            ),
+            SizedBox(height: 16.h),
+            Row(
+              children: [
+                HeroChip(
+                  label: totalTrips == 1 ? "1 trip" : "$totalTrips trips",
+                  icon: Icons.route_outlined,
+                ),
+              ],
             ),
           ],
         ),
-      ],
+      ),
     );
   }
 }
@@ -361,6 +285,8 @@ class _PassengerhistoryState extends ConsumerState<Passengerhistory> {
 // Ride card — only what a passenger actually needs at a glance.
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// One trip in the history list. A list row — divided by a 1px rule from
+/// its neighbours, never wrapped in a card.
 class _RideCard extends StatelessWidget {
   final PassengerRideHistoryItem ride;
   final VoidCallback? onRate;
@@ -371,284 +297,178 @@ class _RideCard extends StatelessWidget {
     final isCompleted = ride.isCompleted;
     // Offer to rate a completed ride that hasn't been rated yet.
     final canRate = isCompleted && ride.ratingGiven == null;
-    return Container(
-      padding: EdgeInsets.all(14.w),
-      decoration: BoxDecoration(
-        color: Consonants.whiteColor,
-        borderRadius: BorderRadius.circular(16.r),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          // ── Header: date · time + status pill ──
-          Row(
-            children: [
-              Expanded(
-                child: CustomWidgets.customText(
-                  "${ride.dateLabel} · ${ride.timeLabel}",
-                  11.sp,
-                  Consonants.greyColor,
-                  FontWeight.w600,
-                  maxLines: 1,
-                ),
-              ),
-              SizedBox(width: 8.w),
-              _StatusPill(isCompleted: isCompleted),
-            ],
-          ),
-          SizedBox(height: 12.h),
+    final driver = (ride.driverName?.trim().isNotEmpty ?? false)
+        ? ride.driverName!.trim()
+        : "Driver";
 
-          // ── Pickup / Drop-off timeline ──
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: Consonants.rowVertical.h),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _Timeline(),
-              SizedBox(width: 10.w),
+              Container(
+                width: 44.w,
+                height: 44.w,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: isCompleted
+                      ? Consonants.chipBg
+                      : Consonants.dangerWash,
+                ),
+                child: Icon(
+                  isCompleted
+                      ? Icons.route_outlined
+                      : Icons.close_rounded,
+                  size: 20.sp,
+                  color: isCompleted
+                      ? Consonants.iconInk
+                      : Consonants.danger,
+                ),
+              ),
+              SizedBox(width: 14.w),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _addressBlock("Pickup", ride.pickup),
-                    SizedBox(height: 12.h),
-                    _addressBlock("Drop-off", ride.drop),
+                    Text(
+                      ride.pickup,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppText.rowLabel().copyWith(fontSize: 16.sp),
+                    ),
+                    SizedBox(height: 3.h),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.south_east_rounded,
+                          size: 13.sp,
+                          color: Consonants.textMuted,
+                        ),
+                        SizedBox(width: 4.w),
+                        Expanded(
+                          child: Text(
+                            ride.drop,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppText.caption().copyWith(fontSize: 13.sp),
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 5.h),
+                    Text(
+                      "${ride.dateLabel} · ${ride.timeLabel} · $driver",
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppText.caption().copyWith(fontSize: 12.5.sp),
+                    ),
                   ],
                 ),
               ),
+              SizedBox(width: 12.w),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    isCompleted ? "PKR ${ride.fare.round()}" : "—",
+                    maxLines: 1,
+                    style: AppText.amount().copyWith(fontSize: 16.5.sp),
+                  ),
+                  SizedBox(height: 4.h),
+                  Text(
+                    _statusLabel(isCompleted),
+                    style: AppText.caption(
+                      color: isCompleted
+                          ? Consonants.textMuted
+                          : Consonants.danger,
+                    ).copyWith(fontSize: 12.sp),
+                  ),
+                  if (ride.ratingGiven != null) ...[
+                    SizedBox(height: 5.h),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.star_outline_rounded,
+                          size: 13.sp,
+                          color: Consonants.iconInk,
+                        ),
+                        SizedBox(width: 4.w),
+                        Text(
+                          ride.ratingGiven!.toStringAsFixed(1),
+                          style:
+                              AppText.caption().copyWith(fontSize: 12.sp),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
             ],
           ),
-
-          if (isCompleted) ...[
-            SizedBox(height: 12.h),
-            Container(height: 1, color: Consonants.lightGreyColor),
+          if (isCompleted && (ride.carInfo?.isNotEmpty ?? false)) ...[
             SizedBox(height: 10.h),
-            // ── Footer: fare · driver/car · rating you gave ──
-            Row(
-              children: [
-                Container(
-                  width: 36.w,
-                  height: 36.w,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: Consonants.lightBlueColor,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(Icons.person_rounded,
-                      size: 18.sp, color: Consonants.primaryColor),
-                ),
-                SizedBox(width: 10.w),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      CustomWidgets.customText(
-                        (ride.driverName?.isNotEmpty ?? false)
-                            ? ride.driverName!
-                            : "Driver",
-                        12.sp,
-                        Consonants.boldTextColor,
-                        FontWeight.w700,
-                        maxLines: 1,
-                      ),
-                      SizedBox(height: 2.h),
-                      CustomWidgets.customText(
-                        (ride.carInfo?.isNotEmpty ?? false)
-                            ? ride.carInfo!
-                            : "—",
-                        10.sp,
-                        Consonants.greyColor,
-                        FontWeight.w500,
-                        maxLines: 1,
-                      ),
-                    ],
-                  ),
-                ),
-                SizedBox(width: 8.w),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    CustomWidgets.customText(
-                      "PKR ${ride.fare.round()}",
-                      13.sp,
-                      Consonants.primaryColor,
-                      FontWeight.w800,
-                      maxLines: 1,
-                    ),
-                    if (ride.paid != null) ...[
-                      SizedBox(height: 3.h),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            ride.paid!
-                                ? Icons.check_circle_rounded
-                                : Icons.schedule_rounded,
-                            size: 12.sp,
-                            color: ride.paid!
-                                ? const Color(0xff15803D)
-                                : Consonants.greyColor,
-                          ),
-                          SizedBox(width: 3.w),
-                          CustomWidgets.customText(
-                            ride.paid! ? "Paid" : "Unpaid",
-                            10.sp,
-                            ride.paid!
-                                ? const Color(0xff15803D)
-                                : Consonants.greyColor,
-                            FontWeight.w700,
-                          ),
-                        ],
-                      ),
-                    ],
-                    if (ride.ratingGiven != null) ...[
-                      SizedBox(height: 2.h),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.star_rounded,
-                              size: 12.sp,
-                              color: const Color(0xffF5B800)),
-                          SizedBox(width: 3.w),
-                          CustomWidgets.customText(
-                            ride.ratingGiven!.toStringAsFixed(1),
-                            10.sp,
-                            Consonants.greyColor,
-                            FontWeight.w700,
-                          ),
-                        ],
-                      ),
-                    ],
-                  ],
-                ),
-              ],
+            Padding(
+              padding: EdgeInsets.only(left: 58.w),
+              child: Text(
+                ride.carInfo!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppText.caption().copyWith(fontSize: 12.5.sp),
+              ),
             ),
-            if (canRate && onRate != null) ...[
-              SizedBox(height: 12.h),
-              _rateButton(),
-            ],
+          ],
+          if (canRate && onRate != null) ...[
+            SizedBox(height: 12.h),
+            Padding(
+              padding: EdgeInsets.only(left: 58.w),
+              child: _rateButton(),
+            ),
           ],
         ],
       ),
     );
   }
 
+  String _statusLabel(bool isCompleted) {
+    if (!isCompleted) return "Cancelled";
+    if (ride.paid == null) return "Completed";
+    return ride.paid! ? "Paid" : "Unpaid";
+  }
+
   Widget _rateButton() {
-    return GestureDetector(
-      onTap: onRate,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        width: double.infinity,
-        padding: EdgeInsets.symmetric(vertical: 11.h),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: Consonants.lightBlueColor,
-          borderRadius: BorderRadius.circular(12.r),
-          border: Border.all(
-            color: Consonants.primaryColor.withValues(alpha: 0.30),
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.star_rounded,
-                size: 15.sp, color: const Color(0xffF5B800)),
-            SizedBox(width: 6.w),
-            CustomWidgets.customText(
-              "Rate your driver",
-              12.sp,
-              Consonants.primaryColor,
-              FontWeight.w800,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _addressBlock(String label, String value) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        CustomWidgets.customText(
-          label,
-          9.sp,
-          Consonants.greyColor,
-          FontWeight.w700,
-          maxLines: 1,
-        ),
-        SizedBox(height: 2.h),
-        CustomWidgets.customText(
-          value,
-          12.sp,
-          Consonants.boldTextColor,
-          FontWeight.w700,
-          maxLines: 2,
-        ),
-      ],
-    );
-  }
-}
-
-class _Timeline extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        SizedBox(height: 4.h),
-        Container(
-          width: 10.w,
-          height: 10.w,
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: GestureDetector(
+        onTap: onRate,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 9.h),
           decoration: BoxDecoration(
-            color: Consonants.primaryColor,
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: Consonants.lightBlueColor,
-              width: 2,
-            ),
+            color: Consonants.indigoWash,
+            borderRadius: BorderRadius.circular(Consonants.rPill.r),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.star_outline_rounded,
+                size: 15.sp,
+                color: Consonants.indigo,
+              ),
+              SizedBox(width: 6.w),
+              Text(
+                "Rate your driver",
+                style: AppText.navLabel(color: Consonants.indigo)
+                    .copyWith(fontSize: 13.sp),
+              ),
+            ],
           ),
         ),
-        SizedBox(
-          height: 28.h,
-          child: VerticalDivider(
-            thickness: 2.w,
-            color: Consonants.lightGreyColor,
-          ),
-        ),
-        Icon(Icons.location_on_rounded,
-            size: 14.sp, color: const Color(0xffEF4444)),
-      ],
-    );
-  }
-}
-
-class _StatusPill extends StatelessWidget {
-  final bool isCompleted;
-  const _StatusPill({required this.isCompleted});
-
-  @override
-  Widget build(BuildContext context) {
-    final bg = isCompleted
-        ? Consonants.primaryGreenColor
-        : const Color(0xffFEE2E2);
-    final fg = isCompleted
-        ? const Color(0xff15803D)
-        : const Color(0xffEF4444);
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 4.h),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(20.r),
-      ),
-      child: CustomWidgets.customText(
-        isCompleted ? "Completed" : "Cancelled",
-        10.sp,
-        fg,
-        FontWeight.w800,
       ),
     );
   }
@@ -665,21 +485,19 @@ class _LoadingState extends StatelessWidget {
         SizedBox(height: 80.h),
         Center(
           child: SizedBox(
-            width: 32.w,
-            height: 32.w,
+            width: 30.w,
+            height: 30.w,
             child: const CircularProgressIndicator(
-              strokeWidth: 2.5,
-              color: Consonants.primaryColor,
+              strokeWidth: 2.4,
+              color: Consonants.indigo,
             ),
           ),
         ),
-        SizedBox(height: 14.h),
+        SizedBox(height: 18.h),
         Center(
-          child: CustomWidgets.customText(
+          child: Text(
             "Loading your rides…",
-            12.sp,
-            Consonants.greyColor,
-            FontWeight.w500,
+            style: AppText.caption().copyWith(fontSize: 13.sp),
           ),
         ),
       ],
@@ -695,48 +513,40 @@ class _ErrorState extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 80.h),
+      padding: EdgeInsets.symmetric(
+        horizontal: Consonants.gutter.w,
+        vertical: 70.h,
+      ),
       children: [
         Center(
           child: Container(
-            width: 64.w,
-            height: 64.w,
+            width: 68.w,
+            height: 68.w,
             alignment: Alignment.center,
             decoration: const BoxDecoration(
-              color: Color(0xffFEE2E2),
+              color: Consonants.dangerWash,
               shape: BoxShape.circle,
             ),
             child: Icon(
-              Icons.cloud_off_rounded,
-              size: 28.sp,
-              color: const Color(0xffEF4444),
+              Icons.cloud_off_outlined,
+              size: 30.sp,
+              color: Consonants.danger,
             ),
           ),
         ),
-        SizedBox(height: 12.h),
-        CustomWidgets.customText(
+        SizedBox(height: 18.h),
+        Text(
           "Couldn't load your rides",
-          13.sp,
-          Consonants.boldTextColor,
-          FontWeight.w700,
           textAlign: TextAlign.center,
-        ),
-        SizedBox(height: 4.h),
-        CustomWidgets.customText(
-          message,
-          11.sp,
-          Consonants.greyColor,
-          FontWeight.w500,
-          textAlign: TextAlign.center,
-          maxLines: 3,
+          style: AppText.sectionHeading().copyWith(fontSize: 17.sp),
         ),
         SizedBox(height: 8.h),
-        CustomWidgets.customText(
-          "Pull down to retry",
-          10.sp,
-          Consonants.greyColor,
-          FontWeight.w500,
+        Text(
+          message,
           textAlign: TextAlign.center,
+          maxLines: 3,
+          overflow: TextOverflow.ellipsis,
+          style: AppText.paragraph().copyWith(fontSize: 15.sp),
         ),
       ],
     );
@@ -749,7 +559,7 @@ class _EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.symmetric(vertical: 80.h),
+      padding: EdgeInsets.symmetric(vertical: 70.h),
       child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -758,26 +568,20 @@ class _EmptyState extends StatelessWidget {
               width: 84.w,
               height: 84.w,
               alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: Consonants.lightBlueColor,
+              decoration: const BoxDecoration(
+                color: Consonants.indigoWash,
                 shape: BoxShape.circle,
               ),
-              child: Icon(Icons.directions_car_filled_rounded,
-                  size: 36.sp, color: Consonants.primaryColor),
+              child: Icon(
+                Icons.directions_car_outlined,
+                size: 34.sp,
+                color: Consonants.indigo,
+              ),
             ),
-            SizedBox(height: 14.h),
-            CustomWidgets.customText(
+            SizedBox(height: 20.h),
+            Text(
               "No rides yet",
-              14.sp,
-              Consonants.boldTextColor,
-              FontWeight.w800,
-            ),
-            SizedBox(height: 4.h),
-            CustomWidgets.customText(
-              "Your past rides will show up here",
-              11.sp,
-              Consonants.greyColor,
-              FontWeight.w500,
+              style: AppText.sectionHeading().copyWith(fontSize: 18.sp),
             ),
           ],
         ),

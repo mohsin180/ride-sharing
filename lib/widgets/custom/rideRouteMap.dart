@@ -130,7 +130,7 @@ class RideRouteMap extends ConsumerWidget {
             Polyline(
               points: linePoints,
               strokeWidth: 4.5,
-              color: Consonants.primaryColor,
+              color: Consonants.indigo,
             ),
           ],
         ),
@@ -146,9 +146,9 @@ class RideRouteMap extends ConsumerWidget {
 
   Marker _stopMarker(RideStop stop, int index) {
     final letter = String.fromCharCode(65 + index); // A, B, C…
-    final color = stop.isPickup
-        ? Consonants.primaryColor
-        : const Color(0xffEF4444);
+    // Pickups and drops read as the two ends of the brand ramp. Red is held
+    // for money out and destructive actions, so it can't mean "destination".
+    final color = stop.isPickup ? Consonants.indigo : Consonants.violet;
     return Marker(
       point: LatLng(stop.lat, stop.lng),
       width: 30.w,
@@ -170,11 +170,9 @@ class RideRouteMap extends ConsumerWidget {
         ),
         child: Text(
           letter,
-          style: TextStyle(
-            color: Colors.white,
+          style: AppText.navLabel(color: Consonants.surface).copyWith(
             fontSize: 12.sp,
             fontWeight: FontWeight.w800,
-            fontFamily: Consonants.fontFamily,
           ),
         ),
       ),

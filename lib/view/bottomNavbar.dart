@@ -1,4 +1,7 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ride_sharing/provider/authProvider.dart';
 import 'package:ride_sharing/provider/availableRidesProvider.dart';
@@ -64,72 +67,126 @@ class _BottomnavbarState extends ConsumerState<Bottomnavbar> {
     final currentIndex = ref.watch(bottomNavIndexProvider);
 
     return Scaffold(
-      backgroundColor: Consonants.scaffoldBackgroundColor,
+      backgroundColor: Consonants.canvas,
+      // The nav floats OVER the content rather than pushing it up — screens
+      // reserve Consonants.navClearance at the bottom of their scroll body.
+      extendBody: true,
       body: Stack(
         children: [
-          IndexedStack(index: currentIndex, children: screens),
+          // expand, not the default loose fit: a Stack hands non-positioned
+          // children loose constraints, so a tab whose content doesn't fill
+          // the width shrink-wrapped and drifted left — the "Your Ride"
+          // empty state being the visible case.
+          IndexedStack(
+            index: currentIndex,
+            sizing: StackFit.expand,
+            children: screens,
+          ),
           // Keeps the driver broadcasting their GPS for the whole active ride
           // (across every tab), not just while the trip map is on screen.
           if (isDriver) const _DriverLocationBroadcaster(),
         ],
       ),
-      bottomNavigationBar: NavigationBarTheme(
-        data: NavigationBarThemeData(
-          indicatorColor: Colors.transparent,
-          labelTextStyle: WidgetStatePropertyAll(
-            const TextStyle(
-              fontSize: 12.0,
-              fontWeight: FontWeight.w500,
-              color: Consonants.boldTextColor,
+      bottomNavigationBar: _FloatingNav(
+        currentIndex: currentIndex,
+        onSelected: (index) {
+          ref.read(bottomNavIndexProvider.notifier).select(index);
+          // Opening the Ride tab refetches the ride lists so changes made
+          // elsewhere show up immediately — e.g. a ride the host cancelled
+          // disappears from a co-passenger's "Your Rides", and a cancelled
+          // request drops off the driver feed.
+          if (index == 1) {
+            if (isDriver) {
+              ref.invalidate(driverFeedProvider);
+            } else {
+              ref.invalidate(myRidesProvider);
+              ref.invalidate(availableRidesProvider);
+            }
+          }
+        },
+      ),
+    );
+  }
+}
+
+/// Translucent canvas over a blur, per the system's rule that anything
+/// floating above content is never an opaque bar. Active items go indigo with
+/// a heavier icon stroke; inactive stay muted.
+class _FloatingNav extends StatelessWidget {
+  final int currentIndex;
+  final ValueChanged<int> onSelected;
+
+  const _FloatingNav({required this.currentIndex, required this.onSelected});
+
+  static const _items = [
+    (Icons.home_outlined, Icons.home_rounded, 'Home'),
+    (Icons.directions_car_outlined, Icons.directions_car_rounded, 'Ride'),
+    (Icons.route_outlined, Icons.route_rounded, 'Your Ride'),
+    (Icons.person_outline_rounded, Icons.person_rounded, 'Profile'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: Color(0xC7F8F9FB),
+            border: Border(top: BorderSide(color: Color(0x0D000000))),
+          ),
+          padding: EdgeInsets.only(top: 12.h, bottom: 20.h),
+          child: SafeArea(
+            top: false,
+            child: Row(
+              children: [
+                for (var i = 0; i < _items.length; i++)
+                  Expanded(
+                    child: _NavItem(
+                      icon: currentIndex == i ? _items[i].$2 : _items[i].$1,
+                      label: _items[i].$3,
+                      active: currentIndex == i,
+                      onTap: () => onSelected(i),
+                    ),
+                  ),
+              ],
             ),
           ),
         ),
-        child: NavigationBar(
-          height: 70,
-          selectedIndex: currentIndex,
-          animationDuration: const Duration(milliseconds: 300),
-          backgroundColor: Consonants.whiteColor,
-          onDestinationSelected: (index) {
-            ref.read(bottomNavIndexProvider.notifier).select(index);
-            // Opening the Ride tab refetches the ride lists so changes made
-            // elsewhere show up immediately — e.g. a ride the host cancelled
-            // disappears from a co-passenger's "Your Rides", and a cancelled
-            // request drops off the driver feed.
-            if (index == 1) {
-              if (isDriver) {
-                ref.invalidate(driverFeedProvider);
-              } else {
-                ref.invalidate(myRidesProvider);
-                ref.invalidate(availableRidesProvider);
-              }
-            }
-          },
-          destinations: const [
-            NavigationDestination(
-              icon: Icon(Icons.home_outlined, color: Consonants.greyColor),
-              selectedIcon: Icon(Icons.home, color: Consonants.primaryColor),
-              label: "Home",
-            ),
-            NavigationDestination(
-              icon: Icon(
-                Icons.directions_car_outlined,
-                color: Consonants.greyColor,
-              ),
-              selectedIcon: Icon(
-                Icons.directions_car,
-                color: Consonants.primaryColor,
-              ),
-              label: "Ride",
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.route_outlined, color: Consonants.greyColor),
-              selectedIcon: Icon(Icons.route, color: Consonants.primaryColor),
-              label: "Your Ride",
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.person_outline, color: Consonants.greyColor),
-              selectedIcon: Icon(Icons.person, color: Consonants.primaryColor),
-              label: "Profile",
+      ),
+    );
+  }
+}
+
+class _NavItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+
+  const _NavItem({
+    required this.icon,
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colour = active ? Consonants.indigo : Consonants.textMuted;
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: SizedBox(
+        height: 44.h,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 23.sp, color: colour),
+            SizedBox(height: 4.h),
+            Text(
+              label,
+              style: AppText.navLabel(color: colour).copyWith(fontSize: 12.sp),
             ),
           ],
         ),

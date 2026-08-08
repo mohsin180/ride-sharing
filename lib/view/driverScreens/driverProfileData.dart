@@ -75,24 +75,17 @@ class _DriverProfileDataState extends ConsumerState<DriverProfileData> {
     return ResponsiveAuthScaffold(
       formKey: formKey,
       body: [
-        CustomWidgets.customText(
+        SizedBox(height: 8.h),
+        _heroBadge(),
+        SizedBox(height: 20.h),
+        Text(
           "Tell us about yourself",
-          20.sp,
-          Consonants.boldTextColor,
-          FontWeight.bold,
+          textAlign: TextAlign.center,
+          style: AppText.screenTitle().copyWith(fontSize: 24.sp),
         ),
-        SizedBox(height: 6.h),
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: 30.w),
-          child: CustomWidgets.customText(
-            "Step 1 of 3 · we'll ask about your vehicle next",
-            10.sp,
-            Consonants.greyColor,
-            FontWeight.w500,
-            textAlign: TextAlign.center,
-          ),
-        ),
-        SizedBox(height: 14.h),
+        SizedBox(height: 10.h),
+        _stepPill(),
+        SizedBox(height: 26.h),
         AuthFields(
           text: "Full Name",
           suffixIcon: const Icon(Icons.person),
@@ -146,6 +139,45 @@ class _DriverProfileDataState extends ConsumerState<DriverProfileData> {
         ),
       ],
       bottomBar: profileContainer(_continue),
+    );
+  }
+
+  /// Brand-gradient badge. Anchors the screen so the form doesn't read as a
+  /// wall of inputs.
+  Widget _heroBadge() {
+    return Center(
+      child: Container(
+        width: 72.w,
+        height: 72.w,
+        alignment: Alignment.center,
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: Consonants.actionGradient,
+        ),
+        child: Icon(
+          Icons.person_outline_rounded,
+          color: Consonants.surface,
+          size: 32.sp,
+        ),
+      ),
+    );
+  }
+
+  /// Pill chip showing the wizard position.
+  Widget _stepPill() {
+    return Center(
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 7.h),
+        decoration: BoxDecoration(
+          color: Consonants.indigoWash,
+          borderRadius: BorderRadius.circular(Consonants.rPill.r),
+        ),
+        child: Text(
+          "Step 1 of 3",
+          style: AppText.navLabel(color: Consonants.indigo)
+              .copyWith(fontSize: 12.5.sp),
+        ),
+      ),
     );
   }
 }

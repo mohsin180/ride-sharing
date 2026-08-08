@@ -9,6 +9,7 @@ import 'package:ride_sharing/provider/profileProvider.dart';
 import 'package:ride_sharing/view/profileData.dart' show profileContainer;
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/consonants/errorHandler.dart';
+import 'package:ride_sharing/widgets/custom/appComponents.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
 import 'package:ride_sharing/widgets/custom/responsive.dart';
 
@@ -123,18 +124,17 @@ class _DriverVehicleDetailsState extends ConsumerState<DriverVehicleDetails> {
       body: [
         SizedBox(height: 8.h),
         _heroBadge(),
-        SizedBox(height: 16.h),
-        CustomWidgets.customText(
+        SizedBox(height: 20.h),
+        Text(
           "Tell us about your car",
-          20.sp,
-          Consonants.boldTextColor,
-          FontWeight.bold,
+          textAlign: TextAlign.center,
+          style: AppText.screenTitle().copyWith(fontSize: 24.sp),
         ),
-        SizedBox(height: 6.h),
+        SizedBox(height: 10.h),
         _stepPill(),
-        SizedBox(height: 22.h),
-        _sectionHeader("Vehicle Identity"),
-        SizedBox(height: 6.h),
+        SizedBox(height: 28.h),
+        _sectionHeader("Vehicle identity"),
+        SizedBox(height: 12.h),
         AuthFields(
           text: "Car Make",
           suffixIcon: const Icon(Icons.drive_eta),
@@ -180,9 +180,9 @@ class _DriverVehicleDetailsState extends ConsumerState<DriverVehicleDetails> {
             return null;
           },
         ),
-        SizedBox(height: 14.h),
+        SizedBox(height: 20.h),
         _sectionHeader("Specifications"),
-        SizedBox(height: 6.h),
+        SizedBox(height: 12.h),
         AuthFields(
           text: "Car Color",
           suffixIcon: const Icon(Icons.color_lens),
@@ -250,83 +250,55 @@ class _DriverVehicleDetailsState extends ConsumerState<DriverVehicleDetails> {
   /// Brand-gradient circular badge with a car icon. Anchors the screen
   /// visually so the form doesn't read as a wall of inputs.
   Widget _heroBadge() {
-    return Container(
-      width: 72.w,
-      height: 72.w,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Consonants.primaryColor, Color(0xff5AC8FA)],
+    return Center(
+      child: Container(
+        width: 72.w,
+        height: 72.w,
+        alignment: Alignment.center,
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: Consonants.actionGradient,
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Consonants.primaryColor.withValues(alpha: 0.30),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Icon(
-        Icons.directions_car_filled_rounded,
-        color: Consonants.whiteColor,
-        size: 34.sp,
+        child: Icon(
+          Icons.directions_car_outlined,
+          color: Consonants.surface,
+          size: 32.sp,
+        ),
       ),
     );
   }
 
-  /// Pill chip showing the wizard position. Replaces the plain grey
-  /// subtitle with something more deliberate.
+  /// Pill chip showing the wizard position.
   Widget _stepPill() {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 5.h),
-      decoration: BoxDecoration(
-        color: Consonants.lightBlueColor,
-        borderRadius: BorderRadius.circular(20.r),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.directions_car_rounded,
-            size: 11.sp,
-            color: Consonants.primaryColor,
-          ),
-          SizedBox(width: 5.w),
-          CustomWidgets.customText(
-            "Step 2 of 3 · the vehicle you'll drive",
-            9.sp,
-            Consonants.primaryColor,
-            FontWeight.w700,
-          ),
-        ],
+    return Center(
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 7.h),
+        decoration: BoxDecoration(
+          color: Consonants.indigoWash,
+          borderRadius: BorderRadius.circular(Consonants.rPill.r),
+        ),
+        child: Text(
+          "Step 2 of 3",
+          style: AppText.navLabel(color: Consonants.indigo)
+              .copyWith(fontSize: 12.5.sp),
+        ),
       ),
     );
   }
 
-  /// Lightweight section divider with an uppercase label. Matches the
-  /// section style used on the profile screen so the visual language is
-  /// consistent across the app.
+  /// Section label with a rule running to the edge, on the same gutter as
+  /// the fields below it.
   Widget _sectionHeader(String text) {
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 30.w),
+      padding: EdgeInsets.symmetric(horizontal: Consonants.gutter.w),
       child: Row(
         children: [
-          CustomWidgets.customText(
-            text.toUpperCase(),
-            9.sp,
-            Consonants.greyColor,
-            FontWeight.w800,
+          Text(
+            text,
+            style: AppText.sectionHeading().copyWith(fontSize: 16.sp),
           ),
-          SizedBox(width: 10.w),
-          Expanded(
-            child: Container(
-              height: 1,
-              color: Consonants.lightGreyColor,
-            ),
-          ),
+          SizedBox(width: 12.w),
+          const Expanded(child: AppDivider()),
         ],
       ),
     );

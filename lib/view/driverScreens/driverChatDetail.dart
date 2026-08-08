@@ -12,6 +12,7 @@ import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/consonants/errorHandler.dart';
 import 'package:ride_sharing/widgets/consonants/jwtUtils.dart';
 import 'package:ride_sharing/widgets/consonants/tokenStorage.dart';
+import 'package:ride_sharing/widgets/custom/appComponents.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
 
 /// Group-chat detail screen (driver + passengers in a shared ride).
@@ -179,13 +180,14 @@ class _DriverChatDetailState extends ConsumerState<DriverChatDetail> {
   }
 
   Color _colorFor(String id) {
+    // Sender colours stay inside the brand ramp — two hues, no rainbow.
     const palette = [
-      Color(0xff60A5FA),
-      Color(0xffF472B6),
-      Color(0xffFBBF24),
-      Color(0xff34D399),
-      Color(0xffA78BFA),
-      Color(0xffFB923C),
+      Consonants.indigo,
+      Consonants.violet,
+      Consonants.indigoMid,
+      Color(0xff6E4BC9),
+      Color(0xff8A5BE0),
+      Color(0xff4B3AA0),
     ];
     if (id.isEmpty) return palette[0];
     return palette[id.hashCode.abs() % palette.length];
@@ -254,27 +256,27 @@ class _DriverChatDetailState extends ConsumerState<DriverChatDetail> {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
+      barrierColor: Consonants.scrim,
       builder: (sheetCtx) {
         return Container(
           decoration: BoxDecoration(
-            color: Consonants.whiteColor,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24.r)),
+            color: Consonants.surface,
+            borderRadius:
+                BorderRadius.vertical(top: Radius.circular(Consonants.rSheet.r)),
+            boxShadow: Consonants.sheetLift,
           ),
           child: SafeArea(
             top: false,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                SizedBox(height: 10.h),
-                Container(
-                  width: 44.w,
-                  height: 4.h,
-                  decoration: BoxDecoration(
-                    color: Consonants.lightGreyColor,
-                    borderRadius: BorderRadius.circular(2.r),
-                  ),
-                ),
                 SizedBox(height: 14.h),
+                Padding(
+                  padding:
+                      EdgeInsets.symmetric(horizontal: Consonants.gutter.w),
+                  child: const SheetHeader(title: "Message"),
+                ),
+                SizedBox(height: 10.h),
                 _sheetAction(
                   icon: Icons.reply_rounded,
                   label: "Reply",
@@ -326,17 +328,21 @@ class _DriverChatDetailState extends ConsumerState<DriverChatDetail> {
     required VoidCallback onTap,
     bool destructive = false,
   }) {
-    final color =
-        destructive ? const Color(0xffEF4444) : Consonants.boldTextColor;
+    final color = destructive ? Consonants.danger : Consonants.bodyInk;
     return InkWell(
       onTap: onTap,
       child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 14.h),
+        padding: EdgeInsets.symmetric(
+            horizontal: Consonants.gutter.w, vertical: 16.h),
         child: Row(
           children: [
-            Icon(icon, size: 18.sp, color: color),
-            SizedBox(width: 14.w),
-            CustomWidgets.customText(label, 12.sp, color, FontWeight.w700),
+            Icon(icon, size: 20.sp,
+                color: destructive ? Consonants.danger : Consonants.iconInk),
+            SizedBox(width: 16.w),
+            Text(
+              label,
+              style: AppText.rowLabel(color: color).copyWith(fontSize: 16.sp),
+            ),
           ],
         ),
       ),
@@ -348,7 +354,7 @@ class _DriverChatDetailState extends ConsumerState<DriverChatDetail> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Consonants.scaffoldBackgroundColor,
+      backgroundColor: Consonants.canvas,
       resizeToAvoidBottomInset: true,
       body: SafeArea(
         child: Column(
@@ -359,7 +365,8 @@ class _DriverChatDetailState extends ConsumerState<DriverChatDetail> {
               child: _loading
                   ? const Center(
                       child: CircularProgressIndicator(
-                        color: Consonants.primaryColor,
+                        color: Consonants.indigo,
+                        strokeWidth: 2.5,
                       ),
                     )
                   : _error != null
@@ -377,54 +384,37 @@ class _DriverChatDetailState extends ConsumerState<DriverChatDetail> {
 
   Widget _topBar() {
     return Container(
-      padding: EdgeInsets.fromLTRB(14.w, 10.h, 14.w, 14.h),
-      decoration: BoxDecoration(
-        color: Consonants.whiteColor,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
+      padding: EdgeInsets.fromLTRB(
+          Consonants.gutter.w, 14.h, Consonants.gutter.w, 14.h),
+      decoration: const BoxDecoration(
+        color: Consonants.canvas,
+        border: Border(bottom: BorderSide(color: Consonants.divider)),
       ),
       child: Row(
         children: [
-          GestureDetector(
+          AppIconButton(
+            icon: Icons.arrow_back_rounded,
             onTap: () => Navigator.of(context).pop(),
-            child: Container(
-              width: 38.w,
-              height: 38.w,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: Consonants.scaffoldBackgroundColor,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(Icons.arrow_back_rounded,
-                  size: 18.sp, color: Consonants.boldTextColor),
-            ),
           ),
+          SizedBox(width: 14.w),
+          _StackedAvatars(members: widget.members, size: 42.w),
           SizedBox(width: 12.w),
-          _StackedAvatars(members: widget.members, size: 40.w),
-          SizedBox(width: 10.w),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                CustomWidgets.customText(
+                Text(
                   widget.title,
-                  14.sp,
-                  Consonants.boldTextColor,
-                  FontWeight.w800,
                   maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppText.sectionHeading().copyWith(fontSize: 17.sp),
                 ),
-                SizedBox(height: 2.h),
-                CustomWidgets.customText(
+                SizedBox(height: 3.h),
+                Text(
                   "${widget.members.length + 1} members",
-                  10.sp,
-                  Consonants.greyColor,
-                  FontWeight.w600,
                   maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppText.caption().copyWith(fontSize: 12.5.sp),
                 ),
               ],
             ),
@@ -439,23 +429,20 @@ class _DriverChatDetailState extends ConsumerState<DriverChatDetail> {
   Widget _activeRideBanner() {
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Consonants.primaryColor, Color(0xff5AC8FA)],
-        ),
-      ),
+      padding: EdgeInsets.symmetric(
+          horizontal: Consonants.gutter.w, vertical: 10.h),
+      color: Consonants.indigoWash,
       child: Row(
         children: [
-          _PulseDot(color: Consonants.whiteColor),
-          SizedBox(width: 8.w),
+          const _PulseDot(color: Consonants.violet),
+          SizedBox(width: 10.w),
           Expanded(
-            child: CustomWidgets.customText(
+            child: Text(
               "Live ride · driver in transit",
-              11.sp,
-              Consonants.whiteColor,
-              FontWeight.w700,
               maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppText.navLabel(color: Consonants.indigo)
+                  .copyWith(fontSize: 13.sp),
             ),
           ),
         ],
@@ -470,15 +457,24 @@ class _DriverChatDetailState extends ConsumerState<DriverChatDetail> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.cloud_off_rounded, size: 36.sp, color: Consonants.greyColor),
-            SizedBox(height: 12.h),
-            CustomWidgets.customText(
+            Container(
+              width: 84.w,
+              height: 84.w,
+              alignment: Alignment.center,
+              decoration: const BoxDecoration(
+                color: Consonants.dangerWash,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.cloud_off_outlined,
+                  size: 34.sp, color: Consonants.danger),
+            ),
+            SizedBox(height: 20.h),
+            Text(
               message,
-              12.sp,
-              Consonants.boldTextColor,
-              FontWeight.w700,
               textAlign: TextAlign.center,
               maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: AppText.sectionHeading().copyWith(fontSize: 18.sp),
             ),
           ],
         ),
@@ -492,7 +488,7 @@ class _DriverChatDetailState extends ConsumerState<DriverChatDetail> {
     final items = _buildItems();
     return ListView.builder(
       controller: _scroll,
-      padding: EdgeInsets.fromLTRB(12.w, 12.h, 12.w, 12.h),
+      padding: EdgeInsets.fromLTRB(16.w, 16.h, 16.w, 16.h),
       itemCount: items.length,
       itemBuilder: (context, index) {
         final item = items[index];
@@ -540,19 +536,18 @@ class _DriverChatDetailState extends ConsumerState<DriverChatDetail> {
 
   Widget _dateSeparator(String label) {
     return Padding(
-      padding: EdgeInsets.symmetric(vertical: 12.h),
+      padding: EdgeInsets.symmetric(vertical: 16.h),
       child: Center(
         child: Container(
-          padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 4.h),
+          padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 6.h),
           decoration: BoxDecoration(
-            color: Consonants.lightGreyColor,
-            borderRadius: BorderRadius.circular(20.r),
+            color: Consonants.chipBg,
+            borderRadius: BorderRadius.circular(Consonants.rPill.r),
           ),
-          child: CustomWidgets.customText(
+          child: Text(
             label,
-            10.sp,
-            Consonants.greyColor,
-            FontWeight.w700,
+            style: AppText.navLabel(color: Consonants.iconInk)
+                .copyWith(fontSize: 12.sp),
           ),
         ),
       ),
@@ -564,7 +559,7 @@ class _DriverChatDetailState extends ConsumerState<DriverChatDetail> {
   Widget _bubble(_Message msg, {required bool showSender}) {
     final isMe = msg.isMe;
     return Padding(
-      padding: EdgeInsets.only(bottom: 6.h),
+      padding: EdgeInsets.only(bottom: 10.h),
       child: Row(
         mainAxisAlignment:
             isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
@@ -581,81 +576,58 @@ class _DriverChatDetailState extends ConsumerState<DriverChatDetail> {
               children: [
                 if (!isMe && showSender) ...[
                   Padding(
-                    padding: EdgeInsets.only(left: 4.w, bottom: 2.h),
-                    child: CustomWidgets.customText(
+                    padding: EdgeInsets.only(left: 6.w, bottom: 4.h),
+                    child: Text(
                       msg.senderName,
-                      10.sp,
-                      msg.senderColor ?? Consonants.greyColor,
-                      FontWeight.w800,
                       maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppText.navLabel(
+                        color: msg.senderColor ?? Consonants.textMuted,
+                      ).copyWith(fontSize: 12.sp),
                     ),
                   ),
                 ],
                 GestureDetector(
                   onLongPress: () => _showMessageActions(msg),
                   child: ConstrainedBox(
-                    constraints: BoxConstraints(maxWidth: 260.w),
+                    constraints: BoxConstraints(maxWidth: 268.w),
                     child: Container(
                       padding: EdgeInsets.symmetric(
-                          horizontal: 14.w, vertical: 10.h),
+                          horizontal: 16.w, vertical: 12.h),
                       decoration: BoxDecoration(
-                        gradient: isMe
-                            ? const LinearGradient(
-                                colors: [
-                                  Consonants.primaryColor,
-                                  Color(0xff5AC8FA),
-                                ],
-                              )
-                            : null,
-                        color: isMe ? null : Consonants.whiteColor,
+                        color:
+                            isMe ? Consonants.indigo : Consonants.surface,
                         borderRadius: BorderRadius.only(
-                          topLeft:
-                              Radius.circular(isMe ? 18.r : 4.r),
-                          topRight:
-                              Radius.circular(isMe ? 4.r : 18.r),
+                          topLeft: Radius.circular(isMe ? 18.r : 6.r),
+                          topRight: Radius.circular(isMe ? 6.r : 18.r),
                           bottomLeft: Radius.circular(18.r),
                           bottomRight: Radius.circular(18.r),
                         ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: isMe
-                                ? Consonants.primaryColor
-                                    .withValues(alpha: 0.18)
-                                : Colors.black.withValues(alpha: 0.04),
-                            blurRadius: 8,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
+                        boxShadow: isMe ? null : Consonants.cardLift,
                       ),
                       child: Text(
                         msg.text,
-                        style: TextStyle(
-                          fontFamily: Consonants.fontFamily,
-                          fontSize: 12.sp,
-                          fontWeight: FontWeight.w500,
-                          height: 1.4,
+                        style: AppText.paragraph(
                           color: isMe
-                              ? Consonants.whiteColor
-                              : Consonants.boldTextColor,
-                        ),
+                              ? Consonants.surface
+                              : Consonants.bodyInk,
+                        ).copyWith(fontSize: 15.sp),
                       ),
                     ),
                   ),
                 ),
-                SizedBox(height: 3.h),
+                SizedBox(height: 5.h),
                 Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 4.w),
+                  padding: EdgeInsets.symmetric(horizontal: 6.w),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      CustomWidgets.customText(
+                      Text(
                         _formatTime(msg.time),
-                        9.sp,
-                        Consonants.greyColor,
-                        FontWeight.w500,
+                        style: AppText.caption().copyWith(fontSize: 11.5.sp),
                       ),
                       if (isMe) ...[
-                        SizedBox(width: 4.w),
+                        SizedBox(width: 5.w),
                         _statusIcon(msg.status),
                       ],
                     ],
@@ -671,23 +643,22 @@ class _DriverChatDetailState extends ConsumerState<DriverChatDetail> {
 
   Widget _miniAvatar(_Message msg, {required bool visible}) {
     if (!visible) {
-      return SizedBox(width: 26.w);
+      return SizedBox(width: 28.w);
     }
-    final color = msg.senderColor ?? Consonants.primaryColor;
+    final color = msg.senderColor ?? Consonants.indigo;
     return Container(
-      width: 26.w,
-      height: 26.w,
+      width: 28.w,
+      height: 28.w,
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: color,
         shape: BoxShape.circle,
-        border: Border.all(color: Consonants.whiteColor, width: 2),
+        border: Border.all(color: Consonants.canvas, width: 2),
       ),
-      child: CustomWidgets.customText(
+      child: Text(
         msg.senderInitial ?? msg.senderName.substring(0, 1),
-        10.sp,
-        Consonants.whiteColor,
-        FontWeight.w800,
+        style: AppText.navLabel(color: Consonants.surface)
+            .copyWith(fontSize: 11.sp),
       ),
     );
   }
@@ -696,16 +667,16 @@ class _DriverChatDetailState extends ConsumerState<DriverChatDetail> {
     switch (status) {
       case _Status.sending:
         return Icon(Icons.access_time_rounded,
-            size: 11.sp, color: Consonants.greyColor);
+            size: 12.sp, color: Consonants.textMuted);
       case _Status.sent:
         return Icon(Icons.done_rounded,
-            size: 11.sp, color: Consonants.greyColor);
+            size: 12.sp, color: Consonants.textMuted);
       case _Status.delivered:
         return Icon(Icons.done_all_rounded,
-            size: 11.sp, color: Consonants.greyColor);
+            size: 12.sp, color: Consonants.textMuted);
       case _Status.read:
         return Icon(Icons.done_all_rounded,
-            size: 11.sp, color: Consonants.primaryColor);
+            size: 12.sp, color: Consonants.violet);
     }
   }
 
@@ -720,33 +691,31 @@ class _DriverChatDetailState extends ConsumerState<DriverChatDetail> {
   Widget _composerBar() {
     final canSend = _composer.text.trim().isNotEmpty;
     return Container(
-      decoration: BoxDecoration(
-        color: Consonants.whiteColor,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 12,
-            offset: const Offset(0, -3),
-          ),
-        ],
+      decoration: const BoxDecoration(
+        color: Consonants.canvas,
+        border: Border(top: BorderSide(color: Consonants.divider)),
       ),
       child: SafeArea(
         top: false,
         child: Padding(
-          padding: EdgeInsets.fromLTRB(12.w, 10.h, 12.w, 10.h),
+          padding: EdgeInsets.fromLTRB(
+              Consonants.gutter.w, 12.h, Consonants.gutter.w, 12.h),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Expanded(
                 child: Container(
                   constraints: BoxConstraints(
-                    minHeight: 40.h,
-                    maxHeight: 120.h,
+                    minHeight: 48.h,
+                    maxHeight: 128.h,
                   ),
-                  padding: EdgeInsets.symmetric(horizontal: 14.w),
+                  padding: EdgeInsets.symmetric(horizontal: 16.w),
                   decoration: BoxDecoration(
-                    color: Consonants.scaffoldBackgroundColor,
-                    borderRadius: BorderRadius.circular(22.r),
+                    color: Consonants.surface,
+                    borderRadius:
+                        BorderRadius.circular(Consonants.rInput.r),
+                    border: Border.all(
+                        color: Consonants.border, width: 1.2),
                   ),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
@@ -758,71 +727,48 @@ class _DriverChatDetailState extends ConsumerState<DriverChatDetail> {
                           maxLines: 5,
                           minLines: 1,
                           textInputAction: TextInputAction.newline,
-                          cursorColor: Consonants.primaryColor,
-                          style: TextStyle(
-                            fontFamily: Consonants.fontFamily,
-                            fontSize: 12.sp,
-                            fontWeight: FontWeight.w500,
-                            color: Consonants.boldTextColor,
+                          cursorColor: Consonants.violet,
+                          style: AppText.rowLabel().copyWith(
+                            fontSize: 15.5.sp,
                             height: 1.4,
                           ),
                           decoration: InputDecoration(
                             border: InputBorder.none,
                             isCollapsed: true,
                             contentPadding:
-                                EdgeInsets.symmetric(vertical: 11.h),
+                                EdgeInsets.symmetric(vertical: 14.h),
                             hintText: "Message…",
-                            hintStyle: TextStyle(
-                              fontFamily: Consonants.fontFamily,
-                              fontSize: 12.sp,
-                              fontWeight: FontWeight.w500,
-                              color: Consonants.greyColor,
-                            ),
+                            hintStyle: AppText.rowLabel(
+                              color: Consonants.textMuted,
+                            ).copyWith(fontSize: 15.5.sp),
                           ),
                         ),
                       ),
                       Icon(Icons.emoji_emotions_outlined,
-                          size: 18.sp, color: Consonants.greyColor),
+                          size: 20.sp, color: Consonants.iconInk),
                     ],
                   ),
                 ),
               ),
-              SizedBox(width: 8.w),
+              SizedBox(width: 12.w),
               GestureDetector(
                 onTap: canSend ? _send : null,
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 180),
-                  width: 44.w,
-                  height: 44.w,
+                  width: 48.w,
+                  height: 48.w,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    gradient: canSend
-                        ? const LinearGradient(
-                            colors: [
-                              Consonants.primaryColor,
-                              Color(0xff5AC8FA),
-                            ],
-                          )
-                        : null,
-                    color: canSend ? null : Consonants.scaffoldBackgroundColor,
+                    gradient: canSend ? Consonants.actionGradient : null,
+                    color: canSend ? null : Consonants.chipBg,
                     shape: BoxShape.circle,
-                    boxShadow: canSend
-                        ? [
-                            BoxShadow(
-                              color: Consonants.primaryColor
-                                  .withValues(alpha: 0.30),
-                              blurRadius: 10,
-                              offset: const Offset(0, 4),
-                            ),
-                          ]
-                        : null,
                   ),
                   child: Icon(
-                    canSend ? Icons.send_rounded : Icons.mic_rounded,
-                    size: 18.sp,
+                    canSend ? Icons.send_rounded : Icons.mic_none_rounded,
+                    size: 20.sp,
                     color: canSend
-                        ? Consonants.whiteColor
-                        : Consonants.greyColor,
+                        ? Consonants.surface
+                        : Consonants.iconInk,
                   ),
                 ),
               ),
@@ -866,12 +812,8 @@ class _StackedAvatars extends StatelessWidget {
               child: _avatar(
                 child: Text(
                   shown[i].initial,
-                  style: TextStyle(
-                    color: Consonants.whiteColor,
-                    fontFamily: Consonants.fontFamily,
-                    fontSize: small * 0.42,
-                    fontWeight: FontWeight.w800,
-                  ),
+                  style: AppText.amount(color: Consonants.surface)
+                      .copyWith(fontSize: small * 0.42),
                 ),
                 bg: shown[i].color,
                 diameter: small,
@@ -882,13 +824,12 @@ class _StackedAvatars extends StatelessWidget {
               left: shown.length * (small - overlap),
               top: (size - small) / 2,
               child: _avatar(
-                child: CustomWidgets.customText(
+                child: Text(
                   "+$extra",
-                  small * 0.34,
-                  Consonants.boldTextColor,
-                  FontWeight.w800,
+                  style: AppText.amount(color: Consonants.indigo)
+                      .copyWith(fontSize: small * 0.34),
                 ),
-                bg: Consonants.lightBlueColor,
+                bg: Consonants.indigoWash,
                 diameter: small,
               ),
             ),
@@ -909,7 +850,7 @@ class _StackedAvatars extends StatelessWidget {
       decoration: BoxDecoration(
         color: bg,
         shape: BoxShape.circle,
-        border: Border.all(color: Consonants.whiteColor, width: 2),
+        border: Border.all(color: Consonants.canvas, width: 2),
       ),
       child: child,
     );

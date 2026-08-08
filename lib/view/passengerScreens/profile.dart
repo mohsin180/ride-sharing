@@ -13,7 +13,7 @@ import 'package:ride_sharing/view/editProfile.dart';
 import 'package:ride_sharing/view/passengerScreens/passengerHistory.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/consonants/errorHandler.dart';
-import 'package:ride_sharing/widgets/custom/customWidgets.dart';
+import 'package:ride_sharing/widgets/custom/appComponents.dart';
 
 class Profile extends StatelessWidget {
   final bool isPassenger;
@@ -44,7 +44,7 @@ class PassengerProfile extends ConsumerWidget {
 
     return SafeArea(
       child: RefreshIndicator(
-        color: Consonants.primaryColor,
+        color: Consonants.indigo,
         onRefresh: () => _refresh(ref),
         child: asyncProfile.when(
           loading: () => const _ProfileLoading(),
@@ -85,22 +85,22 @@ class _PassengerProfileBody extends ConsumerWidget {
       physics: const AlwaysScrollableScrollPhysics(
         parent: BouncingScrollPhysics(),
       ),
-      padding: EdgeInsets.only(bottom: 24.h),
+      padding: EdgeInsets.only(bottom: Consonants.navClearance.h),
       child: Column(
         children: [
           ProfileWidgets.heroHeader(
             name: profile.fullName,
             role: "Passenger",
           ),
-          SizedBox(height: 14.h),
+          SizedBox(height: 16.h),
           ProfileWidgets.statsCard(
             trips: tripsText,
             rating: ratingText,
             memberSince: memberText,
           ),
-          SizedBox(height: 22.h),
+          SizedBox(height: 32.h),
           ProfileWidgets.sectionLabel("Personal Details"),
-          SizedBox(height: 10.h),
+          SizedBox(height: 4.h),
           ProfileWidgets.infoGroup([
             ProfileInfoItem(
               icon: Icons.person_outline_rounded,
@@ -124,18 +124,18 @@ class _PassengerProfileBody extends ConsumerWidget {
             ),
             ProfileInfoItem(
               icon: profile.gender == "FEMALE"
-                  ? Icons.female_rounded
-                  : Icons.male_rounded,
+                  ? Icons.female_outlined
+                  : Icons.male_outlined,
               label: "Gender",
               value: _formatGender(profile.gender),
             ),
           ]),
-          SizedBox(height: 22.h),
+          SizedBox(height: 32.h),
           ProfileWidgets.sectionLabel("Account"),
-          SizedBox(height: 10.h),
+          SizedBox(height: 4.h),
           ProfileWidgets.actionGroup([
             ProfileActionItem(
-              icon: Icons.history_rounded,
+              icon: Icons.history_outlined,
               label: "Ride History",
               onTap: () => Navigator.push(
                 context,
@@ -153,7 +153,7 @@ class _PassengerProfileBody extends ConsumerWidget {
               ),
             ),
           ]),
-          SizedBox(height: 16.h),
+          SizedBox(height: 28.h),
           ProfileWidgets.logoutButton(
             onTap: () => ProfileWidgets.confirmLogout(context, ref),
           ),
@@ -180,16 +180,17 @@ class _ProfileLoading extends StatelessWidget {
       physics: const AlwaysScrollableScrollPhysics(),
       children: [
         SizedBox(height: 220.h),
-        Center(
-          child: CircularProgressIndicator(color: Consonants.primaryColor),
+        const Center(
+          child: CircularProgressIndicator(
+            strokeWidth: 2.4,
+            color: Consonants.indigo,
+          ),
         ),
-        SizedBox(height: 16.h),
+        SizedBox(height: 18.h),
         Center(
-          child: CustomWidgets.customText(
+          child: Text(
             "Loading your profile…",
-            12.sp,
-            Consonants.greyColor,
-            FontWeight.w500,
+            style: AppText.caption().copyWith(fontSize: 13.sp),
           ),
         ),
       ],
@@ -208,69 +209,53 @@ class _ProfileError extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 80.h),
+      padding: EdgeInsets.symmetric(
+        horizontal: Consonants.gutter.w,
+        vertical: 80.h,
+      ),
       children: [
-        Icon(
-          Icons.cloud_off_rounded,
-          size: 56.sp,
-          color: Consonants.primaryColor,
-        ),
-        SizedBox(height: 16.h),
-        CustomWidgets.customText(
-          "Couldn't load your profile",
-          16.sp,
-          Consonants.boldTextColor,
-          FontWeight.w800,
-          textAlign: TextAlign.center,
-        ),
-        SizedBox(height: 8.h),
-        CustomWidgets.customText(
-          message,
-          11.sp,
-          Consonants.greyColor,
-          FontWeight.w500,
-          textAlign: TextAlign.center,
-          maxLines: 4,
-        ),
-        SizedBox(height: 20.h),
         Center(
-          child: GestureDetector(
-            onTap: onRetry,
-            behavior: HitTestBehavior.opaque,
-            child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Consonants.primaryColor, Color(0xff5AC8FA)],
-                ),
-                borderRadius: BorderRadius.circular(40.r),
-                boxShadow: [
-                  BoxShadow(
-                    color: Consonants.primaryColor.withValues(alpha: 0.30),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.refresh_rounded,
-                    size: 14.sp,
-                    color: Consonants.whiteColor,
-                  ),
-                  SizedBox(width: 6.w),
-                  CustomWidgets.customText(
-                    "Try again",
-                    12.sp,
-                    Consonants.whiteColor,
-                    FontWeight.w700,
-                  ),
-                ],
-              ),
+          child: Container(
+            width: 72.w,
+            height: 72.w,
+            alignment: Alignment.center,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              color: Consonants.indigoWash,
+            ),
+            child: Icon(
+              Icons.cloud_off_outlined,
+              size: 32.sp,
+              color: Consonants.indigo,
             ),
           ),
+        ),
+        SizedBox(height: 20.h),
+        Text(
+          "Couldn't load your profile",
+          textAlign: TextAlign.center,
+          style: AppText.sectionHeading().copyWith(fontSize: 19.sp),
+        ),
+        SizedBox(height: 8.h),
+        Text(
+          message,
+          textAlign: TextAlign.center,
+          maxLines: 4,
+          overflow: TextOverflow.ellipsis,
+          style: AppText.paragraph().copyWith(fontSize: 15.sp),
+        ),
+        SizedBox(height: 26.h),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            AppButton(
+              label: "Try again",
+              icon: Icons.refresh_rounded,
+              kind: AppButtonKind.secondary,
+              expand: false,
+              onPressed: onRetry,
+            ),
+          ],
         ),
       ],
     );
@@ -293,7 +278,7 @@ class DriverProfile extends ConsumerWidget {
 
     return SafeArea(
       child: RefreshIndicator(
-        color: Consonants.primaryColor,
+        color: Consonants.indigo,
         onRefresh: () => _refresh(ref),
         child: asyncProfile.when(
           loading: () => const _ProfileLoading(),
@@ -334,19 +319,19 @@ class _DriverProfileBody extends ConsumerWidget {
       physics: const AlwaysScrollableScrollPhysics(
         parent: BouncingScrollPhysics(),
       ),
-      padding: EdgeInsets.only(bottom: 24.h),
+      padding: EdgeInsets.only(bottom: Consonants.navClearance.h),
       child: Column(
         children: [
           ProfileWidgets.heroHeader(name: profile.fullName, role: "Driver"),
-          SizedBox(height: 14.h),
+          SizedBox(height: 16.h),
           ProfileWidgets.statsCard(
             trips: tripsText,
             rating: ratingText,
             memberSince: memberText,
           ),
-          SizedBox(height: 22.h),
+          SizedBox(height: 32.h),
           ProfileWidgets.sectionLabel("Personal Details"),
-          SizedBox(height: 10.h),
+          SizedBox(height: 4.h),
           ProfileWidgets.infoGroup([
             ProfileInfoItem(
               icon: Icons.person_outline_rounded,
@@ -370,18 +355,18 @@ class _DriverProfileBody extends ConsumerWidget {
             ),
             ProfileInfoItem(
               icon: profile.gender == "FEMALE"
-                  ? Icons.female_rounded
-                  : Icons.male_rounded,
+                  ? Icons.female_outlined
+                  : Icons.male_outlined,
               label: "Gender",
               value: _formatGender(profile.gender),
             ),
           ]),
-          SizedBox(height: 22.h),
+          SizedBox(height: 32.h),
           ProfileWidgets.sectionLabel("Vehicle"),
-          SizedBox(height: 10.h),
+          SizedBox(height: 4.h),
           ProfileWidgets.infoGroup([
             ProfileInfoItem(
-              icon: Icons.drive_eta,
+              icon: Icons.directions_car_outlined,
               label: "Car Make",
               value: v.make.isEmpty ? "—" : v.make,
             ),
@@ -391,32 +376,32 @@ class _DriverProfileBody extends ConsumerWidget {
               value: v.model.isEmpty ? "—" : v.model,
             ),
             ProfileInfoItem(
-              icon: Icons.confirmation_number,
+              icon: Icons.confirmation_number_outlined,
               label: "Car Number",
               value: v.number.isEmpty ? "—" : v.number,
             ),
             ProfileInfoItem(
-              icon: Icons.color_lens,
+              icon: Icons.color_lens_outlined,
               label: "Car Color",
               value: v.color.isEmpty ? "—" : v.color,
             ),
             ProfileInfoItem(
-              icon: Icons.chair,
+              icon: Icons.event_seat_outlined,
               label: "Car Seats",
               value: v.seats > 0 ? v.seats.toString() : "—",
             ),
             ProfileInfoItem(
-              icon: Icons.calendar_today,
+              icon: Icons.calendar_today_outlined,
               label: "Car Year",
               value: v.year > 0 ? v.year.toString() : "—",
             ),
           ]),
-          SizedBox(height: 22.h),
+          SizedBox(height: 32.h),
           ProfileWidgets.sectionLabel("Account"),
-          SizedBox(height: 10.h),
+          SizedBox(height: 4.h),
           ProfileWidgets.actionGroup([
             ProfileActionItem(
-              icon: Icons.history_rounded,
+              icon: Icons.history_outlined,
               label: "Ride History",
               onTap: () => Navigator.push(
                 context,
@@ -435,7 +420,7 @@ class _DriverProfileBody extends ConsumerWidget {
               ),
             ),
           ]),
-          SizedBox(height: 16.h),
+          SizedBox(height: 28.h),
           ProfileWidgets.logoutButton(
             onTap: () => ProfileWidgets.confirmLogout(context, ref),
           ),
@@ -477,105 +462,58 @@ class ProfileActionItem {
 /// ─────────────────────── PROFILE WIDGETS ───────────────────────
 class ProfileWidgets {
   // ─── Hero header ──────────────────────────────────────────
+  /// The one gradient surface on the profile: who you are, and the role
+  /// you're signed in as.
   static Widget heroHeader({
     required String name,
     required String role,
   }) {
     final initial =
         name.trim().isNotEmpty ? name.trim()[0].toUpperCase() : "?";
-    return Container(
-      margin: EdgeInsets.fromLTRB(20.w, 16.h, 20.w, 0),
-      padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 26.h),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(28.r),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Consonants.primaryColor, Color(0xff5AC8FA)],
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Consonants.primaryColor.withValues(alpha: 0.30),
-            blurRadius: 22,
-            offset: const Offset(0, 12),
-          ),
-        ],
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        Consonants.gutter.w,
+        18.h,
+        Consonants.gutter.w,
+        0,
       ),
-      child: Column(
-        children: [
-          // Initial avatar
-          Container(
-            width: 96.w,
-            height: 96.w,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: Consonants.whiteColor,
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: Consonants.whiteColor.withValues(alpha: 0.35),
-                width: 4,
+      child: HeroSurface(
+        padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 28.h),
+        child: Column(
+          children: [
+            Container(
+              width: 88.w,
+              height: 88.w,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0x29FFFFFF),
+                border: Border.all(color: const Color(0x47FFFFFF), width: 2),
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.10),
-                  blurRadius: 14,
-                  offset: const Offset(0, 6),
-                ),
-              ],
-            ),
-            child: Text(
-              initial,
-              style: TextStyle(
-                color: Consonants.primaryColor,
-                fontSize: 40.sp,
-                fontWeight: FontWeight.w800,
-                fontFamily: Consonants.fontFamily,
+              child: Text(
+                initial,
+                style: AppText.figure(color: Consonants.surface)
+                    .copyWith(fontSize: 34.sp),
               ),
             ),
-          ),
-          SizedBox(height: 14.h),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Flexible(
-                child: CustomWidgets.customText(
-                  name,
-                  17.sp,
-                  Consonants.whiteColor,
-                  FontWeight.w800,
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 8.h),
-          Container(
-            padding:
-                EdgeInsets.symmetric(horizontal: 14.w, vertical: 6.h),
-            decoration: BoxDecoration(
-              color: Consonants.whiteColor.withValues(alpha: 0.25),
-              borderRadius: BorderRadius.circular(20.r),
+            SizedBox(height: 16.h),
+            Text(
+              name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: AppText.screenTitle(color: Consonants.surface)
+                  .copyWith(fontSize: 22.sp),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  role == "Driver"
-                      ? Icons.directions_car_rounded
-                      : Icons.person_rounded,
-                  size: 12.sp,
-                  color: Consonants.whiteColor,
-                ),
-                SizedBox(width: 5.w),
-                CustomWidgets.customText(
-                  role,
-                  10.sp,
-                  Consonants.whiteColor,
-                  FontWeight.w700,
-                ),
-              ],
+            SizedBox(height: 12.h),
+            HeroChip(
+              label: role,
+              icon: role == "Driver"
+                  ? Icons.directions_car_outlined
+                  : Icons.person_outline_rounded,
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -586,70 +524,38 @@ class ProfileWidgets {
     required String rating,
     required String memberSince,
   }) {
-    return Container(
-      margin: EdgeInsets.symmetric(horizontal: 20.w),
-      padding: EdgeInsets.symmetric(vertical: 14.h, horizontal: 8.w),
-      decoration: BoxDecoration(
-        color: Consonants.whiteColor,
-        borderRadius: BorderRadius.circular(16.r),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          _statCell(
-            icon: Icons.route_rounded,
-            value: trips,
-            label: "Trips",
-            color: Consonants.primaryColor,
-          ),
-          _vDiv(),
-          _statCell(
-            icon: Icons.star_rounded,
-            value: rating,
-            label: "Rating",
-            color: const Color(0xffF5B800),
-          ),
-          _vDiv(),
-          _statCell(
-            icon: Icons.calendar_today_rounded,
-            value: memberSince,
-            label: "Member",
-            color: Consonants.primaryColor,
-          ),
-        ],
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: Consonants.gutter.w),
+      child: AppCard(
+        padding: EdgeInsets.symmetric(vertical: 18.h, horizontal: 8.w),
+        child: Row(
+          children: [
+            _statCell(value: trips, label: "Trips"),
+            _vDiv(),
+            _statCell(value: rating, label: "Rating"),
+            _vDiv(),
+            _statCell(value: memberSince, label: "Member since"),
+          ],
+        ),
       ),
     );
   }
 
-  static Widget _statCell({
-    required IconData icon,
-    required String value,
-    required String label,
-    required Color color,
-  }) {
+  static Widget _statCell({required String value, required String label}) {
     return Expanded(
       child: Column(
         children: [
-          Icon(icon, size: 16.sp, color: color),
-          SizedBox(height: 4.h),
-          CustomWidgets.customText(
+          Text(
             value,
-            14.sp,
-            Consonants.boldTextColor,
-            FontWeight.w800,
+            maxLines: 1,
+            style: AppText.screenTitle().copyWith(fontSize: 22.sp),
           ),
-          SizedBox(height: 1.h),
-          CustomWidgets.customText(
+          SizedBox(height: 5.h),
+          Text(
             label,
-            9.sp,
-            Consonants.greyColor,
-            FontWeight.w500,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppText.caption().copyWith(fontSize: 12.sp),
           ),
         ],
       ),
@@ -657,65 +563,28 @@ class ProfileWidgets {
   }
 
   static Widget _vDiv() {
-    return Container(
-      height: 32.h,
-      width: 1,
-      color: Consonants.lightGreyColor,
-    );
+    return Container(height: 34.h, width: 1, color: Consonants.divider);
   }
 
   // ─── Section label ────────────────────────────────────────
   static Widget sectionLabel(String text) {
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 24.w),
-      child: Row(
-        children: [
-          CustomWidgets.customText(
-            text.toUpperCase(),
-            10.sp,
-            Consonants.greyColor,
-            FontWeight.w700,
-          ),
-          SizedBox(width: 10.w),
-          Expanded(
-            child: Container(
-              height: 1,
-              color: Consonants.lightGreyColor,
-            ),
-          ),
-        ],
-      ),
+      padding: EdgeInsets.symmetric(horizontal: Consonants.gutter.w),
+      child: AppSectionHeading(label: text),
     );
   }
 
-  // ─── Info group (multiple info tiles in one card) ─────────
+  // ─── Info group ───────────────────────────────────────────
+  /// Facts about the account: a list, so it divides with a 1px rule and
+  /// never gets a card wrapper.
   static Widget infoGroup(List<ProfileInfoItem> items) {
-    return Container(
-      margin: EdgeInsets.symmetric(horizontal: 20.w),
-      padding: EdgeInsets.symmetric(vertical: 4.h),
-      decoration: BoxDecoration(
-        color: Consonants.whiteColor,
-        borderRadius: BorderRadius.circular(16.r),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: Consonants.gutter.w),
       child: Column(
         children: [
           for (int i = 0; i < items.length; i++) ...[
             _infoTile(items[i]),
-            if (i < items.length - 1)
-              Padding(
-                padding: EdgeInsets.symmetric(horizontal: 14.w),
-                child: Container(
-                  height: 1,
-                  color: Consonants.lightGreyColor,
-                ),
-              ),
+            if (i < items.length - 1) const AppDivider(),
           ],
         ],
       ),
@@ -724,37 +593,36 @@ class ProfileWidgets {
 
   static Widget _infoTile(ProfileInfoItem item) {
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 11.h),
+      padding: EdgeInsets.symmetric(vertical: Consonants.rowVertical.h),
       child: Row(
         children: [
           Container(
-            width: 40.w,
-            height: 40.w,
+            width: 44.w,
+            height: 44.w,
             alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: Consonants.lightBlueColor,
-              borderRadius: BorderRadius.circular(12.r),
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              color: Consonants.chipBg,
             ),
-            child: Icon(item.icon,
-                size: 18.sp, color: Consonants.primaryColor),
+            child: Icon(item.icon, size: 20.sp, color: Consonants.iconInk),
           ),
-          SizedBox(width: 12.w),
+          SizedBox(width: 14.w),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                CustomWidgets.customText(
+                Text(
                   item.label,
-                  10.sp,
-                  Consonants.greyColor,
-                  FontWeight.w500,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppText.caption().copyWith(fontSize: 12.5.sp),
                 ),
-                SizedBox(height: 2.h),
-                CustomWidgets.customText(
+                SizedBox(height: 3.h),
+                Text(
                   item.value,
-                  12.sp,
-                  Consonants.boldTextColor,
-                  FontWeight.w700,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppText.rowLabel().copyWith(fontSize: 16.sp),
                 ),
               ],
             ),
@@ -766,70 +634,24 @@ class ProfileWidgets {
 
   // ─── Action group ─────────────────────────────────────────
   static Widget actionGroup(List<ProfileActionItem> items) {
-    return Container(
-      margin: EdgeInsets.symmetric(horizontal: 20.w),
-      padding: EdgeInsets.symmetric(vertical: 4.h),
-      decoration: BoxDecoration(
-        color: Consonants.whiteColor,
-        borderRadius: BorderRadius.circular(16.r),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: Consonants.gutter.w),
       child: Column(
         children: [
           for (int i = 0; i < items.length; i++) ...[
-            _actionTile(items[i]),
-            if (i < items.length - 1)
-              Padding(
-                padding: EdgeInsets.symmetric(horizontal: 14.w),
-                child: Container(
-                  height: 1,
-                  color: Consonants.lightGreyColor,
-                ),
+            AppListRow(
+              icon: items[i].icon,
+              title: items[i].label,
+              onTap: items[i].onTap,
+              trailing: Icon(
+                Icons.chevron_right_rounded,
+                size: 22.sp,
+                color: Consonants.textMuted,
               ),
+            ),
+            if (i < items.length - 1) const AppDivider(),
           ],
         ],
-      ),
-    );
-  }
-
-  static Widget _actionTile(ProfileActionItem item) {
-    return GestureDetector(
-      onTap: item.onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 13.h),
-        child: Row(
-          children: [
-            Container(
-              width: 40.w,
-              height: 40.w,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: Consonants.lightBlueColor,
-                borderRadius: BorderRadius.circular(12.r),
-              ),
-              child: Icon(item.icon,
-                  size: 18.sp, color: Consonants.primaryColor),
-            ),
-            SizedBox(width: 12.w),
-            Expanded(
-              child: CustomWidgets.customText(
-                item.label,
-                12.sp,
-                Consonants.boldTextColor,
-                FontWeight.w700,
-              ),
-            ),
-            Icon(Icons.chevron_right_rounded,
-                size: 18.sp, color: Consonants.greyColor),
-          ],
-        ),
       ),
     );
   }
@@ -843,102 +665,61 @@ class ProfileWidgets {
     final confirmed = await showDialog<bool>(
       context: context,
       barrierDismissible: true,
+      barrierColor: Consonants.scrim,
       builder: (dialogCtx) {
         return Dialog(
-          backgroundColor: Consonants.whiteColor,
+          backgroundColor: Consonants.surface,
           insetPadding: EdgeInsets.symmetric(horizontal: 32.w),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20.r),
+            borderRadius: BorderRadius.circular(Consonants.rHero.r),
           ),
           child: Padding(
-            padding: EdgeInsets.fromLTRB(20.w, 22.h, 20.w, 16.h),
+            padding: EdgeInsets.fromLTRB(22.w, 26.h, 22.w, 20.h),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
-                  width: 56.w,
-                  height: 56.w,
+                  width: 60.w,
+                  height: 60.w,
                   alignment: Alignment.center,
                   decoration: const BoxDecoration(
-                    color: Color(0xffFEE2E2),
+                    color: Consonants.dangerWash,
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(Icons.logout_rounded,
-                      size: 26.sp, color: const Color(0xffEF4444)),
+                  child: Icon(
+                    Icons.logout_rounded,
+                    size: 26.sp,
+                    color: Consonants.danger,
+                  ),
                 ),
-                SizedBox(height: 14.h),
-                CustomWidgets.customText(
+                SizedBox(height: 18.h),
+                Text(
                   "Are you sure?",
-                  16.sp,
-                  Consonants.boldTextColor,
-                  FontWeight.w800,
+                  style: AppText.sectionHeading().copyWith(fontSize: 19.sp),
                 ),
-                SizedBox(height: 6.h),
-                CustomWidgets.customText(
+                SizedBox(height: 8.h),
+                Text(
                   "You'll be signed out and returned to the login screen.",
-                  11.sp,
-                  Consonants.greyColor,
-                  FontWeight.w500,
                   textAlign: TextAlign.center,
                   maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppText.paragraph().copyWith(fontSize: 15.sp),
                 ),
-                SizedBox(height: 20.h),
+                SizedBox(height: 24.h),
                 Row(
                   children: [
                     Expanded(
-                      child: GestureDetector(
-                        onTap: () => Navigator.of(dialogCtx).pop(false),
-                        behavior: HitTestBehavior.opaque,
-                        child: Container(
-                          padding: EdgeInsets.symmetric(vertical: 12.h),
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: Consonants.scaffoldBackgroundColor,
-                            borderRadius: BorderRadius.circular(12.r),
-                          ),
-                          child: CustomWidgets.customText(
-                            "Decline",
-                            13.sp,
-                            Consonants.boldTextColor,
-                            FontWeight.w700,
-                          ),
-                        ),
+                      child: AppButton(
+                        label: "Decline",
+                        kind: AppButtonKind.neutral,
+                        onPressed: () => Navigator.of(dialogCtx).pop(false),
                       ),
                     ),
-                    SizedBox(width: 10.w),
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () => Navigator.of(dialogCtx).pop(true),
-                        behavior: HitTestBehavior.opaque,
-                        child: Container(
-                          padding: EdgeInsets.symmetric(vertical: 12.h),
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [
-                                Color(0xffEF4444),
-                                Color(0xffF87171),
-                              ],
-                            ),
-                            borderRadius: BorderRadius.circular(12.r),
-                            boxShadow: [
-                              BoxShadow(
-                                color: const Color(0xffEF4444)
-                                    .withValues(alpha: 0.30),
-                                blurRadius: 10,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                          child: CustomWidgets.customText(
-                            "OK",
-                            13.sp,
-                            Consonants.whiteColor,
-                            FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                    ),
+                    SizedBox(width: Consonants.gapButtons.w),
+                    Expanded(child: _dangerButton(
+                      label: "Log out",
+                      onTap: () => Navigator.of(dialogCtx).pop(true),
+                    )),
                   ],
                 ),
               ],
@@ -962,35 +743,60 @@ class ProfileWidgets {
     context.go(Approutes.login);
   }
 
+  /// Destructive twin of [AppButton] — the system has no danger kind, and
+  /// red is reserved for exactly this.
+  static Widget _dangerButton({
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        alignment: Alignment.center,
+        padding: EdgeInsets.symmetric(vertical: 17.h, horizontal: 16.w),
+        decoration: BoxDecoration(
+          color: Consonants.danger,
+          borderRadius: BorderRadius.circular(Consonants.rButton.r),
+        ),
+        child: Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: AppText.button(color: Consonants.surface)
+              .copyWith(fontSize: 17.5.sp),
+        ),
+      ),
+    );
+  }
+
   // ─── Logout button ────────────────────────────────────────
   static Widget logoutButton({required VoidCallback onTap}) {
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 20.w),
+      padding: EdgeInsets.symmetric(horizontal: Consonants.gutter.w),
       child: GestureDetector(
         onTap: onTap,
         behavior: HitTestBehavior.opaque,
         child: Container(
-          padding: EdgeInsets.symmetric(vertical: 14.h),
+          padding: EdgeInsets.symmetric(vertical: 17.h),
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: Consonants.whiteColor,
-            borderRadius: BorderRadius.circular(14.r),
-            border: Border.all(
-              color: const Color(0xffFEE2E2),
-              width: 1.5,
-            ),
+            borderRadius: BorderRadius.circular(Consonants.rButton.r),
+            border: Border.all(color: Consonants.danger, width: 1.5),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.logout_rounded,
-                  size: 16.sp, color: const Color(0xffEF4444)),
-              SizedBox(width: 8.w),
-              CustomWidgets.customText(
+              Icon(
+                Icons.logout_rounded,
+                size: 19.sp,
+                color: Consonants.danger,
+              ),
+              SizedBox(width: 10.w),
+              Text(
                 "Logout",
-                13.sp,
-                const Color(0xffEF4444),
-                FontWeight.w700,
+                style: AppText.button(color: Consonants.danger)
+                    .copyWith(fontSize: 17.5.sp),
               ),
             ],
           ),

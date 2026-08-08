@@ -12,6 +12,7 @@ import 'package:ride_sharing/provider/sessionReset.dart';
 import 'package:ride_sharing/view/forgotPassword.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/consonants/errorHandler.dart';
+import 'package:ride_sharing/widgets/custom/appComponents.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
 import 'package:ride_sharing/widgets/custom/responsive.dart';
 
@@ -138,6 +139,13 @@ class _LoginscreenState extends ConsumerState<Loginscreen> {
     }
   }
 
+  /// Full-width block on the screen's gutter — the centred column inside
+  /// [ResponsiveAuthScaffold] would otherwise shrink-wrap its children.
+  Widget _gutter({required Widget child}) => Padding(
+        padding: EdgeInsets.symmetric(horizontal: Consonants.gutter.w),
+        child: SizedBox(width: double.infinity, child: child),
+      );
+
   @override
   Widget build(BuildContext context) {
     ref.listen<AuthState>(authControllerProvider, (previous, next) {
@@ -158,17 +166,38 @@ class _LoginscreenState extends ConsumerState<Loginscreen> {
 
     return ResponsiveAuthScaffold(
       formKey: _formKey,
+      bodyPadding: EdgeInsets.symmetric(vertical: 28.h),
       body: [
-        CustomWidgets.customText(
-          'Login to Your Account',
-          20.sp,
-          Consonants.boldTextColor,
-          FontWeight.bold,
+        // Sign-in is an identity moment, so the headline carries Fraunces and
+        // sits left with the brand mark; the gradient is spent on the CTA.
+        _gutter(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // One line: at 33sp the headline wrapped and dropped "Account"
+              // onto its own row. FittedBox scales it down only as far as the
+              // width demands, so it still fills the measure on wider screens.
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Login to Your Account',
+                  maxLines: 1,
+                  softWrap: false,
+                  style: AppText.displayXs().copyWith(fontSize: 33.sp),
+                ),
+              ),
+            ],
+          ),
         ),
-        SizedBox(height: 20.h),
+        SizedBox(height: 32.h),
         AuthFields(
           text: 'Email Address',
-          suffixIcon: Icon(Icons.email_rounded),
+          suffixIcon: Icon(
+            Icons.mail_outline_rounded,
+            size: 20.sp,
+            color: Consonants.iconInk,
+          ),
           controller: emailController,
           keyboardType: TextInputType.emailAddress,
           validator: (value) {
@@ -182,7 +211,7 @@ class _LoginscreenState extends ConsumerState<Loginscreen> {
             return null;
           },
         ),
-        SizedBox(height: 20.h),
+        SizedBox(height: Consonants.gapFields.h),
         PasswordField(
           text: 'Password',
           controller: passwordController,
@@ -196,9 +225,8 @@ class _LoginscreenState extends ConsumerState<Loginscreen> {
             return null;
           },
         ),
-        SizedBox(height: 5.h),
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: 33.w),
+        SizedBox(height: 14.h),
+        _gutter(
           child: Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
@@ -207,26 +235,59 @@ class _LoginscreenState extends ConsumerState<Loginscreen> {
                   context,
                   MaterialPageRoute(builder: (context) => Forgotpassword()),
                 ),
-                child: CustomWidgets.customText(
+                child: Text(
                   'Forgot Password?',
-                  9.sp,
-                  Consonants.primaryColor,
-                  FontWeight.w700,
+                  style: AppText.rowLabel(color: Consonants.indigo)
+                      .copyWith(fontSize: 14.5.sp, fontWeight: FontWeight.w600),
                 ),
               ),
             ],
           ),
         ),
       ],
-      bottomBar: AuthContainer(
-        buttonText: "Login",
-        accountText: 'Dont have an account?',
-        actionText: 'Sign Up',
-        // Loading covers both the auth HTTP and the post-login profile
-        // check so the spinner doesn't briefly disappear in between.
-        isLoading: authState.isloading || _isRouting,
-        onPressed: _handleLogin,
-        onTap: () => context.go(Approutes.register),
+      // The primary action lives at the bottom of the screen, on the canvas —
+      // no opaque bar between it and the form.
+      bottomBar: Padding(
+        padding: EdgeInsets.fromLTRB(
+          Consonants.gutter.w,
+          12.h,
+          Consonants.gutter.w,
+          22.h,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AppButton(
+              label: "Login",
+              // Loading covers both the auth HTTP and the post-login profile
+              // check so the spinner doesn't briefly disappear in between.
+              isLoading: authState.isloading || _isRouting,
+              onPressed: _handleLogin,
+            ),
+            SizedBox(height: Consonants.gapButtons.h),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  'Dont have an account?',
+                  style: AppText.rowLabel(color: Consonants.textMuted)
+                      .copyWith(fontSize: 14.5.sp, fontWeight: FontWeight.w400),
+                ),
+                SizedBox(width: 6.w),
+                GestureDetector(
+                  onTap: () => context.go(Approutes.register),
+                  child: Text(
+                    'Sign Up',
+                    style: AppText.rowLabel(color: Consonants.indigo).copyWith(
+                      fontSize: 14.5.sp,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

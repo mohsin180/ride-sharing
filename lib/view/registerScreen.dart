@@ -7,6 +7,7 @@ import 'package:ride_sharing/model/authModels.dart';
 import 'package:ride_sharing/provider/authProvider.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/consonants/errorHandler.dart';
+import 'package:ride_sharing/widgets/custom/appComponents.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
 import 'package:ride_sharing/widgets/custom/responsive.dart';
 
@@ -55,6 +56,13 @@ class _RegisterscreenState extends ConsumerState<Registerscreen> {
     }
   }
 
+  /// Full-width block on the screen's gutter — the centred column inside
+  /// [ResponsiveAuthScaffold] would otherwise shrink-wrap its children.
+  Widget _gutter({required Widget child}) => Padding(
+        padding: EdgeInsets.symmetric(horizontal: Consonants.gutter.w),
+        child: SizedBox(width: double.infinity, child: child),
+      );
+
   @override
   Widget build(BuildContext context) {
     ref.listen<AuthState>(authControllerProvider, (previous, next) {
@@ -71,17 +79,35 @@ class _RegisterscreenState extends ConsumerState<Registerscreen> {
 
     return ResponsiveAuthScaffold(
       formKey: _formKey,
+      bodyPadding: EdgeInsets.symmetric(vertical: 28.h),
       body: [
-        CustomWidgets.customText(
-          'Create  Your Account',
-          25.sp,
-          Consonants.boldTextColor,
-          FontWeight.bold,
+        _gutter(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Kept to one line — see the matching headline on the login
+              // screen; "Account" was falling to a second row.
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Create Your Account',
+                  maxLines: 1,
+                  softWrap: false,
+                  style: AppText.displayXs().copyWith(fontSize: 33.sp),
+                ),
+              ),
+            ],
+          ),
         ),
         SizedBox(height: 30.h),
         AuthFields(
           text: 'Email Address',
-          suffixIcon: Icon(Icons.email_rounded),
+          suffixIcon: Icon(
+            Icons.mail_outline_rounded,
+            size: 20.sp,
+            color: Consonants.iconInk,
+          ),
           controller: emailController,
           keyboardType: TextInputType.emailAddress,
           validator: (value) {
@@ -95,7 +121,7 @@ class _RegisterscreenState extends ConsumerState<Registerscreen> {
             return null;
           },
         ),
-        SizedBox(height: 10.h),
+        SizedBox(height: Consonants.gapFields.h),
         PasswordField(
           text: 'Password',
           controller: passwordController,
@@ -109,47 +135,77 @@ class _RegisterscreenState extends ConsumerState<Registerscreen> {
             return null;
           },
         ),
-        SizedBox(height: 20.h),
-        Padding(
-          padding: EdgeInsets.only(left: 30.w),
+        SizedBox(height: 26.h),
+        _gutter(
+          child: Text(
+            "Select your Gender",
+            style: AppText.rowLabel().copyWith(fontSize: 14.5.sp),
+          ),
+        ),
+        SizedBox(height: 12.h),
+        _gutter(
           child: Row(
             children: [
-              CustomWidgets.customText(
-                "Select your Gender",
-                10.sp,
-                Consonants.boldTextColor,
-                FontWeight.w600,
+              Expanded(
+                child: genderSelection(
+                  "Male",
+                  Icons.male_outlined,
+                  selectedGender == "MALE",
+                  () => ref.read(genderProvider.notifier).selectMale(),
+                ),
+              ),
+              SizedBox(width: Consonants.gapTiles.w),
+              Expanded(
+                child: genderSelection(
+                  "Female",
+                  Icons.female_outlined,
+                  selectedGender == "FEMALE",
+                  () => ref.read(genderProvider.notifier).selectFemale(),
+                ),
               ),
             ],
           ),
         ),
-        SizedBox(height: 10.h),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+      ],
+      bottomBar: Padding(
+        padding: EdgeInsets.fromLTRB(
+          Consonants.gutter.w,
+          12.h,
+          Consonants.gutter.w,
+          22.h,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            genderSelection(
-              "Male  ",
-              Icons.male,
-              selectedGender == "MALE",
-              () => ref.read(genderProvider.notifier).selectMale(),
+            AppButton(
+              label: "Signup",
+              isLoading: authState.isloading,
+              onPressed: _handleRegister,
             ),
-            SizedBox(width: 20.w),
-            genderSelection(
-              "Female",
-              Icons.female,
-              selectedGender == "FEMALE",
-              () => ref.read(genderProvider.notifier).selectFemale(),
+            SizedBox(height: Consonants.gapButtons.h),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  'Already have an account?',
+                  style: AppText.rowLabel(color: Consonants.textMuted)
+                      .copyWith(fontSize: 14.5.sp, fontWeight: FontWeight.w400),
+                ),
+                SizedBox(width: 6.w),
+                GestureDetector(
+                  onTap: () => context.go(Approutes.login),
+                  child: Text(
+                    'Login',
+                    style: AppText.rowLabel(color: Consonants.indigo).copyWith(
+                      fontSize: 14.5.sp,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
-      ],
-      bottomBar: AuthContainer(
-        buttonText: "Signup",
-        accountText: 'Already have an account?',
-        actionText: 'Login',
-        isLoading: authState.isloading,
-        onPressed: _handleRegister,
-        onTap: () => context.go(Approutes.login),
       ),
     );
   }
@@ -161,29 +217,50 @@ Widget genderSelection(
   bool isSelected,
   VoidCallback onTap,
 ) {
+  // A tappable object, so it's a card: white on the canvas, lifted by the
+  // violet-tinted shadow. Selection reads as the violet edge plus the filled
+  // icon circle — the gradient stays reserved for the CTA.
   return GestureDetector(
     onTap: onTap,
-    child: Container(
-      height: 100.h,
-      width: 128.w,
+    child: AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOut,
+      padding: EdgeInsets.symmetric(vertical: 18.h),
       decoration: BoxDecoration(
-        color: isSelected ? Consonants.lightBlueColor : Consonants.whiteColor,
-        borderRadius: BorderRadius.circular(12.r),
+        color: Consonants.surface,
+        borderRadius: BorderRadius.circular(Consonants.rCard.r),
+        boxShadow: Consonants.cardLift,
         border: Border.all(
-          color: isSelected ? Consonants.primaryColor : Colors.transparent,
-          width: 2.w,
+          color: isSelected ? Consonants.violet : Colors.transparent,
+          width: 1.6,
         ),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(icon, size: 16.sp, color: Consonants.boldTextColor),
-          SizedBox(height: 8.h),
-          CustomWidgets.customText(
+          Container(
+            width: 46.w,
+            height: 46.w,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: isSelected ? Consonants.indigo : Consonants.indigoWash,
+            ),
+            child: Icon(
+              icon,
+              size: 23.sp,
+              color: isSelected ? Consonants.surface : Consonants.iconInk,
+            ),
+          ),
+          SizedBox(height: 12.h),
+          Text(
             text,
-            12.sp,
-            Consonants.boldTextColor,
-            FontWeight.w600,
+            style: AppText.rowLabel(
+              color: isSelected ? Consonants.headingInk : Consonants.bodyInk,
+            ).copyWith(
+              fontSize: 15.sp,
+              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+            ),
           ),
         ],
       ),
