@@ -51,6 +51,7 @@ dependencies:
   url_launcher: ^6.3.2
   share_plus: ^13.1.0
   didit_sdk: ^4.5.3
+  app_links: ^7.2.1
 
 dev_dependencies:
   flutter_test:

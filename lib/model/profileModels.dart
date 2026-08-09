@@ -34,6 +34,12 @@ class PassengerProfileResponse {
   /// year off it for the "Member Since" stat.
   final DateTime? createdAt;
 
+  /// Identity-verification state from the profile row ("APPROVED",
+  /// "DECLINED", "IN_REVIEW", "IN_PROGRESS", "NOT_STARTED"). Drives whether
+  /// the CNIC is still editable — once it has been matched against a scanned
+  /// card, changing it would silently invalidate that check.
+  final String? kycStatus;
+
   PassengerProfileResponse({
     required this.fullName,
     required this.phoneNo,
@@ -42,6 +48,7 @@ class PassengerProfileResponse {
     this.gender,
     this.id,
     this.createdAt,
+    this.kycStatus,
   });
 
   factory PassengerProfileResponse.fromJson(Map<String, dynamic> json) {
@@ -66,6 +73,7 @@ class PassengerProfileResponse {
       gender: readString("gender"),
       id: readString("id"),
       createdAt: readDate("createdAt"),
+      kycStatus: readString("kycStatus"),
     );
   }
 
@@ -114,6 +122,9 @@ class DriverProfileResponse {
   final String? id;
   final DateTime? createdAt;
 
+  /// See [PassengerProfileResponse.kycStatus].
+  final String? kycStatus;
+
   DriverProfileResponse({
     required this.vehicle,
     required this.fullName,
@@ -123,6 +134,7 @@ class DriverProfileResponse {
     this.gender,
     this.id,
     this.createdAt,
+    this.kycStatus,
   });
 
   factory DriverProfileResponse.fromJson(Map<String, dynamic> json) {
@@ -153,6 +165,7 @@ class DriverProfileResponse {
       gender: readString("gender"),
       id: readString("id"),
       createdAt: readDate("createdAt"),
+      kycStatus: readString("kycStatus"),
     );
   }
 

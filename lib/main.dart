@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -15,8 +18,41 @@ Future<void> main() async {
   runApp(const ProviderScope(child: MyApp()));
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  final _appLinks = AppLinks();
+  StreamSubscription<Uri>? _linkSub;
+
+  @override
+  void initState() {
+    super.initState();
+    // Password-reset mail links land on a backend page that redirects to
+    // saferide://reset-password?token=... — this is where the app picks that
+    // up, both on a cold start and while it's already running.
+    _linkSub = _appLinks.uriLinkStream.listen(_handleLink, onError: (_) {});
+  }
+
+  void _handleLink(Uri uri) {
+    if (uri.scheme != 'saferide') return;
+    // saferide://reset-password?token=... — the target is the URI's host,
+    // since a custom scheme has no leading path segment.
+    if (uri.host != 'reset-password') return;
+    final token = uri.queryParameters['token'];
+    if (token == null || token.isEmpty) return;
+    appRouter.go('\${Approutes.resetPassword}?token=\$token');
+  }
+
+  @override
+  void dispose() {
+    _linkSub?.cancel();
+    super.dispose();
+  }
 
   // This widget is the root of your application.
   @override

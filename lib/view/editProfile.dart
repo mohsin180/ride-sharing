@@ -37,6 +37,13 @@ class _EditprofileState extends ConsumerState<Editprofile> {
   final _phone = TextEditingController();
   final _cnic = TextEditingController();
 
+  /// KYC state of the loaded profile. Once it's APPROVED the CNIC is frozen —
+  /// it has been matched against a scanned card, and letting it change would
+  /// leave a verified badge sitting on a number nobody checked.
+  String? _kycStatus;
+
+  bool get _cnicLocked => _kycStatus == 'APPROVED';
+
   // Vehicle (driver only)
   final _carMake = TextEditingController();
   final _carModel = TextEditingController();
@@ -77,6 +84,7 @@ class _EditprofileState extends ConsumerState<Editprofile> {
     _email.text = p.email ?? '';
     _phone.text = p.phoneNo;
     _cnic.text = p.cnic;
+    _kycStatus = p.kycStatus;
     setState(() => _populated = true);
   }
 
@@ -86,6 +94,7 @@ class _EditprofileState extends ConsumerState<Editprofile> {
     _email.text = p.email ?? '';
     _phone.text = p.phoneNo;
     _cnic.text = p.cnic;
+    _kycStatus = p.kycStatus;
     final v = p.vehicle;
     _carMake.text = v.make;
     _carModel.text = v.model;
@@ -258,7 +267,10 @@ class _EditprofileState extends ConsumerState<Editprofile> {
         AuthFields(
           text: "CNIC Number",
           controller: _cnic,
-          suffixIcon: const Icon(Icons.badge_outlined),
+          readOnly: _cnicLocked,
+          suffixIcon: Icon(
+            _cnicLocked ? Icons.lock_outline_rounded : Icons.badge_outlined,
+          ),
           keyboardType: TextInputType.number,
           maxLength: 15,
           inputFormatters: [
@@ -275,6 +287,15 @@ class _EditprofileState extends ConsumerState<Editprofile> {
             return null;
           },
         ),
+        if (_cnicLocked)
+          Padding(
+            padding: EdgeInsets.fromLTRB(Consonants.gutter.w, 8.h, Consonants.gutter.w, 0),
+            child: Text(
+              "Locked — your CNIC is verified and can't be changed.",
+              style: AppText.caption().copyWith(fontSize: 12.5.sp),
+            ),
+          ),
+
         if (!widget.isPassenger) ...[
           SizedBox(height: 30.h),
           _sectionLabel("Vehicle Details"),

@@ -45,7 +45,7 @@ const List<RideOption> kRideOptions = [
 ///
 /// Size bounds adapt to orientation via [MediaQuery], capped at the system's
 /// 82% sheet ceiling so the map is never fully covered.
-class HomeBookingSheet extends StatelessWidget {
+class HomeBookingSheet extends StatefulWidget {
   /// Called when the user taps Book. Pass `null` to disable the CTA
   /// (e.g. while a request is in flight). The future is awaited so
   /// callers can show a loading indicator via [isBooking].
@@ -62,19 +62,64 @@ class HomeBookingSheet extends StatelessWidget {
   });
 
   @override
+  State<HomeBookingSheet> createState() => _HomeBookingSheetState();
+}
+
+class _HomeBookingSheetState extends State<HomeBookingSheet> {
+  /// Drives the sheet from the handle, which sits outside the scroll view and
+  /// so can't move it on its own.
+  final _sheet = DraggableScrollableController();
+
+  static const _minSize = 0.25;
+  static const _maxSize = 0.82;
+
+  @override
+  void dispose() {
+    _sheet.dispose();
+    super.dispose();
+  }
+
+  /// Handle drags move the sheet directly: translate the finger's travel into
+  /// a fraction of the screen and set the extent.
+  void _onHandleDrag(DragUpdateDetails d) {
+    if (!_sheet.isAttached) return;
+    final height = MediaQuery.of(context).size.height;
+    if (height == 0) return;
+    final next = (_sheet.size - d.delta.dy / height).clamp(_minSize, _maxSize);
+    _sheet.jumpTo(next);
+  }
+
+  /// Tapping the handle toggles between the resting and expanded heights, so
+  /// the sheet is reachable without a drag at all.
+  void _onHandleTap(double restingSize) {
+    if (!_sheet.isAttached) return;
+    _sheet.animateTo(
+      _sheet.size > (restingSize + _maxSize) / 2 ? restingSize : _maxSize,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     final isLandscape =
         MediaQuery.of(context).orientation == Orientation.landscape;
+    final restingSize = isLandscape ? 0.55 : 0.42;
 
     return DraggableScrollableSheet(
-      initialChildSize: isLandscape ? 0.55 : 0.42,
-      minChildSize: 0.25,
-      maxChildSize: 0.82,
+      controller: _sheet,
+      initialChildSize: restingSize,
+      minChildSize: _minSize,
+      maxChildSize: _maxSize,
+      snap: true,
+      snapSizes: [restingSize],
       builder: (context, scrollController) {
         return _SheetBody(
           scrollController: scrollController,
-          onBookPressed: onBookPressed,
-          isBooking: isBooking,
+          onBookPressed: widget.onBookPressed,
+          isBooking: widget.isBooking,
+          onHandleDrag: _onHandleDrag,
+          onHandleTap: () => _onHandleTap(restingSize),
         );
       },
     );
@@ -85,11 +130,15 @@ class _SheetBody extends StatelessWidget {
   final ScrollController scrollController;
   final Future<void> Function()? onBookPressed;
   final bool isBooking;
+  final ValueChanged<DragUpdateDetails> onHandleDrag;
+  final VoidCallback onHandleTap;
 
   const _SheetBody({
     required this.scrollController,
     required this.onBookPressed,
     required this.isBooking,
+    required this.onHandleDrag,
+    required this.onHandleTap,
   });
 
   @override
@@ -105,11 +154,20 @@ class _SheetBody extends StatelessWidget {
         builder: (context, constraints) {
           return Column(
             children: [
-              const _DragHandle(),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onVerticalDragUpdate: onHandleDrag,
+                onTap: onHandleTap,
+                child: const _DragHandle(),
+              ),
               Expanded(
                 child: SingleChildScrollView(
                   controller: scrollController,
-                  physics: const ClampingScrollPhysics(),
+                  // Always scrollable so a drag on the content is handed to
+                  // the sheet even when the content already fits; with
+                  // clamping physics there was nothing to pass on and the
+                  // sheet wouldn't move.
+                  physics: const AlwaysScrollableScrollPhysics(),
                   padding: EdgeInsets.fromLTRB(
                       Consonants.gutter.w, 0, Consonants.gutter.w, 8.h),
                   child: Column(
@@ -158,14 +216,21 @@ class _DragHandle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // 44x5 grabber with 14px of air under it — the system's sheet header.
-    return Padding(
-      padding: EdgeInsets.only(top: 16.h, bottom: 14.h),
-      child: Container(
-        height: 5.h,
-        width: 44.w,
-        decoration: BoxDecoration(
-          color: const Color(0xFFD6D6E2),
-          borderRadius: BorderRadius.circular(Consonants.rPill.r),
+    // The row spans the full width so the whole header is a drag target; the
+    // grabber alone is a 44px-wide thing to hit.
+    return SizedBox(
+      width: double.infinity,
+      child: Padding(
+        padding: EdgeInsets.only(top: 16.h, bottom: 14.h),
+        child: Center(
+          child: Container(
+            height: 5.h,
+            width: 44.w,
+            decoration: BoxDecoration(
+              color: const Color(0xFFD6D6E2),
+              borderRadius: BorderRadius.circular(Consonants.rPill.r),
+            ),
+          ),
         ),
       ),
     );

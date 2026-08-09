@@ -80,4 +80,14 @@ class Authservice {
     );
     return LoginResponse.fromJson(json as Map<String, dynamic>);
   }
+
+  /// Corrects the gender chosen at signup. The backend refuses once KYC has
+  /// approved the account, and hands back a new token otherwise.
+  Future<LoginResponse> changeGender(String gender) async {
+    final json = await apiclient.put(
+      Apiconsonants.changeGenderEndpoint,
+      {"gender": gender},
+    );
+    return LoginResponse.fromJson(json as Map<String, dynamic>);
+  }
 }

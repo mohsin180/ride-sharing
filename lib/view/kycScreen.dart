@@ -13,6 +13,7 @@ import 'package:ride_sharing/provider/providers.dart';
 import 'package:ride_sharing/view/editProfile.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/consonants/errorHandler.dart';
+import 'package:ride_sharing/widgets/consonants/tokenStorage.dart';
 import 'package:ride_sharing/widgets/custom/appComponents.dart';
 import 'package:ride_sharing/widgets/custom/responsive.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -178,6 +179,78 @@ class _KycScreenState extends ConsumerState<KycScreen> {
   /// Opens the shared edit-profile screen so a wrong CNIC or name can be
   /// corrected without leaving verification. It saves via `PUT` and pops
   /// itself, landing the user back here ready to retry.
+  /// True only when the backend declined us specifically over gender. The
+  /// reason string is the backend's own ("the gender on your CNIC doesn't
+  /// match the one on your account"), so a decline for a bad scan or a wrong
+  /// CNIC doesn't offer this.
+  bool get _genderMismatch {
+    if (_kyc?.status != 'DECLINED') return false;
+    final reason = _kyc?.rejectionReason?.toLowerCase();
+    return reason != null && reason.contains('gender');
+  }
+
+  /// Corrects the gender picked at signup, which is the one thing the profile
+  /// editor can't fix — it lives on the user record, not the profile, and it
+  /// is what the scanned CNIC contradicted.
+  Future<void> _fixGender() async {
+    _timer?.cancel();
+    final picked = await showAppSheet<String>(
+      context: context,
+      child: Builder(
+        builder: (sheetCtx) => Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SheetHeader(title: "Change gender"),
+            SizedBox(height: 6.h),
+            Text(
+              "Your CNIC says something different to what you chose at signup. "
+              "Pick the one on your card.",
+              style: AppText.paragraph().copyWith(fontSize: 14.5.sp),
+            ),
+            SizedBox(height: 20.h),
+            Row(
+              children: [
+                Expanded(
+                  child: AppButton(
+                    label: "Male",
+                    kind: AppButtonKind.secondary,
+                    onPressed: () => Navigator.of(sheetCtx).pop('MALE'),
+                  ),
+                ),
+                SizedBox(width: 12.w),
+                Expanded(
+                  child: AppButton(
+                    label: "Female",
+                    kind: AppButtonKind.secondary,
+                    onPressed: () => Navigator.of(sheetCtx).pop('FEMALE'),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 8.h),
+          ],
+        ),
+      ),
+    );
+    if (picked == null || !mounted) {
+      _ensurePolling();
+      return;
+    }
+    try {
+      // The response carries a fresh token: gender is a JWT claim, so the old
+      // one would keep asserting the value the CNIC just contradicted.
+      final res = await ref.read(authServiceProvider).changeGender(picked);
+      await Tokenstorage.saveToken(res.token);
+      if (!mounted) return;
+      ErrorHandler.success(context, "Gender updated — try verifying again");
+    } catch (e) {
+      if (!mounted) return;
+      ErrorHandler.show(context, ErrorHandler.message(e));
+    }
+    if (mounted) await _checkOnce();
+  }
+
   Future<void> _openProfileEditor() async {
     // Pause polling: a status arriving while the editor is open would push
     // this screen away underneath it.
@@ -263,7 +336,7 @@ class _KycScreenState extends ConsumerState<KycScreen> {
         reason != null && reason.isNotEmpty
             ? "$reason Fix that in your profile, then try again."
             : "Verification was declined. Make sure your CNIC is readable and "
-                "your face is clearly visible, then try again.",
+                  "your face is clearly visible, then try again.",
         Consonants.danger,
         Consonants.dangerWash,
       );
@@ -308,8 +381,9 @@ class _KycScreenState extends ConsumerState<KycScreen> {
             child: Text(
               text,
               maxLines: 6,
-              style: AppText.rowLabel(color: Consonants.headingInk)
-                  .copyWith(fontSize: 14.sp, height: 1.4),
+              style: AppText.rowLabel(
+                color: Consonants.headingInk,
+              ).copyWith(fontSize: 14.sp, height: 1.4),
             ),
           ),
         ],
@@ -345,6 +419,37 @@ class _KycScreenState extends ConsumerState<KycScreen> {
             ),
             SizedBox(height: Consonants.gapButtons.h),
           ],
+          if (_genderMismatch) ...[
+            GestureDetector(
+              onTap: _fixGender,
+              behavior: HitTestBehavior.opaque,
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 4.h),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.wc_outlined,
+                      size: 17.sp,
+                      color: Consonants.indigo,
+                    ),
+                    SizedBox(width: 8.w),
+                    Flexible(
+                      child: Text(
+                        "Wrong gender? Change it",
+                        style: AppText.rowLabel(color: Consonants.indigo)
+                            .copyWith(
+                              fontSize: 14.5.sp,
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            SizedBox(height: 4.h),
+          ],
           // The only way out of this screen besides passing. There's no skip
           // (verification is mandatory) and no plain back button — the screens
           // behind this one create a profile and would reject a second
@@ -369,9 +474,9 @@ class _KycScreenState extends ConsumerState<KycScreen> {
                       "Wrong CNIC or name? Edit your details",
                       style: AppText.rowLabel(color: Consonants.indigo)
                           .copyWith(
-                        fontSize: 14.5.sp,
-                        fontWeight: FontWeight.w600,
-                      ),
+                            fontSize: 14.5.sp,
+                            fontWeight: FontWeight.w600,
+                          ),
                     ),
                   ),
                 ],
@@ -405,16 +510,13 @@ class _KycScreenState extends ConsumerState<KycScreen> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.badge_outlined,
-              size: 15.sp,
-              color: Consonants.iconInk,
-            ),
+            Icon(Icons.badge_outlined, size: 15.sp, color: Consonants.iconInk),
             SizedBox(width: 7.w),
             Text(
               label,
-              style: AppText.caption(color: Consonants.headingInk)
-                  .copyWith(fontSize: 12.5.sp, fontWeight: FontWeight.w600),
+              style: AppText.caption(
+                color: Consonants.headingInk,
+              ).copyWith(fontSize: 12.5.sp, fontWeight: FontWeight.w600),
             ),
           ],
         ),

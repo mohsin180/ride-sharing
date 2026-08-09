@@ -44,6 +44,15 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- Password-reset links. Mail can only carry an https URL, so the
+                 backend serves a bridge page that redirects here:
+                 saferide://reset-password?token=... -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="saferide"/>
+            </intent-filter>
         </activity>
         <!-- Disable the Impeller renderer on Android. Impeller's OpenGLES
              backend crashes the Android emulator's GPU translation layer

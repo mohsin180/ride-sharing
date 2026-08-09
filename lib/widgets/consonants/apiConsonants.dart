@@ -30,6 +30,10 @@ class Apiconsonants {
   /// anyone set a stranger's role.
   static String get selectRoleEndpoint => "$userServicebaseUrl/select-role";
 
+  /// `PUT` the caller's gender. Returns a fresh token — the old one still
+  /// carries the old claim, and gender decides which rides are visible.
+  static String get changeGenderEndpoint => "$userServicebaseUrl/gender";
+
   // ── profile-service endpoints ──────────────────────────────────
   static String get profileServicebaseUrl => "$baseUrl/profile";
   static String get createPassengerProfileEndpoint =>
