@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:ride_sharing/model/appRoutes.dart';
 import 'package:ride_sharing/model/profileModels.dart';
 import 'package:ride_sharing/provider/profileProvider.dart';
+import 'package:ride_sharing/widgets/consonants/apiException.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/consonants/errorHandler.dart';
 import 'package:ride_sharing/widgets/custom/appComponents.dart';
@@ -60,6 +61,16 @@ class _PassengerProfileDataState extends ConsumerState<PassengerProfileData> {
           .read(profileControllerProvider.notifier)
           .createPassengerProfile(request);
       // Navigation handled by ref.listen below.
+    } on ApiException catch (e) {
+      // The profile is already there — most often because a previous attempt
+      // reached the server and only the response was lost. Repeating it can
+      // never succeed, so treat it as done rather than leaving the user
+      // pressing a button that will always fail.
+      if (e.isConflict && mounted) {
+        ref.invalidate(passengerProfileProvider);
+        context.go(Approutes.passengerKyc);
+        return;
+      }
     } catch (_) {
       // Surfaced via state.error → ref.listen.
     }

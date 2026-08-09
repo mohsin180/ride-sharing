@@ -7,6 +7,7 @@ import 'package:ride_sharing/model/appRoutes.dart';
 import 'package:ride_sharing/model/profileModels.dart';
 import 'package:ride_sharing/provider/profileProvider.dart';
 import 'package:ride_sharing/view/profileData.dart' show profileContainer;
+import 'package:ride_sharing/widgets/consonants/apiException.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/consonants/errorHandler.dart';
 import 'package:ride_sharing/widgets/custom/appComponents.dart';
@@ -93,6 +94,19 @@ class _DriverVehicleDetailsState extends ConsumerState<DriverVehicleDetails> {
           .read(profileControllerProvider.notifier)
           .createDriverProfile(request);
       // Navigation handled by ref.listen below.
+    } on ApiException catch (e) {
+      // "Profile already exists" means a previous attempt landed and only the
+      // response was lost — retrying can never succeed, so move on. A
+      // duplicate car number is also a 409 but the driver can fix that one,
+      // so it stays here with the message.
+      final alreadyOnboarded =
+          e.isConflict && e.message.toLowerCase().contains('profile');
+      if (alreadyOnboarded && mounted) {
+        ref.read(driverOnboardingProvider.notifier).clear();
+        ref.invalidate(driverProfileProvider);
+        context.go(Approutes.driverKyc);
+        return;
+      }
     } catch (_) {
       // Surfaced via state.error → ref.listen.
     }

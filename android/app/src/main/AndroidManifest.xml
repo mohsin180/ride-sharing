@@ -20,7 +20,7 @@
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
 
     <application
-        android:label="ride_sharing"
+        android:label="SafeRide"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
