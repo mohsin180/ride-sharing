@@ -57,31 +57,24 @@ class _HomepageState extends ConsumerState<Homepage> {
       );
     });
 
-    // Surface ride-creation outcomes: errors → snackbar, success →
-    // navigate to viewRequest with the freshly created ride payload.
+    // Surface ride-creation outcomes: errors → snackbar, success → confirm it
+    // and stay put.
+    //
+    // Booking creates the ride outright, so there is nothing left to confirm
+    // on another screen. This used to push straight into the ride details,
+    // whose CTA then read "Confirm Ride" — a joiner's button that, pressed by
+    // the host, sent a join request to their own ride. The host's real next
+    // decision is publishing to drivers, and that is theirs to make whenever
+    // they like, from Your Rides.
     ref.listen<RideCreationState>(rideCreationProvider, (prev, next) {
       if (next.error != null && next.error != prev?.error) {
         ErrorHandler.show(context, next.error);
       } else if (next.isSuccess &&
           prev?.isSuccess != true &&
           next.ride != null) {
-        final ride = next.ride!;
         ErrorHandler.success(
-            context, "Ride created — publish it to drivers when you're ready");
-        context.push(
-          Approutes.viewRequest,
-          extra: <String, dynamic>{
-            'rideId': ride.id,
-            'pickup': ride.pickup,
-            'drop': ride.drop,
-            'seats': ride.seats,
-            'pickupLatLng': (ride.pickupLat != null && ride.pickupLng != null)
-                ? LatLng(ride.pickupLat!, ride.pickupLng!)
-                : null,
-            'dropLatLng': (ride.dropLat != null && ride.dropLng != null)
-                ? LatLng(ride.dropLat!, ride.dropLng!)
-                : null,
-          },
+          context,
+          "Ride created — open Your Rides to publish it to drivers",
         );
       }
     });
@@ -183,13 +176,10 @@ class _HomepageState extends ConsumerState<Homepage> {
       dropLng: rideReq.dropLatLng!.longitude,
       seats: rideReq.seats,
       rideType: kRideOptions[selectedIndex].title.toUpperCase(),
-      departureTime: ref.read(scheduledDepartureProvider),
     );
 
     try {
       await ref.read(rideCreationProvider.notifier).createRide(request);
-      // Clear the scheduled time so the next booking defaults to "leave now".
-      ref.read(scheduledDepartureProvider.notifier).clear();
       // New ride means the host now has an active ride — wipe the
       // myRides cache so the next visit to the Your Rides tab (and
       // the next Book attempt's guard above) sees the freshly-created

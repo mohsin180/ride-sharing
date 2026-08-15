@@ -117,9 +117,6 @@ class CreateRideRequest {
   final int seats;
   final String rideType;
 
-  /// Optional scheduled departure. Null = leave now (on-demand).
-  final DateTime? departureTime;
-
   const CreateRideRequest({
     required this.pickup,
     required this.drop,
@@ -129,7 +126,6 @@ class CreateRideRequest {
     required this.dropLng,
     required this.seats,
     required this.rideType,
-    this.departureTime,
   });
 
   Map<String, dynamic> toJson() => {
@@ -141,8 +137,6 @@ class CreateRideRequest {
     "dropLng": dropLng,
     "seats": seats,
     "rideType": rideType,
-    if (departureTime != null)
-      "departureTime": departureTime!.toUtc().toIso8601String(),
   };
 }
 
@@ -810,6 +804,13 @@ class RideDetails {
   final List<RideStop> stops;
 
   final RideFareBreakdown? fare;
+
+  /// Whether the viewer created this ride, as decided by the backend from the
+  /// token it was asked with. Comparing the host's id against a user id held
+  /// in memory used to get this wrong on every cold start — the id is null
+  /// until someone logs in during that session, so a host reopening their own
+  /// ride was shown a joiner's "Confirm Ride" button.
+  final bool youAreHost;
   final bool youHaveJoined;
 
   /// Whether the host has published this ride to the driver feed yet. Drives
@@ -844,11 +845,6 @@ class RideDetails {
   /// PENDING (no driver has accepted yet).
   final DriverInfo? driver;
 
-  /// When the host plans to leave; null for an on-demand ride. The backend
-  /// always sent this — it just wasn't read here, so tapping into a ride made
-  /// its schedule disappear.
-  final DateTime? departureTime;
-
   const RideDetails({
     required this.id,
     required this.pickup,
@@ -869,18 +865,14 @@ class RideDetails {
     this.dropLng,
     this.createdAt,
     this.fare,
+    this.youAreHost = false,
     this.youHaveJoined = false,
     this.publishedToDrivers = false,
     this.youHaveRequested = false,
     this.yourPickup,
     this.yourDrop,
     this.driver,
-    this.departureTime,
   });
-
-  /// True when this ride has a future scheduled departure.
-  bool get isScheduled =>
-      departureTime != null && departureTime!.isAfter(DateTime.now());
 
   factory RideDetails.fromJson(Map<String, dynamic> json) {
     double? readDouble(String key) {
@@ -936,9 +928,6 @@ class RideDetails {
       rideType: (json['rideType'] ?? 'ECONOMY').toString(),
       status: RideStatus.fromWire(json['status'] as String?),
       createdAt: readDate('createdAt'),
-      // The wire carries UTC; render it in the viewer's own clock, same as
-      // AvailableRide does.
-      departureTime: readDate('departureTime')?.toLocal(),
       host: host,
       seatsTotal: json['seatsTotal'] is num
           ? (json['seatsTotal'] as num).toInt()
@@ -961,6 +950,10 @@ class RideDetails {
       // Pattern-match so anything that isn't an actual bool — null,
       // missing key, "true"/"false" strings, 0/1 — falls cleanly to
       // `false` instead of slipping a null into a non-nullable slot.
+      youAreHost: switch (json['youAreHost']) {
+        bool b => b,
+        _ => false,
+      },
       youHaveJoined: switch (json['youHaveJoined']) {
         bool b => b,
         _ => false,
@@ -1017,10 +1010,14 @@ class AvailableRide {
   final double? tripDistanceKm;
   final int? tripDurationMin;
 
-  /// Scheduled departure; null = on-demand ("leave now").
-  final DateTime? departureTime;
-
+  /// What THIS viewer pays — their own share if they're on the ride, else what
+  /// they'd pay to join. The same number the details screen and the confirm
+  /// button show, so a fare never changes just by moving between screens.
   final double? fareForRider;
+
+  /// The whole trip's fare: every rider's share added up, which is what the
+  /// driver collects. Drivers show this; passengers show [fareForRider].
+  final double? tripFare;
   final String pickup;
   final String drop;
   final double pickupLat;
@@ -1057,20 +1054,10 @@ class AvailableRide {
     this.distanceKm,
     this.tripDistanceKm,
     this.tripDurationMin,
-    this.departureTime,
     this.fareForRider,
+    this.tripFare,
     this.youAreHost = true,
   });
-
-  /// True when this ride has a future scheduled departure.
-  bool get isScheduled =>
-      departureTime != null && departureTime!.isAfter(DateTime.now());
-
-  /// True when a scheduled departure has already come and gone. Distinct from
-  /// [isScheduled] so the UI doesn't fall through to a "Leave now" badge on a
-  /// ride that was due yesterday — which is what it used to do.
-  bool get isDeparted =>
-      departureTime != null && !departureTime!.isAfter(DateTime.now());
 
   /// "4.9 (12)" / "New" — host rating with how many it's based on.
   String get hostRatingLabel {
@@ -1100,9 +1087,8 @@ class AvailableRide {
       distanceKm: readDouble('distanceKm'),
       tripDistanceKm: readDouble('tripDistanceKm'),
       tripDurationMin: readInt('tripDurationMin'),
-      departureTime: DateTime.tryParse((json['departureTime'] ?? '').toString())
-          ?.toLocal(),
       fareForRider: readDouble('fareForRider'),
+      tripFare: readDouble('tripFare'),
       pickup: (json['pickup'] ?? '').toString(),
       drop: (json['drop'] ?? '').toString(),
       pickupLat: readDouble('pickupLat') ?? 0,

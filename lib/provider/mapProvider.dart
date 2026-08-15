@@ -154,18 +154,3 @@ final selectedRideIndexProvider =
     NotifierProvider<SelectedRideIndexNotifier, int>(
   SelectedRideIndexNotifier.new,
 );
-
-/// Optional scheduled departure for the ride being booked. Null = leave now
-/// (on-demand). Set from the booking sheet's schedule picker, read when the
-/// ride is created, and reset after.
-class ScheduledDepartureNotifier extends Notifier<DateTime?> {
-  @override
-  DateTime? build() => null;
-  void set(DateTime? when) => state = when;
-  void clear() => state = null;
-}
-
-final scheduledDepartureProvider =
-    NotifierProvider<ScheduledDepartureNotifier, DateTime?>(
-  ScheduledDepartureNotifier.new,
-);

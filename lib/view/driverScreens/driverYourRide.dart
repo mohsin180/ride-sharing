@@ -1323,10 +1323,13 @@ class _DriveryourrideState extends ConsumerState<Driveryourride>
                 },
               ),
             ],
-            if (p.userId.isNotEmpty && !p.isHost) ...[
-              SizedBox(height: 10.h),
-              _reportBlockRow(p.userId, p.name),
-            ],
+            // Report / Block controls are deferred to future work; the
+            // backend endpoints and tables exist, but the in-app controls
+            // are disabled for now.
+            // if (p.userId.isNotEmpty && !p.isHost) ...[
+            //   SizedBox(height: 10.h),
+            //   _reportBlockRow(p.userId, p.name),
+            // ],
           ],
         ),
       ),
@@ -1334,6 +1337,7 @@ class _DriveryourrideState extends ConsumerState<Driveryourride>
   }
 
   /// A subtle "Report · Block" row for acting on a rider.
+  // ignore: unused_element
   Widget _reportBlockRow(String userId, String name) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,

@@ -42,6 +42,15 @@ class Tokenstorage {
     }
   }
 
+  /// Replaces just the onboarding token, keeping the id and email. Every
+  /// onboarding call returns a fresh one, and it stays the only thing
+  /// authorising the next step until identity verification finally issues a
+  /// real session.
+  static Future<void> saveOnboardingToken(String onboardingToken) async {
+    if (onboardingToken.isEmpty) return;
+    await _storage.write(key: _onboardingTokenKey, value: onboardingToken);
+  }
+
   static Future<String?> getOnboardingToken() =>
       _storage.read(key: _onboardingTokenKey);
 
@@ -55,7 +64,9 @@ class Tokenstorage {
   static Future<String?> getPendingEmail() =>
       _storage.read(key: _pendingEmailKey);
 
-  /// Called once a role is chosen and a real token exists.
+  /// Called once identity verification passes and a real account — with a
+  /// real token — finally exists. Not before: every step up to that point
+  /// still needs the onboarding token.
   static Future<void> clearOnboarding() async {
     await _storage.delete(key: _pendingUserIdKey);
     await _storage.delete(key: _onboardingTokenKey);

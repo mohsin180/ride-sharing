@@ -6,10 +6,8 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
 import 'package:ride_sharing/model/appRoutes.dart';
 import 'package:ride_sharing/provider/authProvider.dart';
-import 'package:ride_sharing/provider/providers.dart';
 import 'package:ride_sharing/provider/sessionRouter.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
-import 'package:ride_sharing/widgets/consonants/jwtUtils.dart';
 import 'package:ride_sharing/widgets/consonants/tokenStorage.dart';
 
 /// Animated brand splash. Plays the entrance animation for a short fixed hold,
@@ -105,57 +103,25 @@ class _SplashscreenState extends ConsumerState<Splashscreen>
   }
 
   /// Where to send the user based on their stored session.
+  ///
+  /// One call, because there is one rule: a session means a finished account,
+  /// and its absence means an unfinished signup whose stage the server
+  /// reports. See [resolveStartRoute].
   Future<String> _resolveDestination() async {
     try {
-      final token = await Tokenstorage.getToken();
-      // No session, or a clearly-dead one → log in (and clean up a stale token).
-      if (token == null || token.isEmpty || JwtUtils.isExpired(token)) {
-        if (token != null && token.isNotEmpty) {
-          await Tokenstorage.deleteToken();
-        }
-        return await _resumeOnboardingOrLogin();
+      // Re-seed the in-memory onboarding state before routing, so the
+      // verification screen can still name the address it's waiting on
+      // instead of falling back to "your email".
+      final userId = await Tokenstorage.getPendingUserId();
+      if (userId != null && userId.isNotEmpty) {
+        final pendingEmail = await Tokenstorage.getPendingEmail();
+        ref
+            .read(authControllerProvider.notifier)
+            .restorePendingSignup(userId, email: pendingEmail);
       }
-      final role = JwtUtils.extractRole(token);
-      // Authenticated but no role yet (rare) → let login drive role selection
-      // with a fresh auth state.
-      if (role != "DRIVER" && role != "PASSENGER") {
-        return Approutes.login;
-      }
-      // Valid session → straight into the app (or profile setup if incomplete).
-      return await resolveHomeRouteForRole(ref, role!);
+      return await resolveStartRoute(ref);
     } catch (_) {
       return Approutes.login;
-    }
-  }
-
-  /// With no usable session, pick up an interrupted signup rather than
-  /// dumping the user on the login screen. Registration issues no token, so
-  /// an app killed while the user was off verifying their email used to land
-  /// here with no way back to role selection — the account was stranded.
-  Future<String> _resumeOnboardingOrLogin() async {
-    final userId = await Tokenstorage.getPendingUserId();
-    final onboardingToken = await Tokenstorage.getOnboardingToken();
-    if (userId == null || userId.isEmpty ||
-        onboardingToken == null || onboardingToken.isEmpty) {
-      return Approutes.login;
-    }
-    // Re-seed the in-memory state the onboarding screens read from.
-    // Restore the address too, so the verification screen can name it
-    // instead of falling back to "your email".
-    final pendingEmail = await Tokenstorage.getPendingEmail();
-    ref
-        .read(authControllerProvider.notifier)
-        .restorePendingSignup(userId, email: pendingEmail);
-    try {
-      final verified = await ref
-          .read(authServiceProvider)
-          .isEmailVerified(userId)
-          .timeout(const Duration(seconds: 8));
-      return verified ? Approutes.roleSection : Approutes.verification;
-    } catch (_) {
-      // Can't tell yet — the verification screen polls, so it recovers on its
-      // own once the network is back.
-      return Approutes.verification;
     }
   }
 

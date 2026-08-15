@@ -73,7 +73,6 @@ class NearbyRidesMapScreen extends StatelessWidget {
                         label: r.fareForRider != null
                             ? 'Rs ${r.fareForRider!.round()}'
                             : 'Ride',
-                        scheduled: r.isScheduled,
                         onTap: () {
                           Navigator.of(context).pop();
                           onTapRide(r);
@@ -198,22 +197,19 @@ class _FloatingSurface extends StatelessWidget {
   }
 }
 
-/// A price "pin" marker — a rounded pill carrying the fare. Indigo for
-/// on-demand, violet when the ride is scheduled; the marker box stays 74x40
-/// so the tip keeps landing on the pickup coordinate.
+/// A price "pin" marker — a rounded pill carrying the fare. The marker box
+/// stays 74x40 so the tip keeps landing on the pickup coordinate.
 class _FarePin extends StatelessWidget {
   final String label;
-  final bool scheduled;
   final VoidCallback onTap;
   const _FarePin({
     required this.label,
-    required this.scheduled,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final color = scheduled ? Consonants.violet : Consonants.indigo;
+    const color = Consonants.indigo;
     return GestureDetector(
       onTap: onTap,
       child: Column(
@@ -236,12 +232,6 @@ class _FarePin extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (scheduled)
-                  Padding(
-                    padding: EdgeInsets.only(right: 3.w),
-                    child: Icon(Icons.schedule_rounded,
-                        size: 11.sp, color: Consonants.surface),
-                  ),
                 Text(
                   label,
                   style: AppText.amount(color: Consonants.surface)

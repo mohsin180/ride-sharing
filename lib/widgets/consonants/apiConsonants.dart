@@ -32,7 +32,31 @@ class Apiconsonants {
 
   /// `PUT` the caller's gender. Returns a fresh token — the old one still
   /// carries the old claim, and gender decides which rides are visible.
+  /// Only for accounts that already exist; during signup use
+  /// [onboardingGenderEndpoint], which is free to change the value because
+  /// nothing has been verified against it yet.
   static String get changeGenderEndpoint => "$userServicebaseUrl/gender";
+
+  // ── onboarding endpoints ───────────────────────────────────────
+  // Everything a user does before they have an account. Authorised by the
+  // onboarding token (not a session — there is no account yet), and each one
+  // answers with the same `OnboardingState` so the app always knows the next
+  // screen instead of inferring it from which lookups happen to succeed.
+  static String get onboardingBaseUrl => "$userServicebaseUrl/onboarding";
+
+  /// `GET` where this signup left off — asked on every cold start.
+  static String get onboardingStateEndpoint => "$onboardingBaseUrl/state";
+  static String get onboardingPassengerProfileEndpoint =>
+      "$onboardingBaseUrl/profile/passenger";
+  static String get onboardingDriverProfileEndpoint =>
+      "$onboardingBaseUrl/profile/driver";
+  static String get onboardingGenderEndpoint => "$onboardingBaseUrl/gender";
+  static String get onboardingKycStartEndpoint => "$onboardingBaseUrl/kyc/session";
+
+  /// `GET` the signup's KYC status. The response that first reports APPROVED
+  /// also carries the account's real token — promotion happens in that same
+  /// call, so there's no separate "finish" step to lose.
+  static String get onboardingKycStatusEndpoint => "$onboardingBaseUrl/kyc/status";
 
   // ── profile-service endpoints ──────────────────────────────────
   static String get profileServicebaseUrl => "$baseUrl/profile";

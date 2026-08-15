@@ -45,7 +45,7 @@ class _MyAppState extends State<MyApp> {
     if (uri.host != 'reset-password') return;
     final token = uri.queryParameters['token'];
     if (token == null || token.isEmpty) return;
-    appRouter.go('\${Approutes.resetPassword}?token=\$token');
+    appRouter.go('${Approutes.resetPassword}?token=$token');
   }
 
   @override

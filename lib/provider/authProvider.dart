@@ -37,10 +37,12 @@ class Authprovider extends StateNotifier<AuthState> {
     try {
       final response = await authservice.login(request);
 
-      if (response.roleRequired) {
-        // Credentials were fine — signup was just never finished. Stash what
-        // the role screen needs and let the login screen route there. This is
-        // the rescue path for an account whose app died mid-signup.
+      if (response.onboardingStage != OnboardingStage.complete) {
+        // Credentials were fine — signup was just never finished, so there is
+        // no account and no session to hand over. Stash what the onboarding
+        // screens need and let the login screen reopen the stage the server
+        // reported. This is the rescue path for someone who reinstalled the
+        // app midway.
         await Tokenstorage.saveOnboarding(
           userId: response.userId,
           onboardingToken: response.onboardingToken,
@@ -50,7 +52,7 @@ class Authprovider extends StateNotifier<AuthState> {
           isloading: false,
           error: null,
           isLoggedIn: false,
-          roleRequired: true,
+          onboardingStage: response.onboardingStage,
           userId: response.userId,
           email: request.email,
         );
@@ -68,7 +70,7 @@ class Authprovider extends StateNotifier<AuthState> {
         isloading: false,
         error: null,
         isLoggedIn: true,
-        roleRequired: false,
+        onboardingStage: OnboardingStage.complete,
         role: role,
         userId: userId,
       );
@@ -219,10 +221,13 @@ class AuthState {
   /// — or null if the user logged in before completing role selection.
   final String? role;
 
-  /// True when login succeeded on credentials but the account never finished
-  /// signup. The login screen sends these users to role selection instead of
-  /// showing an error.
-  final bool roleRequired;
+  /// How far the credentials' owner got. [OnboardingStage.complete] means a
+  /// real account answered and the app has a session; anything else means the
+  /// address belongs to a signup still in flight, and the login screen
+  /// reopens that step instead of showing an error the user can do nothing
+  /// about. It replaced a `roleRequired` flag that could only describe one of
+  /// the four ways a signup stalls.
+  final OnboardingStage onboardingStage;
 
   AuthState({
     required this.isloading,
@@ -234,7 +239,7 @@ class AuthState {
     this.isSuccess,
     this.email,
     this.role,
-    this.roleRequired = false,
+    this.onboardingStage = OnboardingStage.complete,
   });
 
   AuthState copyWith({
@@ -247,7 +252,7 @@ class AuthState {
     bool? isSuccess,
     String? email,
     String? role,
-    bool? roleRequired,
+    OnboardingStage? onboardingStage,
   }) {
     return AuthState(
       isloading: isloading ?? this.isloading,
@@ -260,7 +265,7 @@ class AuthState {
       isSuccess: isSuccess ?? this.isSuccess,
       email: email ?? this.email,
       role: role ?? this.role,
-      roleRequired: roleRequired ?? this.roleRequired,
+      onboardingStage: onboardingStage ?? this.onboardingStage,
     );
   }
 }
@@ -302,13 +307,13 @@ class GenderNotifier extends StateNotifier<String?> {
 class RoleState {
   final bool isLoading;
   final String? error;
-  final LoginResponse? response;
+  final OnboardingState? response;
   RoleState({this.isLoading = false, this.error, this.response});
 
   RoleState copyWith({
     bool? isLoading,
     String? error,
-    LoginResponse? response,
+    OnboardingState? response,
   }) {
     return RoleState(
       isLoading: isLoading ?? this.isLoading,
@@ -322,8 +327,10 @@ class RoleNotifier extends StateNotifier<RoleState> {
   final Authservice authservice;
   RoleNotifier({required this.authservice}) : super(RoleState());
 
-  /// Finishes signup using the stored onboarding token. On success the
-  /// account finally has a real token, so the onboarding leftovers go away.
+  /// Records the role using the stored onboarding token. Signup is NOT
+  /// finished here — no session is issued, and the onboarding token stays
+  /// put, because profile and identity verification still have to happen
+  /// before an account exists at all.
   Future<void> selectRole(String role) async {
     try {
       state = state.copyWith(isLoading: true, error: null);
@@ -336,8 +343,10 @@ class RoleNotifier extends StateNotifier<RoleState> {
         return;
       }
       final response = await authservice.assignRole(onboardingToken, role);
-      await Tokenstorage.saveToken(response.token);
-      await Tokenstorage.clearOnboarding();
+      // Refresh the onboarding token rather than clearing it: it is the only
+      // thing authorising the profile and KYC steps still ahead, and there is
+      // no session token to replace it with yet.
+      await Tokenstorage.saveOnboardingToken(response.onboardingToken);
       state = state.copyWith(isLoading: false, response: response);
     } catch (e) {
       state = state.copyWith(isLoading: false, error: ErrorHandler.message(e));

@@ -39,8 +39,8 @@ class _RidescreenState extends ConsumerState<Ridescreen> {
   final Set<String> _dismissed = {};
 
   /// Keeps rides with enough seats for the party and drops any the user
-  /// dismissed. The backend (PostGIS) already bounded the list to within
-  /// [_kRadiusKm] of the pickup and returned it nearest-first.
+  /// dismissed. The backend's Haversine SQL query already bounded the list to
+  /// within [_kRadiusKm] of the pickup and returned it nearest-first.
   List<AvailableRide> _filterBySeats(
     List<AvailableRide> rides,
     int neededSeats,
@@ -1020,72 +1020,6 @@ class _FeaturedRideCard extends StatelessWidget {
   LatLng? get dropLatLng => LatLng(ride.dropLat, ride.dropLng);
   String? get hostGender => ride.hostGender;
 
-  static const _months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-  ];
-
-  String get _scheduledLabel {
-    final dt = ride.departureTime!;
-    final h = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
-    final m = dt.minute.toString().padLeft(2, '0');
-    final ap = dt.hour < 12 ? 'AM' : 'PM';
-    return '${_months[dt.month - 1]} ${dt.day}, $h:$m $ap';
-  }
-
-  /// A row of quick facts under the stats: a scheduled-departure badge (when
-  /// set) and the trip's length / the distance to the pickup.
-  Widget _metaRow() {
-    final chips = <Widget>[];
-    if (ride.isScheduled) {
-      chips.add(_metaChip(Icons.schedule_rounded, _scheduledLabel, accent: true));
-    } else if (ride.isDeparted) {
-      // Its slot has passed — saying "Leave now" here would be a lie.
-      chips.add(_metaChip(Icons.history_rounded, 'Departed $_scheduledLabel'));
-    } else {
-      chips.add(_metaChip(Icons.bolt_rounded, 'Leave now'));
-    }
-    if (ride.tripDistanceKm != null) {
-      chips.add(_metaChip(Icons.straighten_rounded,
-          '${ride.tripDistanceKm!.toStringAsFixed(1)} km trip'));
-    }
-    if (ride.tripDurationMin != null) {
-      chips.add(_metaChip(Icons.access_time_rounded, '${ride.tripDurationMin} min'));
-    }
-    if (ride.distanceKm != null) {
-      chips.add(_metaChip(Icons.near_me_rounded,
-          '${ride.distanceKm!.toStringAsFixed(1)} km away'));
-    }
-    return Padding(
-      padding: EdgeInsets.only(top: 12.h),
-      child: Wrap(spacing: 8.w, runSpacing: 8.h, children: chips),
-    );
-  }
-
-  Widget _metaChip(IconData icon, String label, {bool accent = false}) {
-    final fg = accent ? Consonants.indigo : Consonants.textMuted;
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 7.h),
-      decoration: BoxDecoration(
-        color: accent ? Consonants.indigoWash : Consonants.chipBg,
-        borderRadius: BorderRadius.circular(Consonants.rPill.r),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14.sp, color: fg),
-          SizedBox(width: 6.w),
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: AppText.navLabel(color: fg).copyWith(fontSize: 12.5.sp),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -1095,10 +1029,14 @@ class _FeaturedRideCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Deliberately spare: who, how much, and what you can do about it.
+            // The schedule / distance / duration chips and the rating-and-
+            // riders column used to sit between the fare and the buttons; on
+            // the host's own ride they were noise around the only two things
+            // being looked for.
             _hostStrip(),
             SizedBox(height: 20.h),
             _statsPills(),
-            _metaRow(),
             SizedBox(height: 20.h),
             _actionButtons(),
           ],
@@ -1108,6 +1046,10 @@ class _FeaturedRideCard extends StatelessWidget {
   }
 
   // ─── Host row ───────────────────────────────────────────
+  /// Just who the ride belongs to: initial, name, verified tick. The rating /
+  /// trips / "Trip host" line and the gender chip were dropped — on the host's
+  /// own card they only ever restated what the viewer already knows, and they
+  /// crowded out the one thing the card is for.
   Widget _hostStrip() {
     final initial =
         name.trim().isNotEmpty ? name.trim()[0].toUpperCase() : "?";
@@ -1152,106 +1094,24 @@ class _FeaturedRideCard extends StatelessWidget {
                   ),
                 ],
               ),
-              SizedBox(height: 4.h),
-              Row(
-                children: [
-                  Icon(
-                    Icons.star_outline_rounded,
-                    size: 14.sp,
-                    color: Consonants.textMuted,
-                  ),
-                  SizedBox(width: 4.w),
-                  Flexible(
-                    child: Text(
-                      "$rating  ·  $trips trips  ·  Trip host",
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppText.caption().copyWith(fontSize: 12.5.sp),
-                    ),
-                  ),
-                ],
-              ),
             ],
           ),
         ),
-        if (hostGender == 'FEMALE' || hostGender == 'MALE') ...[
-          SizedBox(width: 10.w),
-          Container(
-            padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 6.h),
-            decoration: BoxDecoration(
-              color: Consonants.chipBg,
-              borderRadius: BorderRadius.circular(Consonants.rPill.r),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  hostGender == 'FEMALE'
-                      ? Icons.female_outlined
-                      : Icons.male_outlined,
-                  size: 13.sp,
-                  color: Consonants.iconInk,
-                ),
-                SizedBox(width: 4.w),
-                Text(
-                  hostGender == 'FEMALE' ? 'Female' : 'Male',
-                  style: AppText.navLabel(color: Consonants.iconInk)
-                      .copyWith(fontSize: 12.sp),
-                ),
-              ],
-            ),
-          ),
-        ],
       ],
     );
   }
 
-  // ─── The fare, and the two facts that qualify it ────────
-  /// Money is the largest thing on the card it belongs to; the rating and
-  /// rider count sit beside it as supporting detail, not as equals.
+  // ─── The fare ───────────────────────────────────────────
+  /// The amount, on its own. The "Your fare" caption, the rating and the rider
+  /// count all went: a number this size in this position needs no label, and
+  /// the two facts beside it were competing with the only thing the card is
+  /// really for.
   Widget _statsPills() {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                "Your fare",
-                style: AppText.caption().copyWith(fontSize: 12.5.sp),
-              ),
-              SizedBox(height: 6.h),
-              Text(
-                yourFare,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppText.figure().copyWith(fontSize: 32.sp),
-              ),
-            ],
-          ),
-        ),
-        SizedBox(width: 12.w),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            _fact(Icons.star_outline_rounded, "$avgRating rating"),
-            SizedBox(height: 8.h),
-            _fact(Icons.people_outline_rounded, "$riders riders"),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _fact(IconData icon, String label) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 15.sp, color: Consonants.iconInk),
-        SizedBox(width: 6.w),
-        Text(label, style: AppText.caption().copyWith(fontSize: 13.sp)),
-      ],
+    return Text(
+      yourFare,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: AppText.figure().copyWith(fontSize: 32.sp),
     );
   }
 

@@ -7,8 +7,8 @@ import 'package:go_router/go_router.dart';
 import 'package:ride_sharing/model/appRoutes.dart';
 import 'package:ride_sharing/model/authModels.dart';
 import 'package:ride_sharing/provider/authProvider.dart';
-import 'package:ride_sharing/provider/profileProvider.dart';
 import 'package:ride_sharing/provider/sessionReset.dart';
+import 'package:ride_sharing/provider/sessionRouter.dart';
 import 'package:ride_sharing/view/forgotPassword.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/consonants/errorHandler.dart';
@@ -60,15 +60,16 @@ class _LoginscreenState extends ConsumerState<Loginscreen> {
     }
   }
 
-  /// Three-way post-login routing. The user might have:
-  ///   1. No role on their JWT     → finish role selection
-  ///   2. Role, but no profile yet → finish profile creation
-  ///   3. Role + profile           → enter the app
+  /// Post-login routing, which is now a single fact rather than a series of
+  /// lookups: a session token exists only for accounts that finished signup,
+  /// because the backend issues one at the instant identity verification
+  /// passes and creates the account in that same moment.
   ///
-  /// We hit the profile endpoint instead of trusting just the JWT
-  /// because the JWT only carries role/email/gender — a user can pick
-  /// a role and then log out before saving their profile, which would
-  /// otherwise drop them into a broken bottom-navbar with empty data.
+  /// So there is nothing to check here. The previous version asked whether a
+  /// profile existed and, finding one, went straight to the navbar — which is
+  /// exactly how users with an unverified identity reached the home screen.
+  /// Unfinished signups no longer arrive here at all: they have no session,
+  /// and are routed by stage in the listener below.
   Future<void> _routeAfterLogin(String? role) async {
     if (_isRouting) return; // listener might fire twice — de-dupe.
     setState(() => _isRouting = true);
@@ -80,62 +81,20 @@ class _LoginscreenState extends ConsumerState<Loginscreen> {
       // stale profile/ride data bleed into the new user's session.
       clearUserSession(ref);
 
-      if (role != "DRIVER" && role != "PASSENGER") {
-        // No role on the token — finish role selection first.
-        if (!mounted) return;
-        context.go(Approutes.roleSection);
-        return;
-      }
-
-      // Sync the JWT role into the bottom-navbar's selector so when we
-      // eventually route there, it renders the right tab set.
-      ref.read(selectedRoleProvider.notifier).setRole(role!);
-
-      // Cap the profile check at 8s so a slow backend can't strand the
-      // user on the login screen. On timeout we fall through to the
-      // navbar — downstream profile-dependent screens already handle
-      // their own loading/empty/error states gracefully.
-      bool hasProfile;
-      try {
-        hasProfile = await _hasProfileForRole(role)
-            .timeout(const Duration(seconds: 8));
-      } on TimeoutException {
-        hasProfile = true; // assume yes; navbar will surface the issue
+      // Sync the JWT role into the bottom-navbar's selector so it renders the
+      // right tab set.
+      if (role == "DRIVER" || role == "PASSENGER") {
+        ref.read(selectedRoleProvider.notifier).setRole(role!);
       }
 
       if (!mounted) return;
-      if (hasProfile) {
-        context.go(Approutes.bottomNavbar);
-      } else if (role == "PASSENGER") {
-        context.go(Approutes.passengerProfileData);
-      } else {
-        context.go(Approutes.driverProfileData);
-      }
+      context.go(Approutes.bottomNavbar);
     } catch (e) {
       // Anything unexpected — surface it instead of silently stalling.
       if (!mounted) return;
       ErrorHandler.show(context, e);
     } finally {
       if (mounted) setState(() => _isRouting = false);
-    }
-  }
-
-  /// Returns true when the backend reports a populated profile for the
-  /// authenticated user in the given role. Treats any exception (404,
-  /// network blip, etc.) as "no profile" so a transient failure sends
-  /// the user to the profile screen rather than the navbar with empty
-  /// data — false-negative is the safer default here.
-  Future<bool> _hasProfileForRole(String role) async {
-    try {
-      if (role == "PASSENGER") {
-        final p = await ref.read(passengerProfileProvider.future);
-        return p.fullName.trim().isNotEmpty;
-      } else {
-        final p = await ref.read(driverProfileProvider.future);
-        return p.fullName.trim().isNotEmpty;
-      }
-    } catch (_) {
-      return false;
     }
   }
 
@@ -151,11 +110,13 @@ class _LoginscreenState extends ConsumerState<Loginscreen> {
     ref.listen<AuthState>(authControllerProvider, (previous, next) {
       if (next.error != null && next.error != previous?.error) {
         ErrorHandler.show(context, next.error);
-      } else if (next.roleRequired && previous?.roleRequired != true) {
-        // Right password, unfinished signup: send them to role selection
-        // rather than showing an error they can do nothing about.
-        ErrorHandler.success(context, "Almost there — pick how you'll ride");
-        context.go(Approutes.roleSection);
+      } else if (next.onboardingStage != OnboardingStage.complete &&
+          next.onboardingStage != previous?.onboardingStage) {
+        // Right password, unfinished signup: reopen the step the server says
+        // they stopped at, rather than showing an error they can do nothing
+        // about. There is no account yet, so there is nothing to log in to.
+        ErrorHandler.success(context, "Almost there — let's finish signing up");
+        context.go(routeForStage(ref, next.onboardingStage, next.role));
       } else if (next.isLoggedIn && previous?.isLoggedIn != true) {
         ErrorHandler.success(context, "Logged in successfully");
         _routeAfterLogin(next.role);

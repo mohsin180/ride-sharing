@@ -485,28 +485,6 @@ class _RideSummaryCard extends StatelessWidget {
     );
   }
 
-  static const _months = [
-    'Jan',
-    'Feb',
-    'Mar',
-    'Apr',
-    'May',
-    'Jun',
-    'Jul',
-    'Aug',
-    'Sep',
-    'Oct',
-    'Nov',
-    'Dec',
-  ];
-
-  String _scheduledLabel(DateTime dt) {
-    final h = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
-    final m = dt.minute.toString().padLeft(2, '0');
-    final ap = dt.hour < 12 ? 'AM' : 'PM';
-    return '${_months[dt.month - 1]} ${dt.day}, $h:$m $ap';
-  }
-
   // ─── Host row ───────────────────────────────────────────
   Widget _hostRow() {
     return Row(
@@ -625,30 +603,12 @@ class _RideSummaryCard extends StatelessWidget {
     );
   }
 
-  /// Quick facts: scheduled-departure badge (when set) and the trip's length
-  /// plus how far the pickup is from the driver.
+  /// Quick facts: the trip's length plus how far the pickup is from the
+  /// driver.
   Widget _metaRow() {
     final r = ride.source;
     final chips = <Widget>[];
-    if (r.isScheduled) {
-      chips.add(
-        _metaChip(
-          Icons.schedule_rounded,
-          _scheduledLabel(r.departureTime!),
-          accent: true,
-        ),
-      );
-    } else if (r.isDeparted) {
-      // Its slot has passed — "Leave now" would be a lie.
-      chips.add(
-        _metaChip(
-          Icons.history_rounded,
-          'Departed ${_scheduledLabel(r.departureTime!)}',
-        ),
-      );
-    } else {
-      chips.add(_metaChip(Icons.bolt_rounded, 'Leave now', accent: true));
-    }
+    chips.add(_metaChip(Icons.bolt_rounded, 'Leave now', accent: true));
     if (r.tripDistanceKm != null) {
       chips.add(
         _metaChip(
@@ -799,7 +759,9 @@ class _RideRequest {
       hostInitial: name.isEmpty ? "?" : name[0].toUpperCase(),
       hostRating: r.hostRatingLabel,
       gender: r.hostGender ?? "",
-      totalFare: r.fareForRider != null ? r.fareForRider!.round() : 0,
+      // The whole trip, which is what the driver collects — not one rider's
+      // share, which is what this used to show.
+      totalFare: r.tripFare != null ? r.tripFare!.round() : 0,
       riderCount: r.ridersJoined,
       startPoint: r.pickup,
       endPoint: r.drop,

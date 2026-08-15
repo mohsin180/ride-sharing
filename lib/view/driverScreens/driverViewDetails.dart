@@ -117,7 +117,8 @@ class _DriverViewDetailsState extends ConsumerState<DriverViewDetails> {
         distanceToPickup:
             r.distanceKm != null ? "${r.distanceKm!.toStringAsFixed(1)} km" : "—",
         etaToPickup: r.etaMinutes != null ? "${r.etaMinutes} min" : "—",
-        fare: r.fareForRider != null ? "Rs ${r.fareForRider!.round()}" : "Rs —",
+        // Driver-facing: the trip total they'll earn, not a rider's share.
+        fare: r.tripFare != null ? "Rs ${r.tripFare!.round()}" : "Rs —",
         seats: 1,
         status: PickupStatus.current,
         isHost: true,

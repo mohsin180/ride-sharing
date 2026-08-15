@@ -2,101 +2,93 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ride_sharing/model/appRoutes.dart';
+import 'package:ride_sharing/model/authModels.dart';
 import 'package:ride_sharing/provider/authProvider.dart' show selectedRoleProvider;
-import 'package:ride_sharing/provider/profileProvider.dart';
 import 'package:ride_sharing/provider/providers.dart';
-import 'package:ride_sharing/widgets/consonants/apiException.dart';
+import 'package:ride_sharing/widgets/consonants/jwtUtils.dart';
+import 'package:ride_sharing/widgets/consonants/tokenStorage.dart';
 
 /// How long a single onboarding lookup may take before it's retried. Phones on
 /// mobile data reaching the backend through a tunnel routinely need more than a
 /// couple of seconds on the first call of a cold start.
 const Duration _lookupTimeout = Duration(seconds: 12);
 
-/// A lookup answers yes, no, or — when the backend can't be reached — nothing
-/// at all. Collapsing that third case into yes/no is what used to drop people
-/// on the wrong screen: an unreachable profile read looked like "no profile"
-/// and pushed a fully onboarded user back into profile creation.
-enum _Answer { yes, no, unknown }
-
-/// Decide where an authenticated user (already carrying a valid JWT role)
-/// should land, and sync that role into the bottom-navbar selector. Shared by
-/// the login screen and the splash auto-login so both route identically:
-///   • role + profile + verified identity → the app (bottom navbar)
-///   • role + profile, not yet verified   → finish KYC
-///   • role, no profile                   → finish profile creation
+/// Where a user belongs, decided in one place for every entry point — splash,
+/// login, and the end of role selection alike.
 ///
-/// Identity verification is mandatory, so an unverified user is sent back to
-/// the KYC screen on every launch until they pass. The backend enforces the
-/// same rule on the ride endpoints — this only saves them a failed request.
+/// The rule is now a single fact rather than a series of guesses: **a session
+/// token means the account is finished**. It cannot mean anything else, because
+/// the backend only issues one at the moment identity verification passes, and
+/// creates the account in that same instant. Nothing here has to check for a
+/// missing profile or an unverified identity — those states have no session to
+/// arrive with.
 ///
-/// Caller is responsible for the no-role case (send them to login / role
-/// selection) — this only handles DRIVER / PASSENGER.
-Future<String> resolveHomeRouteForRole(WidgetRef ref, String role) async {
-  ref.read(selectedRoleProvider.notifier).setRole(role);
-
-  // Only a definitive "no profile" sends someone back to profile creation.
-  // Unknown falls through to the KYC check, because creating a profile that
-  // already exists fails with a conflict and strands them there.
-  if (await _hasProfileForRole(ref, role) == _Answer.no) {
-    return role == "PASSENGER"
-        ? Approutes.passengerProfileData
-        : Approutes.driverProfileData;
-  }
-
-  // Anything short of a confirmed approval goes to KYC — including unknown.
-  // Verification is a hard gate, so guessing has to err towards the gate; the
-  // KYC screen polls and forwards an already-verified user into the app on its
-  // own, so a network blip costs them a second, not access.
-  if (await _isKycApproved(ref) != _Answer.yes) {
-    return role == "PASSENGER" ? Approutes.passengerKyc : Approutes.driverKyc;
-  }
-  return Approutes.bottomNavbar;
-}
-
-/// Whether the backend reports a populated profile for the given role.
-Future<_Answer> _hasProfileForRole(WidgetRef ref, String role) {
-  return _ask(() async {
-    // A fresh read each attempt: a provider that failed the first time holds
-    // the error, so retrying the cached future would just fail again.
-    if (role == "PASSENGER") {
-      ref.invalidate(passengerProfileProvider);
-      final p = await ref.read(passengerProfileProvider.future);
-      return p.fullName.trim().isNotEmpty;
+/// Anyone without a session is mid-signup, and the server says which step they
+/// stopped at. The app never infers it. That inference is exactly what used to
+/// send a KYC-less user to the home screen: login checked for a profile, found
+/// one, and asked no further.
+Future<String> resolveStartRoute(WidgetRef ref) async {
+  final token = await Tokenstorage.getToken();
+  if (token != null && token.isNotEmpty && !JwtUtils.isExpired(token)) {
+    final role = JwtUtils.extractRole(token);
+    if (role == "DRIVER" || role == "PASSENGER") {
+      ref.read(selectedRoleProvider.notifier).setRole(role!);
+      return Approutes.bottomNavbar;
     }
-    ref.invalidate(driverProfileProvider);
-    final p = await ref.read(driverProfileProvider.future);
-    return p.fullName.trim().isNotEmpty;
-  });
-}
-
-/// Whether identity verification has been approved.
-Future<_Answer> _isKycApproved(WidgetRef ref) {
-  return _ask(() async {
-    final kyc = await ref.read(kycServiceProvider).getStatus();
-    return kyc.isApproved;
-  });
-}
-
-/// Runs [lookup] with a timeout, once more on failure, and reports which of
-/// the three answers came back.
-///
-/// A 404 is an answer — the record genuinely isn't there. A timeout, a socket
-/// error or a 5xx is not, and is reported as [_Answer.unknown] so the caller
-/// can pick the safe route instead of acting on a guess.
-Future<_Answer> _ask(Future<bool> Function() lookup) async {
-  for (var attempt = 0; attempt < 2; attempt++) {
-    try {
-      return await lookup().timeout(_lookupTimeout)
-          ? _Answer.yes
-          : _Answer.no;
-    } on ApiException catch (e) {
-      if (e.statusCode == 404) return _Answer.no;
-      // 401 means the session is finished; nothing here can recover it, so
-      // don't burn a retry on it.
-      if (e.statusCode == 401) return _Answer.unknown;
-    } catch (_) {
-      // Timeout / socket / decode — worth one more try.
-    }
+    // A token with no role can't have come from promotion; treat it as junk
+    // rather than letting it stand in for a session.
+    await Tokenstorage.deleteToken();
   }
-  return _Answer.unknown;
+  return resumeSignupOrLogin(ref);
+}
+
+/// Picks up an interrupted signup, or falls back to the login screen.
+///
+/// Asks the backend where the signup stands rather than trusting anything
+/// cached: the user may have clicked the verification link, or finished KYC in
+/// a browser, since this device last looked.
+Future<String> resumeSignupOrLogin(WidgetRef ref) async {
+  final onboardingToken = await Tokenstorage.getOnboardingToken();
+  if (onboardingToken == null || onboardingToken.isEmpty) {
+    return Approutes.login;
+  }
+  try {
+    final state = await ref
+        .read(authServiceProvider)
+        .onboardingState(onboardingToken)
+        .timeout(_lookupTimeout);
+    await Tokenstorage.saveOnboardingToken(state.onboardingToken);
+    return routeForStage(ref, state.stage, state.role);
+  } catch (_) {
+    // Expired or unreachable — logging in re-issues an onboarding token and
+    // reports the stage again, so this is a detour and never a dead end.
+    return Approutes.login;
+  }
+}
+
+/// The screen that owns a given onboarding step.
+///
+/// [role] may be null before it has been chosen, which is fine: every stage
+/// that needs it comes after the choice.
+String routeForStage(WidgetRef ref, OnboardingStage stage, String? role) {
+  if (role == "DRIVER" || role == "PASSENGER") {
+    ref.read(selectedRoleProvider.notifier).setRole(role!);
+  }
+  final isPassenger = role != "DRIVER";
+  switch (stage) {
+    case OnboardingStage.emailVerification:
+      return Approutes.verification;
+    case OnboardingStage.role:
+      return Approutes.roleSection;
+    case OnboardingStage.profile:
+      return isPassenger
+          ? Approutes.passengerProfileData
+          : Approutes.driverProfileData;
+    case OnboardingStage.vehicle:
+      return Approutes.driverVehicleDetails;
+    case OnboardingStage.kyc:
+      return isPassenger ? Approutes.passengerKyc : Approutes.driverKyc;
+    case OnboardingStage.complete:
+      return Approutes.bottomNavbar;
+  }
 }

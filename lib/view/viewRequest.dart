@@ -7,7 +7,6 @@ import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:ride_sharing/model/appRoutes.dart';
 import 'package:ride_sharing/model/rideModels.dart';
-import 'package:ride_sharing/provider/authProvider.dart';
 import 'package:ride_sharing/provider/availableRidesProvider.dart';
 import 'package:ride_sharing/provider/directionsProvider.dart';
 import 'package:ride_sharing/provider/myRidesProvider.dart';
@@ -187,13 +186,12 @@ class Viewrequest extends ConsumerWidget {
         rideId != null ? ref.watch(rideDetailsProvider(rideId!)) : null;
     final details = detailsAsync?.value;
 
-    // Host vs searcher detection — same userId = this is the user's own
-    // ride, otherwise they're viewing someone else's ride to join.
-    final currentUserId =
-        ref.watch(authControllerProvider.select((s) => s.userId));
-    final isHost = currentUserId != null &&
-        details != null &&
-        details.host.id == currentUserId;
+    // Host vs searcher — the backend decides, since it knows who asked. This
+    // used to compare the host's id against the in-memory auth state, which
+    // holds a user id only after a login in THIS session: on any cold start it
+    // was null, so the host of a ride was treated as a stranger and offered
+    // "Confirm Ride" instead of "Publish to drivers".
+    final isHost = details?.youAreHost ?? false;
 
     // Effective values — backend wins where available, navigator fallback
     // covers everything else. Seats = the VIEWER's own booking (yourSeats),
@@ -285,7 +283,6 @@ class Viewrequest extends ConsumerWidget {
                         _tripHostCard(details?.host, details?.createdAt),
                         SizedBox(height: Consonants.gapTiles.h),
                         _selectedRideCard(details?.rideType),
-                        _departureBanner(details?.departureTime),
                         SizedBox(height: Consonants.gapTiles.h),
                         _statsRow(
                           seats: effSeats,
@@ -689,57 +686,6 @@ Widget _selectedRideCard(String? rideType) {
   );
 }
 
-/// ───────────────────── DEPARTURE ─────────────────────
-/// When the ride leaves. Nothing is drawn for an on-demand ride — the
-/// absence reads as "now". A departure that has already passed says so
-/// rather than pretending the ride is still upcoming.
-Widget _departureBanner(DateTime? departureTime) {
-  if (departureTime == null) return const SizedBox.shrink();
-
-  const months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-  ];
-  final hour12 = departureTime.hour % 12 == 0 ? 12 : departureTime.hour % 12;
-  final label = '${months[departureTime.month - 1]} ${departureTime.day}, '
-      '$hour12:${departureTime.minute.toString().padLeft(2, '0')} '
-      '${departureTime.hour < 12 ? 'AM' : 'PM'}';
-  final departed = !departureTime.isAfter(DateTime.now());
-  final accent = departed ? Consonants.danger : Consonants.indigo;
-
-  return Padding(
-    padding: EdgeInsets.only(top: Consonants.gapTiles.h),
-    child: Container(
-      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
-      decoration: BoxDecoration(
-        color: departed ? Consonants.dangerWash : Consonants.indigoWash,
-        borderRadius: BorderRadius.circular(Consonants.rCard.r),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            departed ? Icons.history_outlined : Icons.schedule_outlined,
-            size: 18.sp,
-            color: accent,
-          ),
-          SizedBox(width: 10.w),
-          Flexible(
-            child: Text(
-              departed ? "Departed $label" : "Scheduled · $label",
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: AppText.rowLabel(color: accent).copyWith(
-                fontSize: 14.5.sp,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
-}
-
 /// ───────────────────── STATS ROW ─────────────────────
 ///
 /// When pickup + drop coordinates are present, the duration / distance
@@ -957,20 +903,17 @@ Widget _stackedPassengerAvatars(List<RideCoPassenger> coPassengers) {
 }
 
 /// ───────────────────── FARE CARD ─────────────────────
-/// Renders the fare breakdown coming from the backend. Falls back to
-/// "—" placeholders while loading so the card always has the same
-/// height and layout. When a joiner [preview] is available it wins: the
-/// totals become the SIMULATED trip (their detour included) and "You'll
-/// pay" is their true weighted share.
+/// One number, in plain rupees: what this viewer pays. Nothing else.
+///
+/// The card used to carry a caption, a whole-trip row, a "split by distance"
+/// row and a payment note stacked beneath it. Every one of them was accurate
+/// and none was being read — a figure this size, alone on the hero surface,
+/// already says what it is.
+///
+/// A joiner's [preview] wins when present: the figure becomes what they'd
+/// actually pay on the SIMULATED trip, their detour included. It still moves
+/// whenever someone joins, since joining changes both the trip and the split.
 Widget _fareCard(RideFareBreakdown? fare, {JoinFarePreview? preview}) {
-  final baseLabel = preview != null
-      ? 'Rs ${preview.gross.round()}'
-      : fare != null
-          ? fare.format(fare.baseFare)
-          : '—';
-  final discountLabel = fare != null
-      ? '-${fare.format(fare.sharedDiscount)}'
-      : '—';
   final totalLabel = preview != null
       ? preview.yourShareLabel
       : fare != null
@@ -979,76 +922,25 @@ Widget _fareCard(RideFareBreakdown? fare, {JoinFarePreview? preview}) {
 
   return HeroSurface(
     padding: EdgeInsets.symmetric(horizontal: 22.w, vertical: 22.h),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    child: Row(
       children: [
-        Row(
-          children: [
-            Text(
-              "You'll pay",
-              style: AppText.caption(color: const Color(0xCCFFFFFF))
-                  .copyWith(fontSize: 13.sp),
-            ),
-            const Spacer(),
-            Icon(
-              Icons.account_balance_wallet_outlined,
-              size: 18.sp,
-              color: const Color(0xCCFFFFFF),
-            ),
-          ],
+        Expanded(
+          child: Text(
+            totalLabel,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppText.figure(color: Consonants.surface)
+                .copyWith(fontSize: 36.sp),
+          ),
         ),
-        SizedBox(height: 8.h),
-        Text(
-          totalLabel,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style:
-              AppText.figure(color: Consonants.surface).copyWith(fontSize: 36.sp),
-        ),
-        SizedBox(height: 20.h),
-        Container(height: 1, color: const Color(0x33FFFFFF)),
-        SizedBox(height: 16.h),
-        _fareRow("Base fare", baseLabel),
-        if (fare != null && fare.sharedDiscount > 0) ...[
-          SizedBox(height: 10.h),
-          _fareRow("Shared discount", discountLabel),
-        ],
-        SizedBox(height: 16.h),
-        Row(
-          children: [
-            Icon(
-              Icons.payments_outlined,
-              size: 13.sp,
-              color: const Color(0x99FFFFFF),
-            ),
-            SizedBox(width: 6.w),
-            Text(
-              "Cash on arrival",
-              style: AppText.caption(color: const Color(0x99FFFFFF))
-                  .copyWith(fontSize: 12.sp),
-            ),
-          ],
+        SizedBox(width: 12.w),
+        Icon(
+          Icons.account_balance_wallet_outlined,
+          size: 18.sp,
+          color: const Color(0xCCFFFFFF),
         ),
       ],
     ),
-  );
-}
-
-Widget _fareRow(String label, String value) {
-  return Row(
-    children: [
-      Text(
-        label,
-        style: AppText.caption(color: const Color(0xCCFFFFFF))
-            .copyWith(fontSize: 14.sp),
-      ),
-      const Spacer(),
-      Text(
-        value,
-        style: AppText.amount(color: Consonants.surface)
-            .copyWith(fontSize: 15.sp),
-      ),
-    ],
   );
 }
 
@@ -1072,6 +964,7 @@ class _BottomBar extends ConsumerStatefulWidget {
   /// [fare.perRider] in the confirm label when present.
   final double? previewShare;
   final bool isHost;
+
   final bool hasJoined;
   final bool publishedToDrivers;
   final bool youHaveRequested;
@@ -1232,8 +1125,10 @@ class _BottomBarState extends ConsumerState<_BottomBar> {
     // Role unknown until details load — show a neutral placeholder rather
     // than risk offering the wrong action (e.g. "join" to the host).
     if (!widget.detailsReady) return _loadingChip();
-    // Host: publish the ride to drivers, then show a waiting state. Works even
-    // with co-passengers already joined / seats full.
+    // Host: publish to drivers whenever they're ready, then wait. Works even
+    // with co-passengers joined / seats full — a full group still needs a
+    // driver. There is no "confirm" state for a host: booking already created
+    // the ride, so this screen is only ever reached from Your Rides.
     if (widget.isHost) {
       return widget.publishedToDrivers ? _publishedChip() : _publishButton();
     }

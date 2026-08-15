@@ -8,8 +8,8 @@ import 'package:ride_sharing/provider/providers.dart';
 
 /// Fresh ride requests the authenticated driver can claim. Backed by
 /// `GET /api/v1/rides/driver/feed`, ranked by proximity to the driver's
-/// current location (PostGIS) and bounded to a nearby radius when a GPS
-/// fix is available.
+/// current location (Haversine SQL on the backend) and bounded to a nearby
+/// radius when a GPS fix is available.
 ///
 /// The driver-rides screen only watches this while the driver is online
 /// (see `driverOnlineProvider`); offline it shows a placeholder and never

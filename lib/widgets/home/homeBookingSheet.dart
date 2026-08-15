@@ -183,8 +183,6 @@ class _SheetBody extends StatelessWidget {
                       SizedBox(height: 24.h),
                       const _SeatsPicker(),
                       SizedBox(height: 22.h),
-                      const _SchedulePicker(),
-                      SizedBox(height: 24.h),
                       Text(
                         'Choose a ride',
                         style: AppText.rowLabel(color: Consonants.headingInk)
@@ -429,114 +427,6 @@ class _DropoffRowState extends ConsumerState<_DropoffRow> {
 // underlying notifier still clamps to [1, 6] in case other entry points
 // pass higher values.
 // ─────────────────────────────────────────────────────────────────────────────
-
-/// "Leave now" vs a scheduled departure. Tapping the pill opens a date then a
-/// time picker; the chosen time is stored in [scheduledDepartureProvider] and
-/// sent with the ride so it appears as a scheduled ride.
-class _SchedulePicker extends ConsumerWidget {
-  const _SchedulePicker();
-
-  static const _months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-  ];
-
-  String _label(DateTime dt) {
-    final h = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
-    final m = dt.minute.toString().padLeft(2, '0');
-    final ap = dt.hour < 12 ? 'AM' : 'PM';
-    return '${_months[dt.month - 1]} ${dt.day}, $h:$m $ap';
-  }
-
-  Future<void> _pick(BuildContext context, WidgetRef ref) async {
-    final now = DateTime.now();
-    final date = await showDatePicker(
-      context: context,
-      initialDate: now,
-      firstDate: now,
-      lastDate: now.add(const Duration(days: 30)),
-    );
-    if (date == null || !context.mounted) return;
-    final time = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.fromDateTime(now.add(const Duration(minutes: 30))),
-    );
-    if (time == null) return;
-    final when =
-        DateTime(date.year, date.month, date.day, time.hour, time.minute);
-    // Only accept a future time; otherwise it's just "leave now".
-    ref.read(scheduledDepartureProvider.notifier).set(
-          when.isAfter(DateTime.now()) ? when : null,
-        );
-  }
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final scheduled = ref.watch(scheduledDepartureProvider);
-    final isSet = scheduled != null;
-
-    return Row(
-      children: [
-        Icon(Icons.schedule_outlined, size: 18.sp, color: Consonants.iconInk),
-        SizedBox(width: 10.w),
-        Text(
-          'Departure',
-          style: AppText.rowLabel(color: Consonants.headingInk)
-              .copyWith(fontSize: 15.sp, fontWeight: FontWeight.w600),
-        ),
-        SizedBox(width: 12.w),
-        // The pill takes whatever's left and right-aligns inside it, so a
-        // long scheduled label never fights the row for space.
-        Expanded(
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              if (isSet) ...[
-                GestureDetector(
-                  onTap: () =>
-                      ref.read(scheduledDepartureProvider.notifier).clear(),
-                  behavior: HitTestBehavior.opaque,
-                  child: Padding(
-                    padding: EdgeInsets.all(4.w),
-                    child: Icon(Icons.close_rounded,
-                        size: 16.sp, color: Consonants.textMuted),
-                  ),
-                ),
-                SizedBox(width: 6.w),
-              ],
-              Flexible(
-                child: GestureDetector(
-                  onTap: () => _pick(context, ref),
-                  child: Container(
-                    padding:
-                        EdgeInsets.symmetric(horizontal: 14.w, vertical: 9.h),
-                    decoration: BoxDecoration(
-                      color: isSet ? Consonants.indigoWash : Consonants.canvas,
-                      borderRadius:
-                          BorderRadius.circular(Consonants.rPill.r),
-                      border: Border.all(
-                        color: isSet ? Consonants.indigo : Consonants.border,
-                        width: isSet ? 1.5 : 1,
-                      ),
-                    ),
-                    child: Text(
-                      isSet ? _label(scheduled) : 'Leave now',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppText.caption(
-                        color: isSet ? Consonants.indigo : Consonants.textMuted,
-                      ).copyWith(fontSize: 12.5.sp, fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
 
 class _SeatsPicker extends ConsumerWidget {
   const _SeatsPicker();

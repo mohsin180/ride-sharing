@@ -13,7 +13,6 @@ import 'package:ride_sharing/provider/providers.dart';
 import 'package:ride_sharing/view/editProfile.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/consonants/errorHandler.dart';
-import 'package:ride_sharing/widgets/consonants/tokenStorage.dart';
 import 'package:ride_sharing/widgets/custom/appComponents.dart';
 import 'package:ride_sharing/widgets/custom/responsive.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -238,10 +237,10 @@ class _KycScreenState extends ConsumerState<KycScreen> {
       return;
     }
     try {
-      // The response carries a fresh token: gender is a JWT claim, so the old
-      // one would keep asserting the value the CNIC just contradicted.
-      final res = await ref.read(authServiceProvider).changeGender(picked);
-      await Tokenstorage.saveToken(res.token);
+      // Signup isn't finished, so there is no account and no token to reissue
+      // — the value simply changes on the pending signup, and the next
+      // verification is cross-checked against the corrected one.
+      await ref.read(kycServiceProvider).changeGender(picked);
       if (!mounted) return;
       ErrorHandler.success(context, "Gender updated — try verifying again");
     } catch (e) {
