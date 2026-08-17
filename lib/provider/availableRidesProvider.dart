@@ -30,7 +30,7 @@ final availableRidesProvider =
         lng: pickup.longitude,
         dropLat: drop?.latitude,
         dropLng: drop?.longitude,
-        // With seats too, "Your fare" becomes the true weighted preview.
+        // With seats too, "Your price" becomes the true weighted preview.
         seats: req.seats,
       );
 });

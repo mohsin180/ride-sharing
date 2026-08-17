@@ -69,8 +69,8 @@ Future<bool> confirmAcceptJoin(
               SizedBox(height: 6.h),
               Text(
                 p == null
-                    ? "They'll share your ride and split the fare."
-                    : 'Adding them re-splits the fare across the trip.',
+                    ? "They'll share your ride and split the price."
+                    : 'Adding them re-splits the price across the trip.',
                 style: AppText.caption().copyWith(fontSize: 13.sp, height: 1.4),
               ),
               if (p != null) ...[
@@ -88,7 +88,7 @@ Future<bool> confirmAcceptJoin(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Your fare',
+                        'Your price',
                         style: AppText.caption().copyWith(fontSize: 12.5.sp),
                       ),
                       SizedBox(height: 8.h),

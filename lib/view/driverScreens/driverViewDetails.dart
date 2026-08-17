@@ -10,6 +10,7 @@ import 'package:ride_sharing/widgets/consonants/apiException.dart';
 import 'package:ride_sharing/widgets/consonants/consonants.dart';
 import 'package:ride_sharing/widgets/custom/appComponents.dart';
 import 'package:ride_sharing/widgets/custom/customWidgets.dart';
+import 'package:ride_sharing/widgets/custom/rideRouteMap.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// Review screen for a ride request the driver opened from the feed.
@@ -180,10 +181,37 @@ class _DriverViewDetailsState extends ConsumerState<DriverViewDetails> {
           phone: c.phone,
         ));
       }
-      setState(() => _passengers = list);
+      setState(() => _passengers = _inPickupOrder(list, d));
     } catch (_) {
       // Keep the host-only summary on failure — the screen still works.
     }
+  }
+
+  /// Sorts riders into the order the driver will actually collect them.
+  ///
+  /// Uses [orderRouteStops] — the same greedy nearest-neighbour walk the map
+  /// draws its polyline with — so the list under "Pickup order" and the line
+  /// on the map can't disagree. Before this the list was simply host-first
+  /// then whoever joined first, which on a shared ride is not the order
+  /// anyone drives in.
+  ///
+  /// Riders whose stop isn't in the route (missing coordinates) keep their
+  /// original position at the end rather than vanishing.
+  List<Passenger> _inPickupOrder(List<Passenger> people, RideDetails d) {
+    if (people.length < 2 || d.stops.length < 2) return people;
+    final ordered = orderRouteStops(d.stops, d.host.id);
+    final rank = <String, int>{};
+    for (int i = 0; i < ordered.length; i++) {
+      final s = ordered[i];
+      if (s.isPickup) rank.putIfAbsent(s.ownerId, () => i);
+    }
+    final sorted = List.of(people);
+    sorted.sort((a, b) {
+      final ra = rank[a.userId] ?? 1 << 20;
+      final rb = rank[b.userId] ?? 1 << 20;
+      return ra.compareTo(rb);
+    });
+    return sorted;
   }
 
   /// Dial a number — opens the phone app with it pre-filled.
@@ -336,7 +364,7 @@ class _DriverViewDetailsState extends ConsumerState<DriverViewDetails> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              "TOTAL FARE",
+              "TOTAL PRICE",
               style: AppText.navLabel(
                 color: Consonants.surface.withValues(alpha: 0.72),
               ).copyWith(fontSize: 12.sp, letterSpacing: 0.8),
@@ -481,22 +509,6 @@ class _DriverViewDetailsState extends ConsumerState<DriverViewDetails> {
                 ],
               ],
             ),
-            SizedBox(height: 14.h),
-            Row(
-              children: [
-                _statusPill(p.status),
-                if (p.status == PickupStatus.current ||
-                    p.status == PickupStatus.upcoming) ...[
-                  SizedBox(width: 8.w),
-                  Flexible(
-                    child: _metaPill(
-                      Icons.near_me_outlined,
-                      "${p.distanceToPickup} away · ${p.etaToPickup}",
-                    ),
-                  ),
-                ],
-              ],
-            ),
             SizedBox(height: 18.h),
             _routeTimeline(pickup: p.pickup, drop: p.drop),
             SizedBox(height: 18.h),
@@ -512,7 +524,7 @@ class _DriverViewDetailsState extends ConsumerState<DriverViewDetails> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        "Their fare share",
+                        "Their price share",
                         style:
                             AppText.caption().copyWith(fontSize: 12.5.sp),
                       ),
@@ -535,84 +547,6 @@ class _DriverViewDetailsState extends ConsumerState<DriverViewDetails> {
     );
   }
 
-  Widget _metaPill(IconData icon, String label) {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 11.w, vertical: 7.h),
-      decoration: BoxDecoration(
-        color: Consonants.canvas,
-        borderRadius: BorderRadius.circular(Consonants.rPill.r),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 13.sp, color: Consonants.textMuted),
-          SizedBox(width: 5.w),
-          Flexible(
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: AppText.navLabel().copyWith(fontSize: 12.sp),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ─── Status pill ─────────────────────────────────────────
-  Widget _statusPill(PickupStatus status) {
-    late final String label;
-    late final Color fg;
-    late final Color bg;
-    late final IconData icon;
-
-    switch (status) {
-      case PickupStatus.upcoming:
-        label = "Upcoming";
-        fg = Consonants.textMuted;
-        bg = Consonants.chipBg;
-        icon = Icons.schedule_rounded;
-        break;
-      case PickupStatus.current:
-        label = "Heading there";
-        fg = Consonants.indigo;
-        bg = Consonants.indigoWash;
-        icon = Icons.directions_car_outlined;
-        break;
-      case PickupStatus.picked:
-        label = "Picked up";
-        fg = Consonants.indigo;
-        bg = Consonants.indigoWash;
-        icon = Icons.event_seat_outlined;
-        break;
-      case PickupStatus.dropped:
-        label = "Dropped off";
-        fg = Consonants.credit;
-        bg = Consonants.creditWash;
-        icon = Icons.check_circle_outline_rounded;
-        break;
-    }
-
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 11.w, vertical: 7.h),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(Consonants.rPill.r),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 13.sp, color: fg),
-          SizedBox(width: 5.w),
-          Text(
-            label,
-            style: AppText.navLabel(color: fg).copyWith(fontSize: 12.sp),
-          ),
-        ],
-      ),
-    );
-  }
 
   // ─── Route timeline (pickup → drop) ─────────────────────
   Widget _routeTimeline({required String pickup, required String drop}) {

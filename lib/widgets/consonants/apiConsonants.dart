@@ -170,7 +170,7 @@ class Apiconsonants {
     final q = StringBuffer("$rideServicebaseUrl/available?lat=$lat&lng=$lng");
     // Destination lets the backend keep only rides going the same way and
     // rank them by combined pickup + drop closeness (route overlap). With
-    // seats too, "Your fare" becomes the true weighted preview.
+    // seats too, "Your price" becomes the true weighted preview.
     if (dropLat != null && dropLng != null) {
       q.write("&dropLat=$dropLat&dropLng=$dropLng");
     }

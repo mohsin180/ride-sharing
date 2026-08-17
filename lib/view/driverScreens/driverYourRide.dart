@@ -480,7 +480,7 @@ class _DriveryourrideState extends ConsumerState<Driveryourride>
       builder: (ctx) => AlertDialog(
         backgroundColor: Consonants.surface,
         title: Text(
-          "Drop this ride?",
+          "Cancel this ride?",
           style: AppText.sectionHeading().copyWith(fontSize: 18.sp),
         ),
         content: Text(
@@ -494,7 +494,7 @@ class _DriveryourrideState extends ConsumerState<Driveryourride>
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text("Drop ride"),
+            child: const Text("Cancel ride"),
           ),
         ],
       ),
@@ -507,7 +507,7 @@ class _DriveryourrideState extends ConsumerState<Driveryourride>
       if (!mounted) return;
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(CustomWidgets.customSuccessSnackBar("Ride dropped"));
+        ..showSnackBar(CustomWidgets.customSuccessSnackBar("Ride cancelled"));
     } on ApiException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
@@ -517,7 +517,8 @@ class _DriveryourrideState extends ConsumerState<Driveryourride>
       if (!mounted) return;
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(CustomWidgets.customErrorSnackBar("Couldn't drop ride"));
+        ..showSnackBar(
+            CustomWidgets.customErrorSnackBar("Couldn't cancel ride"));
     }
   }
 
@@ -744,9 +745,12 @@ class _DriveryourrideState extends ConsumerState<Driveryourride>
               ),
               child: Row(
                 children: [
+                  // Back goes back. Dropping the ride used to be wired to
+                  // this arrow, where nobody would ever look for it — it now
+                  // has a labelled button in the action bar.
                   _circleIconButton(
                     icon: Icons.arrow_back_rounded,
-                    onTap: _dropRide,
+                    onTap: () => Navigator.of(context).maybePop(),
                   ),
                   const Spacer(),
                   _floatingSurface(
@@ -1190,7 +1194,7 @@ class _DriveryourrideState extends ConsumerState<Driveryourride>
                 child: _stripItem(
                   icon: Icons.payments_outlined,
                   value: totalFareLabel,
-                  label: "Trip fare",
+                  label: "Trip price",
                 ),
               ),
             ],
@@ -1306,7 +1310,7 @@ class _DriveryourrideState extends ConsumerState<Driveryourride>
                 Expanded(
                   child: _passengerDetailRow(
                     Icons.payments_outlined,
-                    "Fare share",
+                    "Price share",
                     p.fare,
                   ),
                 ),
@@ -1558,13 +1562,59 @@ class _DriveryourrideState extends ConsumerState<Driveryourride>
         color: Consonants.canvas,
         border: Border(top: BorderSide(color: Consonants.divider)),
       ),
-      child: AppButton(
-        label: _ctaLabel,
-        icon: _phase == _RidePhase.lastDropoff
-            ? Icons.check_circle_outline_rounded
-            : Icons.arrow_forward_rounded,
-        isLoading: _advancing || _completing,
-        onPressed: (_advancing || _completing) ? null : _advance,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AppButton(
+            label: _ctaLabel,
+            icon: _phase == _RidePhase.lastDropoff
+                ? Icons.check_circle_outline_rounded
+                : Icons.arrow_forward_rounded,
+            isLoading: _advancing || _completing,
+            onPressed: (_advancing || _completing) ? null : _advance,
+          ),
+          // Only before the trip is moving: once it's STARTED the backend
+          // refuses to re-open the ride, because the fare ledger and each
+          // rider's progress already exist and would be orphaned.
+          if (_canDropRide) ...[
+            SizedBox(height: 10.h),
+            _cancelRideButton(),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// True while the driver may still hand the ride back — assigned but not
+  /// yet driving. Mirrors the backend's own rule in `driverCancelRide`.
+  bool get _canDropRide =>
+      _phase == _RidePhase.headingToPickup ||
+      _phase == _RidePhase.arrivedAtPickup;
+
+  /// Hands the ride back to the feed. Outlined and secondary, so it reads as
+  /// the way out rather than competing with the trip's forward action.
+  Widget _cancelRideButton() {
+    return GestureDetector(
+      onTap: (_advancing || _completing) ? null : _dropRide,
+      child: Container(
+        padding: EdgeInsets.symmetric(vertical: 15.h, horizontal: 20.w),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(Consonants.rButton.r),
+          border: Border.all(color: Consonants.danger, width: 1.5),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.close_rounded, size: 18.sp, color: Consonants.danger),
+            SizedBox(width: 10.w),
+            Text(
+              "Cancel ride",
+              style: AppText.button(color: Consonants.danger)
+                  .copyWith(fontSize: 16.5.sp),
+            ),
+          ],
+        ),
       ),
     );
   }

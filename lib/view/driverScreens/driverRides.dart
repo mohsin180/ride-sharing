@@ -471,8 +471,6 @@ class _RideSummaryCard extends StatelessWidget {
             _hostRow(),
             SizedBox(height: 18.h),
             _routeBlock(),
-            SizedBox(height: 16.h),
-            _metaRow(),
             SizedBox(height: 18.h),
             const AppDivider(),
             SizedBox(height: 16.h),
@@ -603,59 +601,6 @@ class _RideSummaryCard extends StatelessWidget {
     );
   }
 
-  /// Quick facts: the trip's length plus how far the pickup is from the
-  /// driver.
-  Widget _metaRow() {
-    final r = ride.source;
-    final chips = <Widget>[];
-    chips.add(_metaChip(Icons.bolt_rounded, 'Leave now', accent: true));
-    if (r.tripDistanceKm != null) {
-      chips.add(
-        _metaChip(
-          Icons.straighten_rounded,
-          '${r.tripDistanceKm!.toStringAsFixed(1)} km trip',
-        ),
-      );
-    }
-    if (r.tripDurationMin != null) {
-      chips.add(
-        _metaChip(Icons.access_time_rounded, '${r.tripDurationMin} min'),
-      );
-    }
-    if (r.distanceKm != null) {
-      chips.add(
-        _metaChip(
-          Icons.near_me_outlined,
-          '${r.distanceKm!.toStringAsFixed(1)} km away',
-        ),
-      );
-    }
-    return Wrap(spacing: 8.w, runSpacing: 8.h, children: chips);
-  }
-
-  Widget _metaChip(IconData icon, String label, {bool accent = false}) {
-    final fg = accent ? Consonants.indigo : Consonants.textMuted;
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 11.w, vertical: 7.h),
-      decoration: BoxDecoration(
-        color: accent ? Consonants.indigoWash : Consonants.canvas,
-        borderRadius: BorderRadius.circular(Consonants.rPill.r),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 13.sp, color: fg),
-          SizedBox(width: 5.w),
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: AppText.navLabel(color: fg).copyWith(fontSize: 12.sp),
-          ),
-        ],
-      ),
-    );
-  }
 
   // ─── Fare — the biggest thing on the card ───────────────
   Widget _fareRow() {
@@ -667,7 +612,7 @@ class _RideSummaryCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                "Fare per rider",
+                "Price per rider",
                 style: AppText.caption().copyWith(fontSize: 12.5.sp),
               ),
               SizedBox(height: 4.h),
@@ -763,8 +708,12 @@ class _RideRequest {
       // share, which is what this used to show.
       totalFare: r.tripFare != null ? r.tripFare!.round() : 0,
       riderCount: r.ridersJoined,
-      startPoint: r.pickup,
-      endPoint: r.drop,
+      // Where THIS driver actually starts and finishes. r.pickup/r.drop are
+      // the host's two points, which on a shared ride is neither the first
+      // person to collect nor the last to drop — the backend orders the whole
+      // route from the driver's own position and hands back the two ends.
+      startPoint: r.firstPickup ?? r.pickup,
+      endPoint: r.lastDrop ?? r.drop,
       distance: r.distanceKm != null
           ? "${r.distanceKm!.toStringAsFixed(1)} km"
           : "—",

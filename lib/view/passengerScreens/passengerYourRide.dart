@@ -318,21 +318,6 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
     if (mounted) _quickActionSnack(fallback);
   }
 
-  // ─── Phase-driven copy ──────────────────────────────────
-
-  String get _statusLine {
-    switch (_phase) {
-      case _RidePhase.driverEnRoute:
-        return "Driver on the way to pick you up";
-      case _RidePhase.driverArrived:
-        return "Your driver has arrived";
-      case _RidePhase.inTransit:
-        return "Heading to your drop-off";
-      case _RidePhase.arrived:
-        return "You've arrived at your destination";
-    }
-  }
-
   // ─── Build ───────────────────────────────────────────────
 
   @override
@@ -595,23 +580,29 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
                 Expanded(
                   child: ListView(
                     physics: const BouncingScrollPhysics(),
-                    padding: EdgeInsets.symmetric(
-                      horizontal: Consonants.gutter.w,
+                    // Room at the foot for the pinned Cancel button + the
+                    // floating nav, so the last card scrolls clear of both
+                    // instead of being sliced by them.
+                    padding: EdgeInsets.fromLTRB(
+                      Consonants.gutter.w,
+                      0,
+                      Consonants.gutter.w,
+                      bottomInset + 90.h,
                     ),
                     children: [
                       // Below-map layout mirrors the driver's active-ride
                       // cockpit: status band → focus card → trip strip →
                       // co-riders list. (The full route is on the map now, so
                       // the old text route card is dropped — same as the driver.)
-                      _statusBand(),
-                      SizedBox(height: Consonants.gapTiles.h),
+                      // Deliberately spare. The status band, the "pay in cash"
+                      // reminder and the safety tile all sat between the rider
+                      // and the two things they came for — what the trip costs
+                      // and who is driving. The fare card already carries the
+                      // amount, and the trip's state is written across the
+                      // map above.
                       _tripStrip(ride, pickupLL, dropLL),
                       SizedBox(height: Consonants.gapTiles.h),
                       _driverCard(ride),
-                      if (ride.fare != null) ...[
-                        SizedBox(height: Consonants.gapTiles.h),
-                        _cashPaymentHint(ride),
-                      ],
                       if (ride.coPassengers.isNotEmpty) ...[
                         SizedBox(height: 26.h),
                         _coRidersHeader(ride.coPassengers.length),
@@ -621,16 +612,25 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
                             const AppDivider(),
                         ],
                       ],
-                      SizedBox(height: 22.h),
-                      _safetyTile(),
                       SizedBox(height: 16.h),
                     ],
                   ),
                 ),
-                _stickyCta(ride, bottomInset),
               ],
             ),
           ),
+        ),
+
+        // ── Cancel, pinned to the very bottom of the screen ──
+        // Was the last child of the sheet's Column, which made it a strip the
+        // list stopped short of — the driver card got sliced by it and a band
+        // of empty sheet sat underneath. Pinned here it clears the floating
+        // nav and nothing else reserves space for it.
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          child: _stickyCta(ride, bottomInset),
         ),
 
         // ── Floating top bar (over map) ──
@@ -718,46 +718,6 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
           boxShadow: Consonants.cardLift,
         ),
         child: Icon(icon, size: 20.sp, color: iconColor ?? Consonants.iconInk),
-      ),
-    );
-  }
-
-  Widget _statusBand() {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
-      decoration: BoxDecoration(
-        color: Consonants.indigoWash,
-        borderRadius: BorderRadius.circular(Consonants.rCard.r),
-      ),
-      child: Row(
-        children: [
-          AnimatedBuilder(
-            animation: _pulse,
-            builder: (_, __) {
-              return Container(
-                width: 10.w,
-                height: 10.w,
-                decoration: BoxDecoration(
-                  color: Consonants.indigo.withValues(
-                    alpha: 0.45 + 0.55 * _pulse.value,
-                  ),
-                  shape: BoxShape.circle,
-                ),
-              );
-            },
-          ),
-          SizedBox(width: 12.w),
-          Expanded(
-            child: Text(
-              _statusLine,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: AppText.rowLabel(
-                color: Consonants.headingInk,
-              ).copyWith(fontSize: 15.sp, fontWeight: FontWeight.w600),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -986,34 +946,6 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
       ..showSnackBar(CustomWidgets.customSuccessSnackBar(message));
   }
 
-  /// Cash-payment prompt: what this rider owes the driver, in cash. Payment is
-  /// settled in person; the driver confirms collection at the end of the trip.
-  Widget _cashPaymentHint(RideDetails ride) {
-    final fare = ride.fare!;
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
-      decoration: BoxDecoration(
-        color: Consonants.chipBg,
-        borderRadius: BorderRadius.circular(Consonants.rCard.r),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.payments_outlined, size: 20.sp, color: Consonants.iconInk),
-          SizedBox(width: 12.w),
-          Expanded(
-            child: Text(
-              "Pay ${fare.format(fare.perRider)} in cash",
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: AppText.rowLabel(
-                color: Consonants.headingInk,
-              ).copyWith(fontSize: 15.sp, fontWeight: FontWeight.w600),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   Widget _tripStrip(RideDetails ride, LatLng pickup, LatLng drop) {
     final fare = ride.fare;
@@ -1080,7 +1012,7 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                "Your fare",
+                "Your price",
                 style: AppText.caption(
                   color: const Color(0xCCFFFFFF),
                 ).copyWith(fontSize: 13.sp),
@@ -1115,55 +1047,6 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
     );
   }
 
-  Widget _safetyTile() {
-    return AppCard(
-      onTap: () => _quickActionSnack("Live location shared with your contacts"),
-      padding: EdgeInsets.all(16.w),
-      child: Row(
-        children: [
-          Container(
-            width: 44.w,
-            height: 44.w,
-            alignment: Alignment.center,
-            decoration: const BoxDecoration(
-              color: Consonants.chipBg,
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              Icons.shield_outlined,
-              size: 20.sp,
-              color: Consonants.iconInk,
-            ),
-          ),
-          SizedBox(width: 14.w),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  "Ride safely",
-                  style: AppText.rowLabel().copyWith(fontSize: 16.sp),
-                ),
-                SizedBox(height: 3.h),
-                Text(
-                  "Verify the vehicle plate before boarding",
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppText.caption().copyWith(fontSize: 12.5.sp),
-                ),
-              ],
-            ),
-          ),
-          Icon(
-            Icons.chevron_right_rounded,
-            size: 22.sp,
-            color: Consonants.textMuted,
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _stickyCta(RideDetails ride, double bottomInset) {
     // The passenger doesn't drive the trip — the driver does. So before the
     // trip moves the only real action is cancelling; once it's underway
@@ -1171,14 +1054,25 @@ class _PassengeryourrideState extends ConsumerState<Passengeryourride>
     final canCancel =
         _phase == _RidePhase.driverEnRoute ||
         _phase == _RidePhase.driverArrived;
-    return Padding(
-      // The floating nav sits over this panel, so the action reserves the
-      // system's nav clearance rather than hiding underneath it.
+    return Container(
+      // A footer surface, not a bare floating button: the list scrolls
+      // underneath it, and with nothing opaque here the cards slid visibly
+      // behind the button. Mirrors the driver's action bar.
+      decoration: const BoxDecoration(
+        color: Consonants.canvas,
+        border: Border(top: BorderSide(color: Consonants.divider)),
+      ),
       padding: EdgeInsets.fromLTRB(
         Consonants.gutter.w,
         12.h,
         Consonants.gutter.w,
-        Consonants.navClearance.h + bottomInset,
+        // bottomInset alone. With `extendBody: true` the Scaffold already
+        // folds the floating nav's height INTO MediaQuery's bottom padding,
+        // so this one value clears both the nav and the system gesture bar.
+        // Adding a nav's worth on top of it — as this did — pushed the button
+        // a nav-and-a-half up the screen and left a band of empty sheet under
+        // it.
+        bottomInset + 8.h,
       ),
       child: canCancel
           ? GestureDetector(

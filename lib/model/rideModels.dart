@@ -1018,6 +1018,14 @@ class AvailableRide {
   /// The whole trip's fare: every rider's share added up, which is what the
   /// driver collects. Drivers show this; passengers show [fareForRider].
   final double? tripFare;
+
+  /// Driver feed only: where THIS driver would start and finish, for the
+  /// shared route ordered from where they are right now. [pickup]/[drop] are
+  /// always the host's two points, which on a ride with co-passengers is
+  /// neither. Null on the passenger feed, on solo rides, and when the
+  /// driver's location is unknown — fall back to [pickup]/[drop].
+  final String? firstPickup;
+  final String? lastDrop;
   final String pickup;
   final String drop;
   final double pickupLat;
@@ -1056,6 +1064,8 @@ class AvailableRide {
     this.tripDurationMin,
     this.fareForRider,
     this.tripFare,
+    this.firstPickup,
+    this.lastDrop,
     this.youAreHost = true,
   });
 
@@ -1089,6 +1099,8 @@ class AvailableRide {
       tripDurationMin: readInt('tripDurationMin'),
       fareForRider: readDouble('fareForRider'),
       tripFare: readDouble('tripFare'),
+      firstPickup: (json['firstPickup'] as String?)?.trim(),
+      lastDrop: (json['lastDrop'] as String?)?.trim(),
       pickup: (json['pickup'] ?? '').toString(),
       drop: (json['drop'] ?? '').toString(),
       pickupLat: readDouble('pickupLat') ?? 0,

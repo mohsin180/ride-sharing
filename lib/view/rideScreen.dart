@@ -41,14 +41,15 @@ class _RidescreenState extends ConsumerState<Ridescreen> {
   /// Keeps rides with enough seats for the party and drops any the user
   /// dismissed. The backend's Haversine SQL query already bounded the list to
   /// within [_kRadiusKm] of the pickup and returned it nearest-first.
-  List<AvailableRide> _filterBySeats(
-    List<AvailableRide> rides,
-    int neededSeats,
-  ) {
-    return rides
-        .where((r) => r.seatsAvailable >= neededSeats)
-        .where((r) => !_dismissed.contains(r.id))
-        .toList();
+  /// Only drops rides the user dismissed by hand.
+  ///
+  /// Rides with fewer seats than asked for are NOT hidden any more: with a
+  /// handful of hosts, filtering them out left the list looking empty or
+  /// stuck at one result. They show with a "1 seat left" chip instead, and
+  /// [_onJoinRide] stops the join rather than silently booking fewer seats
+  /// than the rider chose.
+  List<AvailableRide> _visibleRides(List<AvailableRide> rides) {
+    return rides.where((r) => !_dismissed.contains(r.id)).toList();
   }
 
   @override
@@ -159,13 +160,27 @@ class _RidescreenState extends ConsumerState<Ridescreen> {
   /// "Your Route" section (so they can compare their intent against
   /// the ride they're joining).
   void _onJoinRide(AvailableRide ride) {
-    final desiredSeats = ref.read(rideRequestProvider).seats;
-    final seats = desiredSeats > ride.seatsAvailable
-        ? ride.seatsAvailable
-        : desiredSeats;
+    final req = ref.read(rideRequestProvider);
+    final desiredSeats = req.seats;
 
-    final pickupLatLng = LatLng(ride.pickupLat, ride.pickupLng);
-    final dropLatLng = LatLng(ride.dropLat, ride.dropLng);
+    // Refuse rather than quietly book fewer seats than they picked — the old
+    // clamp let someone who asked for 2 end up with 1 without being told.
+    if (ride.seatsAvailable < desiredSeats) {
+      ErrorHandler.show(
+        context,
+        ride.seatsAvailable == 1
+            ? "Only 1 seat is left on this ride."
+            : "Only ${ride.seatsAvailable} seats are left on this ride.",
+      );
+      return;
+    }
+
+    // The RIDER's own pickup/drop, not the host's. Passing the ride's own
+    // coordinates here priced the joiner for the host's whole route, so the
+    // fare on the details screen disagreed with the one on the card they
+    // just tapped — the card is priced from this same search.
+    final pickupLatLng = req.pickupLatLng ?? LatLng(ride.pickupLat, ride.pickupLng);
+    final dropLatLng = req.dropLatLng ?? LatLng(ride.dropLat, ride.dropLng);
 
     // push (not go) so the back arrow on viewRequest can pop back here.
     context.push(
@@ -174,7 +189,7 @@ class _RidescreenState extends ConsumerState<Ridescreen> {
         'rideId': ride.id,
         'pickup': ride.pickup,
         'drop': ride.drop,
-        'seats': seats,
+        'seats': desiredSeats,
         'pickupLatLng': pickupLatLng,
         'dropLatLng': dropLatLng,
       },
@@ -195,9 +210,7 @@ class _RidescreenState extends ConsumerState<Ridescreen> {
           rideRequestProvider.select(
               (s) => s.pickupLatLng != null && s.dropLatLng != null),
         );
-    final neededSeats =
-        ref.watch(rideRequestProvider.select((s) => s.seats));
-    final filtered = _filterBySeats(rides, neededSeats);
+    final filtered = _visibleRides(rides);
 
     // Whether the passenger is already in a ride drives the whole screen,
     // so we watch myRides unconditionally and use it to pick the view.
@@ -237,9 +250,13 @@ class _RidescreenState extends ConsumerState<Ridescreen> {
               // No manual tab toggle: the view is decided by whether the
               // passenger is already in a ride. Committed (host OR
               // co-passenger) → "Your Rides" only; otherwise → "Find Rides".
-              // While we don't yet know (first load), show a spinner so the
-              // screen doesn't flash Find Rides before snapping to Your Rides.
-              if (myRidesAsync.isLoading && myRides.isEmpty)
+              // Spinner only until the FIRST answer arrives. Gating on
+               // "list is empty" instead meant every background poll blanked
+               // the whole screen for a user with no active ride — which is
+               // exactly the Find Rides case — and read as a constant reload.
+               // hasValue stays true across refreshes, so a poll now updates
+               // the numbers in place and nothing moves.
+              if (!myRidesAsync.hasValue && myRidesAsync.isLoading)
                 const _LoadingState()
               else if (committed)
                 _buildMyRidesBody(myRidesAsync, myRides)
@@ -282,8 +299,8 @@ class _RidescreenState extends ConsumerState<Ridescreen> {
     AsyncValue<List<AvailableRide>> async,
     List<AvailableRide> rides,
   ) {
-    if (async.isLoading && rides.isEmpty) return const _LoadingState();
-    if (async.hasError && rides.isEmpty) {
+    if (!async.hasValue && async.isLoading) return const _LoadingState();
+    if (async.hasError && !async.hasValue) {
       return _ErrorState(
         message: ErrorHandler.message(async.error),
         onRetry: () => ref.invalidate(myRidesProvider),
@@ -523,8 +540,8 @@ class _RidescreenState extends ConsumerState<Ridescreen> {
     bool hasSearch,
   ) {
     if (!hasSearch) return const _SearchPrompt();
-    if (async.isLoading && rides.isEmpty) return const _LoadingState();
-    if (async.hasError && rides.isEmpty) {
+    if (!async.hasValue && async.isLoading) return const _LoadingState();
+    if (async.hasError && !async.hasValue) {
       return _ErrorState(
         message: ErrorHandler.message(async.error),
         onRetry: () => ref.invalidate(availableRidesProvider),
@@ -547,6 +564,7 @@ class _RidescreenState extends ConsumerState<Ridescreen> {
         for (int i = 0; i < filtered.length; i++) ...[
           _FeaturedRideCard(
             ride: filtered[i],
+            seatsWanted: ref.watch(rideRequestProvider.select((s) => s.seats)),
             onViewRequest: () => _onJoinRide(filtered[i]),
             onDecline: () {
               setState(() => _dismissed.add(filtered[i].id));
@@ -979,7 +997,7 @@ Widget _emptyStateShell({
 /// duration strip → Decline + View Request buttons.
 ///
 /// Difference from the driver version: the middle stat tile shows the
-/// *current passenger's* fare ("Your fare") rather than the trip's
+/// *current passenger's* price ("Your price") rather than the trip's
 /// total fare, since the driver sees aggregate while the passenger
 /// sees only what they'll personally pay.
 class _FeaturedRideCard extends StatelessWidget {
@@ -994,11 +1012,17 @@ class _FeaturedRideCard extends StatelessWidget {
   /// visually unified.
   final bool isMyRide;
 
+  /// Seats the rider asked for in the search form. Only used to warn when
+  /// this ride can't seat them — the list shows such rides now instead of
+  /// hiding them, so the shortfall has to be visible on the card.
+  final int? seatsWanted;
+
   const _FeaturedRideCard({
     required this.ride,
     required this.onViewRequest,
     required this.onDecline,
     this.isMyRide = false,
+    this.seatsWanted,
   });
 
   // ── Display adapters. Pulled out as getters so the helper widgets
@@ -1037,10 +1061,50 @@ class _FeaturedRideCard extends StatelessWidget {
             _hostStrip(),
             SizedBox(height: 20.h),
             _statsPills(),
+            if (_seatNotice != null) ...[
+              SizedBox(height: 12.h),
+              _seatChip(_seatNotice!),
+            ],
             SizedBox(height: 20.h),
             _actionButtons(),
           ],
         ),
+      ),
+    );
+  }
+
+  /// "Only 1 seat left" — shown when this ride can't take the party the rider
+  /// searched for, or when it's down to its last seat. Null on the host's own
+  /// card, which is deliberately bare.
+  String? get _seatNotice {
+    if (isMyRide) return null;
+    final left = ride.seatsAvailable;
+    final wanted = seatsWanted;
+    if (wanted != null && left < wanted) {
+      return left == 1 ? 'Only 1 seat left' : 'Only $left seats left';
+    }
+    if (left == 1) return 'Only 1 seat left';
+    return null;
+  }
+
+  Widget _seatChip(String label) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 7.h),
+      decoration: BoxDecoration(
+        color: Consonants.dangerWash,
+        borderRadius: BorderRadius.circular(Consonants.rPill.r),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.event_seat_outlined, size: 14.sp, color: Consonants.danger),
+          SizedBox(width: 6.w),
+          Text(
+            label,
+            style: AppText.navLabel(color: Consonants.danger)
+                .copyWith(fontSize: 12.5.sp),
+          ),
+        ],
       ),
     );
   }
@@ -1102,7 +1166,7 @@ class _FeaturedRideCard extends StatelessWidget {
   }
 
   // ─── The fare ───────────────────────────────────────────
-  /// The amount, on its own. The "Your fare" caption, the rating and the rider
+  /// The amount, on its own. The "Your price" caption, the rating and the rider
   /// count all went: a number this size in this position needs no label, and
   /// the two facts beside it were competing with the only thing the card is
   /// really for.
